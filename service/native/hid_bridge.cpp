@@ -66,12 +66,22 @@ bool valid(const unsigned char* p, size_t n) {
     unsigned sum = 0; for (size_t i = 0; i < 64 && i < n; ++i) sum += p[i];
     return n >= 64 && p[0] == 9 && p[6] <= 56 && (sum & 255) == 255;
 }
-// This private bridge accepts only volatile RGB, passive Hall reads and identity.
+// Configuration commands used by OpenHero68, plus volatile RGB and passive Hall.
+// Firmware update, reset and calibration commands remain excluded.
 bool allowed(const std::array<unsigned char,64>& p) {
     if (!valid(p.data(), p.size())) return false;
-    return (p[1] == 8 && (p[2] == 1 || (p[2] == 2 && p[6] == 3))) ||
+    const auto c=p[1], z=p[2], n=p[6];
+    const bool config =
+        ((c==3||c==0x83||c==0x12||c==0x92)&&z<=2) ||
+        ((c==0x13||c==0x15||c==0x16||c==0x19||c==0x93||c==0x95||c==0x96||c==0x99)&&z==0&&n>0) ||
+        (c==0x10&&z==0&&n==1&&p[7]<=2) || ((c==0x90||c==0x87)&&z==0) ||
+        ((c==0x1a||c==0x9a)&&z<=2) || (c==5&&z==0) ||
+        ((c==4||c==0x84)&&(z==1||z==6||z==17||z==19||z==21||z==23||z==24||z==25||z==29||z==30)) ||
+        ((c==6||c==0x86)&&z==0) ||
+        (c==0x82&&(z==1||z==2||z==3||z==4||z==6||z==8||z==9));
+    return config || (p[1] == 8 && (p[2] == 1 || (p[2] == 2 && p[6] == 3))) ||
            (p[1] == 0x98 && p[2] == 1 && p[6] > 0 && p[6] <= 18 && p[6] % 2 == 0) ||
-           (p[1] == 0x82 && p[2] == 1);
+           false;
 }
 int main() {
     std::unique_ptr<Device> device;
@@ -89,6 +99,8 @@ int main() {
             std::cout << "waited" << std::endl; continue;
         }
         if (line == "close") { device.reset(); std::cout << "closed" << std::endl; continue; }
+        const bool sendOnly=line.rfind("send:",0)==0;
+        if(sendOnly)line=line.substr(5);
         std::array<unsigned char,64> request{};
         bool parsed = line.size() == 128;
         auto digit = [](char c) { return c >= '0' && c <= '9' ? c-'0' : c >= 'a' && c <= 'f' ? c-'a'+10 : -1; };
@@ -96,7 +108,7 @@ int main() {
             int a = digit(line[i*2]), b = digit(line[i*2+1]);
             if (a < 0 || b < 0) parsed = false; else request[i] = static_cast<unsigned char>(a*16+b);
         }
-        if (!parsed || !allowed(request)) { std::cout << "error:request" << std::endl; continue; }
+        if (!parsed || !allowed(request) || (sendOnly && !(request[1]==4 && request[2]==23 && request[6]==1 && request[7]<=6))) { std::cout << "error:request" << std::endl; continue; }
         if (!device) device = openDevice();
         if (!device) { std::cout << "error:disconnected" << std::endl; continue; }
         std::vector<unsigned char> output(device->output);
@@ -105,16 +117,17 @@ int main() {
         bool okay = io(*device, output, true, 100, count) && count == output.size();
         // Live RGB is fire-and-forget; firmware does not emit a CMD08 ACK.
         // Echo the submitted report after OS write completion to acknowledge IPC.
-        if (request[1] == 8 && okay) {
+        if ((request[1] == 8 || sendOnly) && okay) {
             for (auto v : request) std::cout << std::hex << std::setw(2) << std::setfill('0') << unsigned(v);
             std::cout << std::endl;
             continue;
         }
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+        const DWORD replyTimeout = request[1]==0x98 ? 100 : 800;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(replyTimeout);
         std::vector<unsigned char> input(device->input);
         bool replied = false;
         while (okay && std::chrono::steady_clock::now() < deadline) {
-            okay = io(*device, input, false, 100, count);
+            okay = io(*device, input, false, replyTimeout, count);
             if (!okay) break;
             if (!valid(input.data(), count) || input[1] != request[1] || input[2] != request[2]) continue;
             if (request[1] == 0x98) {

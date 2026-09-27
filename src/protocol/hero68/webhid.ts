@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from 'react'
 import { registerHero68Protocol, type Hero68Transport } from '../deviceBridge'
 import { hexToBytes } from '../hex'
-import { decodeReport } from './codec'
+import { buildReport, decodeReport } from './codec'
 import { hero68ProtocolEncoder } from './hero68Encoder'
 import type { DecodedReport } from './types'
+import { rgbService } from '../rgbService'
 
 const HERO68_VENDOR_ID = 0x372e
 const HERO68_PRODUCT_ID = 0x103e
@@ -122,13 +123,15 @@ export class Hero68DeviceManager implements Hero68Transport {
   #reportListeners = new Set<(report: DecodedReport) => void>()
   #rawReportListeners = new Set<(report: Hero68RawInputReport) => void>()
   #waiters = new Set<ReportWaiter>()
+  #viaService = false
+  get viaService() { return this.#viaService }
 
   constructor() {
     getHid()?.addEventListener?.('disconnect', this.#onHidDisconnect)
   }
 
   get connected(): boolean {
-    return this.#snapshot.state === 'connected' && Boolean(this.#device?.opened)
+    return this.#snapshot.state === 'connected' && (this.#viaService || Boolean(this.#device?.opened))
   }
 
   getSnapshot = (): Hero68DeviceSnapshot => this.#snapshot
@@ -146,6 +149,11 @@ export class Hero68DeviceManager implements Hero68Transport {
   }
 
   async connect(requestPermission = true): Promise<void> {
+    if(this.connected)return
+    if(typeof location!=='undefined'&&location.protocol.startsWith('http')){
+      const service=await rgbService.status().catch(()=>null)
+      if(service?.enabled&&(service.apiVersion??0)>=2){await this.connectViaService();return}
+    }
     const hid = getHid()
     if (!hid) {
       this.#setSnapshot({ state: 'unsupported', error: 'WebHID is not available in this browser.' })
@@ -176,7 +184,6 @@ export class Hero68DeviceManager implements Hero68Transport {
       const device = devices[0]
       // Transfer ownership after the chooser to preserve browser user activation.
       if(typeof location!=='undefined'&&location.protocol.startsWith('http')){
-        const {rgbService}=await import('../rgbService')
         const service=await rgbService.status().catch(()=>null)
         if(service?.enabled)await rgbService.stop()
       }
@@ -196,6 +203,7 @@ export class Hero68DeviceManager implements Hero68Transport {
   }
 
   async disconnect(): Promise<void> {
+    this.#viaService=false
     const device = this.#device
     this.#device = undefined
     this.#rejectWaiters(new Error('HERO68 disconnected'))
@@ -204,6 +212,17 @@ export class Hero68DeviceManager implements Hero68Transport {
       if (device.opened) await device.close()
     }
     this.#setSnapshot({ state: getHid() ? 'disconnected' : 'unsupported', error: null })
+  }
+
+  /** Keep the same configuration transport while the service owns the HID handle. */
+  async connectViaService():Promise<void> {
+    const device=this.#device
+    if(device){device.removeEventListener('inputreport',this.#onInputReport);if(device.opened)await device.close();this.#device=undefined}
+    try {
+      // An identity read verifies that the native helper can access this keyboard.
+      await rgbService.deviceRequest(buildReport({command:0x82,zone:1}))
+      this.#viaService=true;this.#setSnapshot({state:'connected',deviceName:'AULA Hero68',error:null})
+    }catch(error){this.#viaService=false;this.#setSnapshot({state:'error',error:errorMessage(error)});throw error}
   }
 
   onReport(listener: (report: DecodedReport) => void): () => void {
@@ -243,6 +262,7 @@ export class Hero68DeviceManager implements Hero68Transport {
   }
 
   async send(report: Uint8Array): Promise<void> {
+    if(this.#viaService){await rgbService.deviceRequest(report);return}
     const device = this.#device
     if (!device?.opened) throw new Error('HERO68 is not connected')
     if (report.length !== 64 || report[0] !== HERO68_REPORT_ID) {
@@ -258,6 +278,7 @@ export class Hero68DeviceManager implements Hero68Transport {
    * come back, reopen it, and leave the manager connected to the fresh handle.
    */
   async sendReenumerating(report: Uint8Array, timeoutMs = 7000): Promise<void> {
+    if(this.#viaService){await rgbService.deviceRequest(report,true);return}
     const hid = getHid()
     const previous = this.#device
     if (!hid || !previous?.opened || !this.connected) throw new Error('HERO68 is not connected')
@@ -346,6 +367,12 @@ export class Hero68DeviceManager implements Hero68Transport {
     predicate?: (report: DecodedReport) => boolean,
   ): Promise<DecodedReport> {
     if (!this.connected) throw new Error('HERO68 is not connected')
+    if(this.#viaService){
+      const reply=await rgbService.deviceRequest(report)
+      if(reply.command!==expectedCommand||(expectedZone!==undefined&&reply.zone!==expectedZone)||(predicate&&!predicate(reply)))throw Error('Unexpected service configuration reply')
+      this.#reportListeners.forEach(listener=>listener(reply))
+      return reply
+    }
 
     return new Promise<DecodedReport>((resolve, reject) => {
       const waiter: ReportWaiter = {

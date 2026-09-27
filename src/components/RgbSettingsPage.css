@@ -29,6 +29,9 @@
 .custom-rgb-layer.muted {opacity:.55}
 .custom-rgb-layer-select {display:flex;align-items:center;gap:8px;flex:1;min-width:0;border:0;background:transparent;color:inherit;padding:0;font-weight:600;font-size:12px;text-align:left}
 .custom-rgb-layer-select span {flex:1}.custom-rgb-layer-select svg {flex-shrink:0}
+.custom-rgb-layer-select:focus-visible {outline:none}
+.custom-rgb-layer:has(.custom-rgb-layer-select:focus-visible) {border-color:#ffd95a}
+button.custom-rgb-layer:focus-visible {outline:none;border-color:#ffd95a}
 .custom-rgb-delete {background:transparent;color:#89949c;border:0;padding:4px;display:flex}.custom-rgb-delete:hover {color:#ff9a9a}
 .custom-rgb-add {display:flex;align-items:center;justify-content:center;gap:7px;min-height:47px;width:100%;border:1px dashed #5e666c;border-radius:7px;color:#bbc7ce;background:transparent;font-size:12px;margin:9px 0 12px}
 .custom-rgb-add:hover {border-color:#ffd95a;color:#ffd95a}

@@ -1,4 +1,4 @@
-import { createServer } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync } from 'node:fs'
@@ -9,7 +9,8 @@ import { defaultRgb, type RgbProfile } from '../src/protocol/hero68/rgb'
 import { buildReport, decodeReport } from '../src/protocol/hero68/codec'
 import { HERO68_KEY_IDS } from '../src/keyboard/hero68Layout'
 import { HERO68_KEY_POSITIONS } from '../src/protocol/hero68/keyPositions'
-import { framePackets } from './frame'
+import { prepareFrame } from './frame'
+import { validateDeviceRequest } from './deviceRequests'
 
 const port=16868
 const stateDir=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
@@ -38,6 +39,17 @@ function persist(){const file=path.join(stateDir,'preset.json');writeFileSync(fi
 let engine=profile?new CustomRgbEngine(profile):null, epoch=performance.now(), reconnectAt=0
 let lastError:string|null=null, frames=0, packets=0, hallSnapshots=0, timeouts=0, lastFrameAt=0, maxGapMs=0, frameMs=0
 let windowStart=performance.now(), windowFrames=0, fps=0
+let deviceBusyUntil=0
+const frameClients=new Set<ServerResponse>()
+let lastPublishedFrame:unknown=null
+function publishFrame(value:unknown){
+  lastPublishedFrame=value
+  const text=`data: ${JSON.stringify(value)}\n\n`
+  for(const client of frameClients){
+    if(client.destroyed||client.writableLength>65536){client.destroy();frameClients.delete(client)}
+    else client.write(text)
+  }
+}
 let tail:Promise<unknown>=Promise.resolve()
 function exclusive<T>(work:()=>Promise<T>):Promise<T>{const next=tail.then(work);tail=next.catch(()=>{});return next}
 
@@ -59,8 +71,8 @@ class Bridge {
       this.pending={resolve,reject,timer};this.process.stdin.write(value+'\n',e=>{if(e)this.fail(e)})
     })
   }
-  async request(packet:Uint8Array){
-    const result=await this.line(Buffer.from(packet).toString('hex'))
+  async request(packet:Uint8Array,sendOnly=false){
+    const result=await this.line((sendOnly?'send:':'')+Buffer.from(packet).toString('hex'))
     if(result.startsWith('error:'))throw Error(result.slice(6))
     if(!/^[0-9a-f]{128}$/.test(result))throw Error('Invalid bridge response')
     const reply=decodeReport(Uint8Array.from(Buffer.from(result,'hex')))
@@ -82,9 +94,10 @@ async function stop(){
   enabled=false
   if(connected){try{await bridge.request(buildReport({command:8,zone:2,data:[0,0,0]}))}catch(e){lastError=String(e)}}
   engine?.releaseAll();connected=false;await bridge.close();persist();log('RGB stopped')
+  publishFrame({enabled:false,connected:false})
 }
 async function tick(){
-  if(!enabled||!profile||!engine||closing)return
+  if(!enabled||!profile||!engine||closing||performance.now()<deviceBusyUntil)return
   if(!connected){if(performance.now()<reconnectAt)return;await connect()}
   const started=performance.now()
   engine!.advance(started-epoch+110)
@@ -99,22 +112,24 @@ async function tick(){
     }
     engine!.setTravel(travel);hallSnapshots++
   }
-  for(const packet of framePackets(engine!.frame().keys))await bridge.request(packet)
+  const frame=prepareFrame(engine!.frame().keys)
+  for(const packet of frame.packets)await bridge.request(packet)
   const now=performance.now();if(lastFrameAt)maxGapMs=Math.max(maxGapMs,now-lastFrameAt)
   lastFrameAt=now;frameMs=now-started;frames++;windowFrames++
+  if(frameClients.size)publishFrame({enabled:true,connected:true,keys:frame.keys,sequence:frames})
 }
 let timer:ReturnType<typeof setTimeout>
 let nextFrame=performance.now()
 async function loop(){
   const start=performance.now()
-  try{await exclusive(tick)}catch(e){connected=false;engine?.releaseAll();lastError=e instanceof Error?e.message:String(e);timeouts++;reconnectAt=performance.now()+1000;log(`HID error: ${lastError}`);await exclusive(()=>bridge.close()).catch(()=>{})}
+  try{await exclusive(tick)}catch(e){connected=false;publishFrame({enabled,connected:false});engine?.releaseAll();lastError=e instanceof Error?e.message:String(e);timeouts++;reconnectAt=performance.now()+1000;log(`HID error: ${lastError}`);await exclusive(()=>bridge.close()).catch(()=>{})}
   const now=performance.now();if(now-windowStart>=1000){fps=windowFrames*1000/(now-windowStart);windowFrames=0;windowStart=now}
   if(!closing){
     if(enabled){nextFrame=Math.max(nextFrame+25,start+25);await exclusive(()=>bridge.wait(nextFrame-performance.now())).catch(()=>{});if(!closing)setImmediate(()=>void loop())}
     else {nextFrame=performance.now();timer=setTimeout(loop,250)}
   }
 }
-function status(){return {service:'OpenHero68 RGB',version:1,enabled,connected,preset:!!profile,fps,frameMs,frames,packets,hallSnapshots,timeouts,maxGapMs,lastError,targetFps:40,paletteColors:32,sideOutput:false}}
+function status(){return {service:'OpenHero68 RGB',version:1,apiVersion:2,enabled,connected,preset:!!profile,fps,frameMs,frames,packets,hallSnapshots,timeouts,maxGapMs,lastError,targetFps:40,paletteColors:32,sideOutput:false}}
 const panel=`<!doctype html><meta charset="utf-8"><title>Hero68 RGB Service</title><style>body{font:16px system-ui;background:#171a1b;color:#eee;max-width:740px;margin:60px auto;padding:20px}button,input{padding:12px;margin:8px}pre{white-space:pre-wrap}button{cursor:pointer}</style><h1>Hero68 RGB Service</h1><p>Custom RGB continues while the web editor is closed. Import a preset, or use Start service RGB in Open-Hero68.</p><input id="file" type="file" accept=".json"><button onclick="start()">Start saved preset</button><button onclick="post('/stop')">Stop RGB</button><button onclick="post('/shutdown')">Exit service</button><pre id="status"></pre><script>async function post(url,data={}){try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!r.ok)alert((await r.json()).error)}catch(e){alert(e.message)}}async function start(){const f=document.getElementById('file').files[0];if(f){const p=JSON.parse(await f.text());await post('/start',p.profile||p)}else await post('/start')}setInterval(async()=>{try{document.getElementById('status').textContent=JSON.stringify(await(await fetch('/status')).json(),null,2)}catch{document.getElementById('status').textContent='Service stopped'}},1000)</script>`
 const server=createServer(async(req,res)=>{
   const origin=req.headers.origin
@@ -127,21 +142,45 @@ const server=createServer(async(req,res)=>{
   try{
     if(req.method==='GET'&&req.url==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(panel);return}
     if(req.method==='GET'&&req.url==='/status'){json(200,status());return}
-    if(req.method!=='POST'||!['/start','/stop','/preset','/shutdown'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
+    if(req.method==='GET'&&req.url==='/frames'){
+      res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no'})
+      res.write(': connected\n\n');frameClients.add(res)
+      if(lastPublishedFrame)res.write(`data: ${JSON.stringify(lastPublishedFrame)}\n\n`)
+      const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);heartbeat.unref()
+      req.on('close',()=>{clearInterval(heartbeat);frameClients.delete(res)});return
+    }
+    if(req.method!=='POST'||!['/start','/stop','/preset','/shutdown','/device/request'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
     if(req.headers['content-type']?.split(';')[0]!=='application/json'){json(415,{error:'Expected application/json'});return}
     let body='',size=0
     for await(const chunk of req){size+=chunk.length;if(size>65536)throw Error('Preset too large');body+=chunk}
     const input=JSON.parse(body||'{}')
+    if(req.url==='/device/request'){
+      const {packet,reenumerate}=validateDeviceRequest(input)
+      const reply=await exclusive(async()=>{
+        if(!connected)await connect()
+        try {
+          const reply=await bridge.request(packet,reenumerate)
+          if(reenumerate){
+            connected=false;await bridge.close()
+            const deadline=performance.now()+7000;let recovered=false
+            while(performance.now()<deadline){await new Promise(resolve=>setTimeout(resolve,120));try{await connect();recovered=true;break}catch{await bridge.close()}}
+            if(!recovered)throw Error('HERO68 did not return after polling-rate change')
+          }
+          return reply
+        }finally{deviceBusyUntil=performance.now()+40}
+      })
+      json(200,{hex:Buffer.from(reply.raw).toString('hex')});return
+    }
     await exclusive(async()=>{
       if(req.url==='/stop'||req.url==='/shutdown'){await stop();return}
-      if(req.url==='/preset'||Object.keys(input).length){profile=normalizeProfile(input);engine?.releaseAll();engine=new CustomRgbEngine(profile);epoch=performance.now();persist()}
+      if(req.url==='/preset'||Object.keys(input).length){profile=normalizeProfile(input);if(engine)engine.configure(profile);else{engine=new CustomRgbEngine(profile);epoch=performance.now()}persist()}
       if(req.url==='/start'){if(!profile)throw Error('Send a preset first');enabled=true;reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;lastFrameAt=0;persist();log('RGB started')}
     })
     json(200,status())
     if(req.url==='/shutdown')void shutdown()
   }catch(e){json(400,{error:e instanceof Error?e.message:String(e)})}
 })
-async function shutdown(){if(closing)return;closing=true;clearTimeout(timer);await exclusive(stop).catch(e=>log(String(e)));bridge.end();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),1000).unref()}
+async function shutdown(){if(closing)return;closing=true;clearTimeout(timer);await exclusive(stop).catch(e=>log(String(e)));for(const client of frameClients)client.end();bridge.end();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),1000).unref()}
 process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown())
 process.on('uncaughtException',e=>{log(e.stack??e.message);void shutdown()})
 server.on('error',e=>{log(`Server error: ${e.message}`);bridge.end();process.exitCode=1})

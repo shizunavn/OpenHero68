@@ -5,6 +5,7 @@ async function bundle(path) {const b=await rolldown({input:path});try{const {out
 const custom=await bundle('src/keyboard/customRgb.ts')
 const rgb=await bundle('src/protocol/hero68/rgb.ts')
 const {FirmwareRgbPreview}=await bundle('src/keyboard/rgbPreview.ts')
+const {pickCustomRgbColor,CUSTOM_RGB_PALETTE,blendCustomRgbColor}=await bundle('src/keyboard/customRgbColors.ts')
 function profile(effect='reaction') {
   const p=rgb.defaultRgb();p.colors=Object.fromEntries(Object.keys(p.colors).map(id=>[id,[0,0,0]]))
   p.custom=custom.defaultCustomRgb(p);p.custom.enabled=true;p.custom.layers=[custom.createRgbLayer(effect,'one')]
@@ -94,6 +95,78 @@ test('stored custom layer validation caps counts, filters keys and clamps malfor
   const c=custom.restoreCustomRgb(p.custom,p)
   assert.deepEqual(c.layers[0].keys,['KeyW']);assert.equal(c.layers[0].opacity,100);assert.deepEqual(c.layers[0].color,[255,0,255])
 })
+test('Multicolor picks contrasting saturated hues with variety and no immediate repeat',()=>{
+  const background=[255,48,48],previous=[32,255,224]
+  const options=CUSTOM_RGB_PALETTE.filter(c=>c.some((v,i)=>v!==previous[i]))
+  const score=c=>c.reduce((sum,v,i)=>sum+(v-background[i])**2,0)
+  const best=Math.max(...options.map(score)),seen=new Set()
+  for(let i=0;i<=100;i++){
+    const tint=pickCustomRgbColor(background,i/100,previous)
+    assert.notDeepEqual(tint,previous);assert.ok(score(tint)>=best*.5)
+    assert.ok(tint.every(Number.isInteger));seen.add(tint.join(','))
+  }
+  assert.ok(seen.size>=3)
+})
+
+test('Multicolor held reaction keeps its hue through animated base changes and long holds',()=>{
+  const p=profile();p.custom.layers[0].multicolor=true;p.custom.base.mode=3
+  const e=new custom.CustomRgbEngine(p);e.advance(110);e.event('KeyW',true)
+  const first=e.frame().keys.KeyW
+  for(const time of [200,550,1000,5500]){e.advance(time);assert.equal(e.frame().keys.KeyW,first)}
+  e.event('KeyW',false);e.event('KeyW',true);assert.notEqual(e.frame().keys.KeyW,first)
+})
+
+test('Multicolor ripple uses one hue across its ring and leaves unrelated base keys intact',()=>{
+  const p=profile('ripple');p.custom.layers[0].multicolor=true
+  const e=new custom.CustomRgbEngine(p);e.advance(110);e.event('KeyW',true)
+  const center=e.frame().keys.KeyW;e.advance(110+1000/6)
+  const frame=e.frame().keys
+  assert.equal(frame.KeyQ,frame.KeyE);assert.notEqual(frame.KeyQ,'#000000')
+  assert.equal(frame.ArrowRight,'#000000')
+  const tint=[1,3,5].map(i=>parseInt(center.slice(i,i+2),16))
+  const faded=tint.map(c=>Math.round(c*(1-(1000/6)/900)))
+  assert.equal(frame.KeyE,'#'+faded.map(c=>c.toString(16).padStart(2,'0')).join(''))
+})
+
+test('Multicolor analog hue persists through depth changes and actuation',()=>{
+  const p=profile('jelly');p.custom.layers[0].multicolor=true
+  const e=new custom.CustomRgbEngine(p);e.advance(110);e.setTravel({KeyW:.4})
+  const tint=e.frame().keys.KeyW
+  e.setTravel({KeyW:2});e.event('KeyW',true);e.advance(900);assert.equal(e.frame().keys.KeyW,tint)
+  e.setTravel({KeyW:0});e.event('KeyW',false);assert.equal(e.frame().keys.KeyW,'#000000')
+  e.setTravel({KeyW:.4});assert.notEqual(e.frame().keys.KeyW,tint)
+})
+
+test('Multicolor Touch stays one color when deepest keys trade places due to Hall noise',()=>{
+  const p=profile('touch');p.custom.layers[0].multicolor=true
+  const e=new custom.CustomRgbEngine(p);e.advance(110);e.setTravel({KeyW:1.7,KeyA:1.69})
+  const first=e.frame().keys.Digit1
+  for(const travel of [{KeyW:1.69,KeyA:1.7},{KeyW:1.7,KeyA:1.69}]){
+    e.setTravel(travel);assert.equal(e.frame().keys.Digit1,first);assert.equal(e.frame().keys.Digit4,first)
+  }
+  e.setTravel({});e.frame();e.setTravel({KeyW:1.7});assert.notEqual(e.frame().keys.Digit1,first)
+})
+
+test('Multicolor Breath holds a uniform hue for a cycle and changes at its dark boundary',()=>{
+  const p=profile('breath');p.custom.layers[0].multicolor=true
+  const e=new custom.CustomRgbEngine(p);e.advance(500)
+  const first=e.frame().keys;assert.equal(first.KeyW,first.ArrowRight)
+  e.advance(1000);assert.equal(e.frame().keys.KeyW,'#000000')
+  e.advance(1500);assert.notEqual(e.frame().keys.KeyW,first.KeyW)
+})
+
+test('Multicolor blending dims underlying rainbow only inside the effect and respects opacity endpoints',()=>{
+  const background=[120,180,200],tint=[255,48,48]
+  assert.deepEqual(blendCustomRgbColor(background,tint,0,true),background)
+  assert.deepEqual(blendCustomRgbColor(background,tint,1,true),tint)
+  const normal=blendCustomRgbColor(background,tint,.5,false),clear=blendCustomRgbColor(background,tint,.5,true)
+  assert.ok(clear.every((c,i)=>c<normal[i]))
+  for(const effect of ['mixing','rt']){
+    const p=profile(effect),a=new custom.CustomRgbEngine(p);a.advance(110);a.setTravel({ArrowRight:3.4});a.event('KeyW',true)
+    const baseline=a.frame();p.custom.layers[0].multicolor=true;a.configure(p);assert.deepEqual(a.frame(),baseline)
+  }
+})
+
 for(const effect of custom.CUSTOM_RGB_EFFECTS)test(`${effect.name}: outputs valid full-keyboard colors`,()=>{
   const p=profile(effect.id);const e=new custom.CustomRgbEngine(p);e.advance(110);e.event('KeyW',true);e.advance(250)
   assert.equal(Object.keys(e.frame().keys).length,68);assert.ok(Object.values(e.frame().keys).every(c=>/^#[0-9a-f]{6}$/.test(c)))

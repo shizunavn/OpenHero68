@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { createPortal } from 'react-dom'
 import { HERO68_LAYOUT, makeDemoLighting } from '../keyboard/hero68Layout'
 import { subscribeLightingFrame, type LightingFrame } from '../keyboard/lightingPreviewBus'
+import { useServiceLighting } from '../protocol/serviceLighting'
 import { HERO68_HALL_VISUAL_MAX_MM } from '../protocol/hero68/hallStream'
 import type { AdvancedBinding } from '../protocol/hero68/advanced'
 import AdvancedKeyIcon from './AdvancedKeyIcon'
@@ -60,6 +61,8 @@ export default function Hero68Preview({
   onWidthChange,
 }: Hero68PreviewProps) {
   const demoFrame = useMemo(() => makeDemoLighting(), [])
+  const serviceLighting = useServiceLighting()
+  const displayedLighting = serviceLighting ?? lightingFrame
   const advancedByKey = useMemo(() => new Map(advancedBindings.flatMap(binding => binding.keys.map(key => [key, binding] as const))), [advancedBindings])
   const previewTooltips = useMemo(() => {
     const result = { ...keyTooltips }
@@ -183,9 +186,9 @@ export default function Hero68Preview({
                 const selected = selectedKeys.has(key.id)
                 const advanced = overlayMode === 'deadzone' ? undefined : advancedByKey.get(key.id)
                 const advancedIcon = advanced && <span className="hero-key-advanced-icon"><AdvancedKeyIcon kind={advanced.kind} /></span>
-                const keyColor = (lightingFrame ?? lighting)[key.id] ?? '#35393b'
+                const keyColor = (displayedLighting ?? lighting)[key.id] ?? '#35393b'
                 const channels = /^#[0-9a-f]{6}$/i.test(keyColor) ? [1,3,5].map(i=>parseInt(keyColor.slice(i,i+2),16)) : undefined
-                const rgbTextColor = lightingFrame && channels && channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722 > 155 ? '#172022' : undefined
+                const rgbTextColor = displayedLighting && channels && channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722 > 155 ? '#172022' : undefined
 
                 const rapidPreview = rapidPreviewValues[key.id]
                 const deadzonePreview = deadzonePreviewValues[key.id]

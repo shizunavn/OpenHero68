@@ -1,10 +1,11 @@
 # Custom RGB and background service
 
 Run `service/dist/Hero68RgbService.exe`, then RGB Settings > Custom Effects >
-Start service RGB. Start transfers this preset to the service and releases
-the browser HID connection. Edits made in that editor session are sent after
-350 ms debounce. Closing the editor/page leaves playback running. Stop service
-RGB releases HID; browser Connect also stops playback before opening WebHID.
+Start service RGB. Start transfers this preset to the service and routes
+keyboard configuration through the service-owned HID connection, so AP, RT
+and deadzone remain editable while RGB runs. Preset edits coalesce at 40 ms
+intervals with at most one in-flight request. Closing the editor/page leaves
+playback running. Stop service RGB releases HID and reconnects WebHID.
 Close other keyboard configuration applications while rendering.
 
 The executable is a Windows background application, not an installed Windows
@@ -25,7 +26,8 @@ the executable is restarted after an unexpected exit; graceful Exit disables
 playback. It reconnects after device I/O failures. Only one launcher runs.
 The HTTP server binds only loopback, validates Host and allowed Origin, and
 requires JSON for mutations. For another editor origin launch the exe with
-`--allow-origin https://your-host:port`. It exposes no arbitrary HID command API.
+`--allow-origin https://your-host:port`. Configuration requests use a restricted
+command allowlist checked by both the HTTP service and native bridge.
 
 ## Rendering and transport
 
@@ -41,6 +43,14 @@ host behaviors:
 - Jelly's area grows with Hall travel; AOE's fixed area scales in brightness.
 - Touch displays maximum travel on the ten number keys.
 - Mixing uses Left/Down/Right travel for RGB components.
+- FX Multicolor chooses a random hue from eight saturated colors, preferring
+  colors different from the base at the trigger key and avoiding consecutive
+  repeats. A press keeps one hue throughout its ripple/reaction/trail; analog
+  Jelly/AOE keep it until travel returns to rest. Touch keeps one hue for the
+  whole active bar, even when the deepest key changes. Scan/Breath choose once
+  per animation cycle. The underlying color is reduced slightly inside active
+  Multicolor FX so their shapes stand out on rainbow bases; fades remain smooth.
+  Mixing's RGB components and RT Display's status colors retain their semantics.
 - RT Display shows green/red from the reported Hall pressed flag. The flag's
   exact correspondence to the firmware RT output state is not established.
 
@@ -60,6 +70,11 @@ Hall and identity replies still validate checksum, command, zone and positions.
 Live LED IDs are POS bytes: the fw0320 parser at `08021C9C` calls `08012D08`,
 looks up the POS in the u16 table at `08029B9E`, and translates the resulting
 index through the coordinate tables. These are not fake UI matrix values.
+
+While service RGB runs, the web preview receives `/frames` server-sent events
+after each completed output frame. It displays the same quantized colors sent
+to the keyboard, including random FX colors, without running a separate local
+animation clock. This confirms OS write completion; it is not LED readback.
 
 The aggregate CMD08 length is a byte. A 68-key frame with 68 unique groups would
 need 340 bytes. The renderer therefore selects at most 32 colors by farthest

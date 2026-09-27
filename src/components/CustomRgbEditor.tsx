@@ -11,6 +11,7 @@ import type { AdvancedBinding } from '../protocol/hero68/advanced'
 import { hero68HallStream, useHero68HallStream } from '../protocol/hero68/hallStream'
 import { hero68DeviceManager, useHero68Device } from '../protocol/hero68/webhid'
 import { rgbService, type RgbServiceStatus } from '../protocol/rgbService'
+import { latestUpdates } from '../protocol/latestUpdates'
 
 const hex = (rgb: RgbColor) => '#'+rgb.map(c=>c.toString(16).padStart(2,'0')).join('')
 const rgb = (value: string): RgbColor => [1,3,5].map(i=>parseInt(value.slice(i,i+2),16)) as RgbColor
@@ -27,7 +28,10 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
   const [error, setError] = useState<string|null>(null)
   const [service, setService] = useState<RgbServiceStatus|null>(null)
   const [serviceBusy, setServiceBusy] = useState(false)
-  const editsToService = useRef(false)
+  const serviceRendering = useRef(false)
+  const updates = useRef<ReturnType<typeof latestUpdates<RgbProfile>>|null>(null)
+  const previousValue = useRef(value)
+  const [previewSynced,setPreviewSynced]=useState(false)
   const engineRef = useRef<CustomRgbEngine|null>(null)
   const ownsHall = useRef(false)
   const hall = useHero68HallStream()
@@ -45,19 +49,34 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
     return()=>{disposed=true;clearInterval(timer)}
   },[])
   useEffect(()=>{
-    if(!editsToService.current)return
-    const timer=setTimeout(()=>void rgbService.update(value).then(setService).catch(e=>setError(String(e))),350)
-    return()=>clearTimeout(timer)
-  },[value])
+    let disposed=false
+    const queue=latestUpdates<RgbProfile>(async next=>{const status=await rgbService.update(next);if(!disposed)setService(status)},e=>{if(!disposed)setError(String(e))})
+    updates.current=queue
+    return()=>{disposed=true;queue.close();updates.current=null}
+  },[])
+  useEffect(()=>{
+    const changed=previousValue.current!==value;previousValue.current=value
+    if(changed&&service?.enabled)updates.current?.stage(value)
+  },[value,service?.enabled])
+  useEffect(()=>{
+    serviceRendering.current=service?.enabled===true
+    if(!service?.enabled){setPreviewSynced(false);return}
+    if((service.apiVersion??0)<2){setError('Update the service to sync the web preview.');return}
+    return rgbService.frames(next=>{
+      if(next.enabled&&next.connected&&next.keys){setFrame({keys:next.keys,side:[]});setPreviewSynced(true)}
+      else setPreviewSynced(false)
+    },()=>setPreviewSynced(false))
+  },[service?.enabled,service?.apiVersion])
   async function toggleService(){
     setServiceBusy(true);setError(null)
     try{
-      if(service?.enabled){editsToService.current=false;setService(await rgbService.stop())}
+      if(service?.enabled){setService(await rgbService.stop());await hero68DeviceManager.disconnect();await hero68DeviceManager.connect(false)}
       else {
         if(hero68HallStream.getSnapshot().active)await hero68HallStream.stop()
         ownsHall.current=false
         await hero68DeviceManager.disconnect()
-        setService(await rgbService.start(value));editsToService.current=true
+        const started=await rgbService.start(value);setService(started)
+        if((started.apiVersion??0)>=2)await hero68DeviceManager.connectViaService()
       }
     }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setServiceBusy(false)}
   }
@@ -71,6 +90,7 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
     const held = new Set<string>()
     setError(null)
     const renderFrame=()=>{
+      if(serviceRendering.current)return
       const currentHall=hero68HallStream.getSnapshot()
       engine.setTravel(currentHall.active?Object.fromEntries(Object.entries(currentHall.samples).filter(([,s])=>!s.releaseInferred).map(([id,s])=>[id,s.distanceMm])):{})
       engine.advance(elapsed);setFrame(engine.frame())
@@ -85,6 +105,7 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
       } catch(e){setError(e instanceof Error?e.message:String(e))}
     }
     const keydown=(e:KeyboardEvent)=>{
+      if(serviceRendering.current)return
       if(e.repeat||!HERO68_KEY_IDS.includes(e.code))return
       if((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true]'))return
       held.add(e.code);engine.event(e.code,true)
@@ -93,7 +114,7 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
     const keyup=(e:KeyboardEvent)=>{if(held.delete(e.code)){engine.event(e.code,false);if(reduced.matches)renderFrame()}}
     const blur=()=>{held.clear();engine.releaseAll();renderFrame()}
     const visibility=()=>{cancelAnimationFrame(handle);previous=0;if(document.hidden)blur();else if(!reduced.matches)handle=requestAnimationFrame(tick)}
-    const click=(event:Event)=>{const id=(event as CustomEvent<string>).detail;engine.event(id,true);if(reduced.matches){engine.advance(elapsed+50);setFrame(engine.frame());engine.event(id,false)}else releases.push({id,at:elapsed+180})}
+    const click=(event:Event)=>{if(serviceRendering.current)return;const id=(event as CustomEvent<string>).detail;engine.event(id,true);if(reduced.matches){engine.advance(elapsed+50);setFrame(engine.frame());engine.event(id,false)}else releases.push({id,at:elapsed+180})}
     try{renderFrame();if(!reduced.matches)handle=requestAnimationFrame(tick)}catch(e){setError(String(e))}
     window.addEventListener('keydown',keydown);window.addEventListener('keyup',keyup);window.addEventListener('blur',blur)
     window.addEventListener('custom-rgb-preview-press',click);document.addEventListener('visibilitychange',visibility);reduced.addEventListener('change',visibility)
@@ -111,7 +132,7 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
     <div className="rgb-preview-stage"><Hero68Preview advancedBindings={advancedBindings} selectedKeys={selected} onToggleKey={toggle} lightingFrame={frame.keys} selectionEnabled/><div className="rgb-side-preview" aria-label="18 side light positions">{frame.side.map((color,i)=><span key={i} style={{background:color,color}}/>)}</div></div>
     <section className="settings-card rgb-custom-editor">
       <div className="rgb-section-heading"><div><h2><Layers size={20}/> Custom Effects</h2><p>AULA Hero68 · 68 keys · {config.layers.length}/{MAX_RGB_LAYERS} FX layers</p></div><div className="custom-rgb-actions"><button className="secondary-button" onClick={exportPreset}>Export preset</button><button className="secondary-button" onClick={()=>setReplay(n=>n+1)}><RotateCcw size={15}/> Replay</button></div></div>
-      <p className="custom-rgb-status"><span/> Preview active · Layers saved locally with this profile</p>
+      <p className="custom-rgb-status"><span/> {service?.enabled?previewSynced?'Preview synced with keyboard RGB':'Waiting for service frames':'Preview active · Layers saved locally with this profile'}</p>
       <div className="custom-rgb-onboard"><button className="apply-button" disabled={busy||serviceBusy||!service} onClick={()=>void toggleService()}>{serviceBusy?'Connecting…':service?.enabled?'Stop service RGB':'Start service RGB'}</button><span>{service?service.enabled?service.connected?`Keyboard RGB · ${service.fps.toFixed(1)} FPS · runs after closing this page`:`Waiting for keyboard · ${service.lastError??'connecting'}`:'Service ready · Start sends this preset to the keyboard':'Download and extract the service, then run Hero68RgbService.exe.'}</span><a href="https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip" target="_blank" rel="noreferrer">Download service</a>{service&&<a href="http://127.0.0.1:16868/" target="_blank" rel="noreferrer">Service panel</a>}</div>
       {config.base.mode!==19&&<div className="custom-rgb-warning">The base effect controls its own colors. Select Per-key Color to use painted key colors.</div>}
       <div className="custom-rgb-columns">
@@ -123,7 +144,7 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
       </div>
       <div className="custom-rgb-key-tools"><span>{selected.size} keys selected</span><button className="secondary-button" onClick={()=>setSelected(new Set(HERO68_KEY_IDS))}>Select all</button><button className="secondary-button" onClick={()=>setSelected(new Set())}>Deselect</button>{active==='base'?<><RgbColorPicker label="Paint selected keys" value={paint} disabled={busy} onChange={setPaint}/><button className="apply-button" disabled={busy||!selected.size} onClick={()=>{const colors={...value.colors};for(const id of selected)colors[id]=rgb(paint);onChange({...value,colors})}}>Paint keys</button></>:layer&&<><button className="apply-button" disabled={busy||!selected.size} onClick={()=>patchLayer({keys:[...selected]})}>Use selected keys</button><button className="secondary-button" disabled={busy} onClick={()=>patchLayer({keys:[...HERO68_KEY_IDS]})}>Use all 68 keys</button><small>Layer affects {layer.keys.length} keys</small></>}</div>
       <div className="custom-rgb-onboard"><button className="secondary-button" disabled={busy} onClick={()=>onChange({...value,keys:{...config.base}})}>Use base on keyboard</button><span>Stages the base for the profile Save button. FX layers stay in your local preset.</span></div>
-      <p className="rgb-preview-note">Start service RGB sends the base and FX layers to the keyboard and releases the browser HID connection. Reactive effects use Hall snapshots in the service. Side LEDs retain their onboard effect.</p>
+      <p className="rgb-preview-note">Service RGB runs the keyboard effects and streams the same colors back to this preview. AP, RT and other profile settings remain available through the service. Side LEDs retain their onboard effect.</p>
       {error&&<p role="alert" className="stream-error">{error}</p>}
     </section>
   </>
