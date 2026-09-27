@@ -1,28 +1,59 @@
-# OpenHero68 RGB Service
+# OpenHero68
 
-Portable Windows x64 tray application for AULA HERO68 custom RGB.
+WebHID keyboard configuration app and Windows tray RGB service for AULA HERO68.
 
-[Download Windows x64 ZIP](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes and checksums](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest)
+[Open the web app](https://shizuna.ddns.net:5173/) · [Download Windows RGB service](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest)
 
-## Setup
+## Features
 
-1. Extract the ZIP to a permanent folder. Keep all included files together.
-2. Run `Hero68RgbService.exe`. It appears in the system tray with the H logo.
-3. Open [OpenHero68](https://shizuna.ddns.net:5173/), go to RGB Settings > Custom Effects, and select **Start service RGB**.
-4. Closing the browser leaves RGB running. Right-click the tray icon to control the service.
+- Keyboard profiles, remapping, actuation point, Rapid Trigger and deadzone settings.
+- Advanced key configuration and macro editing.
+- RGB settings using the existing AULA color engine.
+- Custom RGB base layer and composable FX: Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail and RT Display.
+- Portable Windows tray service for RGB playback while the browser is closed.
 
-No Node/Python installation or administrator rights required.
+Gamepad output and Rhythm Sync are unfinished. The RGB service streams main keys; side LEDs retain their onboard effect.
 
-## Tray menu
+## Run the app from source
 
-Open web app, Open control panel, Start saved RGB, Stop RGB, Check for updates, Open log folder, Auto-start, Quit.
+Use Node.js 22.12 or later, then:
 
-Auto-start is optional and off by default. It uses your Windows account Run key. Enable it after choosing a permanent folder; disable it before moving or deleting the folder. Check for updates opens the latest release page; updates are installed manually.
+```sh
+npm ci
+npm run dev
+```
 
-The local control panel is http://127.0.0.1:16868/. Presets and logs are stored in `%LOCALAPPDATA%\OpenHero68\rgb-service`. Quit releases the keyboard and stops the service.
+Open the HTTPS URL printed by Vite in a browser supporting WebHID (Chrome or Edge), and use Connect to choose the keyboard. Vite creates a local development certificate. Windows service origins include the deployed app and localhost on port 5173; for another origin, launch the service with `--allow-origin https://your-host:port`.
 
-## Current scope
+```sh
+npm run build
+npm test
+```
 
-AULA base color engine and custom layers including Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail and RT Display. Target 40 FPS. Main keys are streamed; side LEDs keep their onboard effect. Gamepad and Rhythm Sync are not included.
+The production app is generated in `dist/`. Serve it over HTTPS for WebHID.
 
-This repository hosts portable binaries and release instructions.
+## Use the RGB tray service
+
+1. Download the Windows x64 ZIP from Releases and extract it to a permanent folder.
+2. Run `Hero68RgbService.exe`; the H icon appears in the system tray.
+3. In the web app, go to RGB Settings > Custom Effects and select **Start service RGB**.
+4. Closing the browser leaves playback running. Right-click the tray icon for controls.
+
+The menu includes Open web app, Open control panel, Start saved RGB, Stop RGB, Check for updates, Open log folder, Auto-start and Quit. Auto-start is optional, per Windows account, and disabled by default. Disable it before moving or deleting the service folder. Check for updates opens Releases; installation is manual.
+
+No Node/Python installation or administrator rights are required for the downloaded package. Keep all included files together. The control panel is http://127.0.0.1:16868/ and presets/logs are in `%LOCALAPPDATA%\OpenHero68\rgb-service`.
+
+## Build the Windows service
+
+Install Visual Studio Build Tools with the C++ desktop workload and Windows SDK. Set `HERO68_VCVARS` to your `vcvars64.bat` path, then:
+
+```powershell
+$env:HERO68_VCVARS = 'C:\path\to\VC\Auxiliary\Build\vcvars64.bat'
+npm ci
+npm run build:service
+powershell -NoProfile -File tools/package-rgb-service.ps1
+```
+
+The native launcher and HID bridge are compiled with MSVC; the TypeScript RGB engine and current Node runtime are bundled into `service/dist/`. Packaging writes a ZIP and SHA256 checksum to `service/releases/`.
+
+See [Custom RGB documentation](docs/CUSTOM_RGB.md) and [protocol notes](src/protocol/README.md) for implementation details and limitations.

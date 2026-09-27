@@ -1,0 +1,1808 @@
+{
+  "source": "hero68_re/docs/static_bundle_catalog.json (official AULA HERO68 bundle)",
+  "categories": [
+    {
+      "id": "basic_key",
+      "actions": [
+        {
+          "name": "Fn",
+          "description": "Fn",
+          "value": 218103808
+        },
+        {
+          "name": "Fn1",
+          "description": "Fn1",
+          "value": 218169344
+        },
+        {
+          "name": "-_",
+          "description": "-_",
+          "value": 45
+        },
+        {
+          "name": ",<",
+          "description": ",<",
+          "value": 54
+        },
+        {
+          "name": ";:",
+          "description": ";:",
+          "value": 51
+        },
+        {
+          "name": ".>",
+          "description": ".?",
+          "value": 55
+        },
+        {
+          "name": "' \"",
+          "description": "' \"",
+          "value": 52
+        },
+        {
+          "name": "[{",
+          "description": "[{",
+          "value": 47
+        },
+        {
+          "name": "]}",
+          "description": "]}",
+          "value": 48
+        },
+        {
+          "name": "/?",
+          "description": "/?",
+          "value": 56
+        },
+        {
+          "name": "\\ |",
+          "description": "\\ |",
+          "value": 49
+        },
+        {
+          "name": "`~",
+          "description": "`~",
+          "value": 53
+        },
+        {
+          "name": "=+",
+          "description": "=+",
+          "value": 46
+        },
+        {
+          "name": "0",
+          "description": "0",
+          "value": 39
+        },
+        {
+          "name": "1",
+          "description": "1",
+          "value": 30
+        },
+        {
+          "name": "2",
+          "description": "2",
+          "value": 31
+        },
+        {
+          "name": "3",
+          "description": "3",
+          "value": 32
+        },
+        {
+          "name": "4",
+          "description": "4",
+          "value": 33
+        },
+        {
+          "name": "5",
+          "description": "5",
+          "value": 34
+        },
+        {
+          "name": "6",
+          "description": "6",
+          "value": 35
+        },
+        {
+          "name": "7",
+          "description": "7",
+          "value": 36
+        },
+        {
+          "name": "8",
+          "description": "8",
+          "value": 37
+        },
+        {
+          "name": "9",
+          "description": "9",
+          "value": 38
+        },
+        {
+          "name": "A",
+          "description": "A",
+          "value": 4
+        },
+        {
+          "name": "B",
+          "description": "B",
+          "value": 5
+        },
+        {
+          "name": "C",
+          "description": "C",
+          "value": 6
+        },
+        {
+          "name": "D",
+          "description": "D",
+          "value": 7
+        },
+        {
+          "name": "E",
+          "description": "E",
+          "value": 8
+        },
+        {
+          "name": "F",
+          "description": "F",
+          "value": 9
+        },
+        {
+          "name": "G",
+          "description": "G",
+          "value": 10
+        },
+        {
+          "name": "H",
+          "description": "H",
+          "value": 11
+        },
+        {
+          "name": "I",
+          "description": "I",
+          "value": 12
+        },
+        {
+          "name": "J",
+          "description": "J",
+          "value": 13
+        },
+        {
+          "name": "K",
+          "description": "K",
+          "value": 14
+        },
+        {
+          "name": "L",
+          "description": "L",
+          "value": 15
+        },
+        {
+          "name": "M",
+          "description": "M",
+          "value": 16
+        },
+        {
+          "name": "N",
+          "description": "N",
+          "value": 17
+        },
+        {
+          "name": "O",
+          "description": "O",
+          "value": 18
+        },
+        {
+          "name": "P",
+          "description": "P",
+          "value": 19
+        },
+        {
+          "name": "Q",
+          "description": "Q",
+          "value": 20
+        },
+        {
+          "name": "R",
+          "description": "R",
+          "value": 21
+        },
+        {
+          "name": "S",
+          "description": "S",
+          "value": 22
+        },
+        {
+          "name": "T",
+          "description": "T",
+          "value": 23
+        },
+        {
+          "name": "U",
+          "description": "U",
+          "value": 24
+        },
+        {
+          "name": "V",
+          "description": "V",
+          "value": 25
+        },
+        {
+          "name": "W",
+          "description": "W",
+          "value": 26
+        },
+        {
+          "name": "X",
+          "description": "X",
+          "value": 27
+        },
+        {
+          "name": "Y",
+          "description": "Y",
+          "value": 28
+        },
+        {
+          "name": "Z",
+          "description": "Z",
+          "value": 29
+        },
+        {
+          "name": "L_Alt",
+          "description": "L_Alt",
+          "value": 262144
+        },
+        {
+          "name": "Backspace",
+          "description": "Backspace",
+          "value": 42
+        },
+        {
+          "name": "Caps",
+          "description": "Caps",
+          "value": 57
+        },
+        {
+          "name": "L_Ctrl",
+          "description": "L_Ctrl",
+          "value": 65536
+        },
+        {
+          "name": "Delete",
+          "description": "Delete",
+          "value": 76
+        },
+        {
+          "name": "Down",
+          "description": "Down",
+          "value": 81
+        },
+        {
+          "name": "End",
+          "description": "End",
+          "value": 77
+        },
+        {
+          "name": "Enter",
+          "description": "Enter",
+          "value": 40
+        },
+        {
+          "name": "Esc",
+          "description": "Esc",
+          "value": 41
+        },
+        {
+          "name": "F1",
+          "description": "F1",
+          "value": 58
+        },
+        {
+          "name": "F2",
+          "description": "F2",
+          "value": 59
+        },
+        {
+          "name": "F3",
+          "description": "F3",
+          "value": 60
+        },
+        {
+          "name": "F4",
+          "description": "F4",
+          "value": 61
+        },
+        {
+          "name": "F5",
+          "description": "F5",
+          "value": 62
+        },
+        {
+          "name": "F6",
+          "description": "F6",
+          "value": 63
+        },
+        {
+          "name": "F7",
+          "description": "F7",
+          "value": 64
+        },
+        {
+          "name": "F8",
+          "description": "F8",
+          "value": 65
+        },
+        {
+          "name": "F9",
+          "description": "F9",
+          "value": 66
+        },
+        {
+          "name": "F10",
+          "description": "F10",
+          "value": 67
+        },
+        {
+          "name": "F11",
+          "description": "F11",
+          "value": 68
+        },
+        {
+          "name": "F12",
+          "description": "F12",
+          "value": 69
+        },
+        {
+          "name": "PrtSc",
+          "description": "PrtSc",
+          "value": 70
+        },
+        {
+          "name": "Home",
+          "description": "Home",
+          "value": 74
+        },
+        {
+          "name": "Insert",
+          "description": "Insert",
+          "value": 73
+        },
+        {
+          "name": "Left",
+          "description": "Left",
+          "value": 80
+        },
+        {
+          "name": "L_WIN",
+          "description": "L_WIN",
+          "value": 524288
+        },
+        {
+          "name": "Num -",
+          "description": "Num -",
+          "value": 86
+        },
+        {
+          "name": "Num *",
+          "description": "Num *",
+          "value": 85
+        },
+        {
+          "name": "Num /",
+          "description": "Num /",
+          "value": 84
+        },
+        {
+          "name": "Num +",
+          "description": "Num +",
+          "value": 87
+        },
+        {
+          "name": "Num 0",
+          "description": "Num 0",
+          "value": 98
+        },
+        {
+          "name": "Num 1",
+          "description": "Num 1",
+          "value": 89
+        },
+        {
+          "name": "Num 2",
+          "description": "Num 2",
+          "value": 90
+        },
+        {
+          "name": "Num 3",
+          "description": "Num 3",
+          "value": 91
+        },
+        {
+          "name": "Num 4",
+          "description": "Num 4",
+          "value": 92
+        },
+        {
+          "name": "Num 5",
+          "description": "Num 5",
+          "value": 93
+        },
+        {
+          "name": "Num 6",
+          "description": "Num 6",
+          "value": 94
+        },
+        {
+          "name": "Num 7",
+          "description": "Num 7",
+          "value": 95
+        },
+        {
+          "name": "Num 8",
+          "description": "Num 8",
+          "value": 96
+        },
+        {
+          "name": "Num 9",
+          "description": "Num 9",
+          "value": 97
+        },
+        {
+          "name": "Num Del",
+          "description": "Num Del",
+          "value": 99
+        },
+        {
+          "name": "Num Enter",
+          "description": "Num Enter",
+          "value": 88
+        },
+        {
+          "name": "Num Lock",
+          "description": "Num Lock",
+          "value": 83
+        },
+        {
+          "name": "PgDn",
+          "description": "PgDn",
+          "value": 78
+        },
+        {
+          "name": "PgUp",
+          "description": "PgUp",
+          "value": 75
+        },
+        {
+          "name": "Pause",
+          "description": "Pause",
+          "value": 72
+        },
+        {
+          "name": "Right",
+          "description": "Right",
+          "value": 79
+        },
+        {
+          "name": "R_Alt",
+          "description": "R_Alt",
+          "value": 4194304
+        },
+        {
+          "name": "R_Ctrl",
+          "description": "R_Ctrl",
+          "value": 1048576
+        },
+        {
+          "name": "R_Shift",
+          "description": "R_Shift",
+          "value": 2097152
+        },
+        {
+          "name": "R_WIN",
+          "description": "R_WIN",
+          "value": 8388608
+        },
+        {
+          "name": "Scroll Lock",
+          "description": "Scroll Lock",
+          "value": 71
+        },
+        {
+          "name": "L_Shift",
+          "description": "L_Shift",
+          "value": 131072
+        },
+        {
+          "name": "Space",
+          "description": "Space",
+          "value": 44
+        },
+        {
+          "name": "Tab",
+          "description": "Tab",
+          "value": 43
+        },
+        {
+          "name": "App",
+          "description": "App",
+          "value": 101
+        },
+        {
+          "name": "Up",
+          "description": "Up",
+          "value": 82
+        }
+      ]
+    },
+    {
+      "id": "mouse",
+      "actions": [
+        {
+          "name": "empty_button",
+          "description": "empty_button",
+          "value": 0
+        },
+        {
+          "name": "left_button",
+          "description": "left_button",
+          "value": 16843008
+        },
+        {
+          "name": "right_button",
+          "description": "right_button",
+          "value": 16908544
+        },
+        {
+          "name": "mid_button",
+          "description": "mid_button",
+          "value": 16974080
+        },
+        {
+          "name": "forward",
+          "description": "forward",
+          "value": 17105152
+        },
+        {
+          "name": "back",
+          "description": "back",
+          "value": 17039616
+        },
+        {
+          "name": "dpi_plus",
+          "description": "dpi_plus",
+          "value": 83951616
+        },
+        {
+          "name": "dpi_sub",
+          "description": "dpi_sub",
+          "value": 84017152
+        },
+        {
+          "name": "dpi_switch",
+          "description": "dpi_switch",
+          "value": 84148224
+        },
+        {
+          "name": "shoot_button",
+          "description": "shoot_button",
+          "value": 167772160
+        }
+      ]
+    },
+    {
+      "id": "edit",
+      "actions": [
+        {
+          "name": "Ctrl + .",
+          "description": "ctrl + .",
+          "value": 79616
+        },
+        {
+          "name": "Ctrl + ;",
+          "description": "ctrl + ;",
+          "value": 78592
+        },
+        {
+          "name": "Ctrl + 0",
+          "description": "reset",
+          "value": 75520
+        },
+        {
+          "name": "Ctrl + O",
+          "description": "open",
+          "value": 70144
+        },
+        {
+          "name": "Ctrl + A",
+          "description": "all",
+          "value": 66560
+        },
+        {
+          "name": "Ctrl + C",
+          "description": "copy",
+          "value": 67072
+        },
+        {
+          "name": "Ctrl + F",
+          "description": "search",
+          "value": 67840
+        },
+        {
+          "name": "Ctrl + N",
+          "description": "new",
+          "value": 69888
+        },
+        {
+          "name": "Ctrl + S",
+          "description": "save",
+          "value": 71168
+        },
+        {
+          "name": "Ctrl + T",
+          "description": "new_item",
+          "value": 71424
+        },
+        {
+          "name": "Ctrl + V",
+          "description": "paste",
+          "value": 71936
+        },
+        {
+          "name": "Ctrl + W",
+          "description": "close_item",
+          "value": 72192
+        },
+        {
+          "name": "Ctrl + X",
+          "description": "cut",
+          "value": 72448
+        },
+        {
+          "name": "Ctrl + Y",
+          "description": "restore",
+          "value": 72704
+        },
+        {
+          "name": "Ctrl + Z",
+          "description": "revoke",
+          "value": 72960
+        }
+      ]
+    },
+    {
+      "id": "navigation",
+      "actions": [
+        {
+          "name": "Alt + Left",
+          "description": "back",
+          "value": 282624
+        },
+        {
+          "name": "Alt + Right",
+          "description": "move_forward",
+          "value": 282368
+        }
+      ]
+    },
+    {
+      "id": "windows",
+      "actions": [
+        {
+          "name": "LWin + tab",
+          "description": "task_bar",
+          "value": 535296
+        },
+        {
+          "name": "LWin + D",
+          "description": "hide_show_desktop",
+          "value": 526080
+        },
+        {
+          "name": "LWin + Ctrl + Enter",
+          "description": "open_description",
+          "value": 612352
+        },
+        {
+          "name": "LWin + T",
+          "description": "loop_task_app",
+          "value": 530176
+        },
+        {
+          "name": "LWin + A",
+          "description": "action_center",
+          "value": 525312
+        },
+        {
+          "name": "LWin + E",
+          "description": "file_resource_manager",
+          "value": 526336
+        },
+        {
+          "name": "LWin + I",
+          "description": "windows_setting_center",
+          "value": 527360
+        },
+        {
+          "name": "LWin + L",
+          "description": "lock_screen",
+          "value": 528128
+        },
+        {
+          "name": "LWin + K",
+          "description": "screen_projection_other",
+          "value": 527872
+        },
+        {
+          "name": "LWin + B",
+          "description": "jump_",
+          "value": 525568
+        },
+        {
+          "name": "LWin + G",
+          "description": "start_xbox_bar",
+          "value": 526848
+        },
+        {
+          "name": "LWin + R",
+          "description": "run",
+          "value": 529664
+        },
+        {
+          "name": "LWin + S",
+          "description": "search",
+          "value": 529920
+        },
+        {
+          "name": "LWin + U",
+          "description": "show_setting",
+          "value": 530432
+        },
+        {
+          "name": "LWin + X",
+          "description": "basic_menu",
+          "value": 531200
+        },
+        {
+          "name": "LWin + P",
+          "description": "project_screen",
+          "value": 524307
+        },
+        {
+          "name": "LWin + .",
+          "description": "emoji_box",
+          "value": 538368
+        },
+        {
+          "name": "LWin + =",
+          "description": "magnifying_glass",
+          "value": 536064
+        }
+      ]
+    },
+    {
+      "id": "efficiency",
+      "actions": [
+        {
+          "name": "Ctrl + Shift + Esc",
+          "description": "task_manager",
+          "value": 207104
+        },
+        {
+          "name": "Ctrl + ESC",
+          "description": "start_menu",
+          "value": 65577
+        },
+        {
+          "name": "Alt + Tab",
+          "description": "app_switch",
+          "value": 273152
+        },
+        {
+          "name": "Alt + F4",
+          "description": "close_app",
+          "value": 277760
+        },
+        {
+          "name": "Alt + ESC",
+          "description": "switch_next_app",
+          "value": 272640
+        }
+      ]
+    },
+    {
+      "id": "system_edit",
+      "actions": [
+        {
+          "name": "cut",
+          "description": "cut",
+          "value": 72448
+        },
+        {
+          "name": "copy",
+          "description": "copy",
+          "value": 67072
+        },
+        {
+          "name": "paste",
+          "description": "paste",
+          "value": 71936
+        },
+        {
+          "name": "revoke",
+          "description": "revoke",
+          "value": 72960
+        }
+      ]
+    },
+    {
+      "id": "system_multimedia",
+      "actions": [
+        {
+          "name": "play_pause",
+          "description": "play_pause",
+          "value": 33554637
+        },
+        {
+          "name": "system_multimedia",
+          "description": "system_multimedia",
+          "value": 33554819
+        },
+        {
+          "name": "mute",
+          "description": "mute",
+          "value": 33554658
+        },
+        {
+          "name": "pause",
+          "description": "pause",
+          "value": 33554615
+        },
+        {
+          "name": "previous_song",
+          "description": "previous_song",
+          "value": 33554614
+        },
+        {
+          "name": "next_song",
+          "description": "next_song",
+          "value": 33554613
+        },
+        {
+          "name": "volume_up",
+          "description": "volume_up",
+          "value": 33554665
+        },
+        {
+          "name": "volume_down",
+          "description": "volume_down",
+          "value": 33554666
+        }
+      ]
+    },
+    {
+      "id": "system_tools",
+      "actions": [
+        {
+          "name": "Win",
+          "description": "Win",
+          "value": 117440526
+        },
+        {
+          "name": "Mac",
+          "description": "Mac",
+          "value": 117440527
+        },
+        {
+          "name": "browser",
+          "description": "browser",
+          "value": 33554979
+        },
+        {
+          "name": "calculator",
+          "description": "calculator",
+          "value": 33554834
+        },
+        {
+          "name": "email",
+          "description": "email",
+          "value": 33554826
+        },
+        {
+          "name": "my_computer",
+          "description": "my_computer",
+          "value": 33554836
+        },
+        {
+          "name": "favorite",
+          "description": "favorite",
+          "value": 33554986
+        }
+      ]
+    },
+    {
+      "id": "system_action",
+      "actions": [
+        {
+          "name": "close_windows",
+          "description": "close_windows",
+          "value": 277760
+        },
+        {
+          "name": "lock_computer",
+          "description": "lock_computer",
+          "value": 528128
+        },
+        {
+          "name": "zoom_in",
+          "description": "zoom_in",
+          "value": 77312
+        },
+        {
+          "name": "zoom_out",
+          "description": "zoom_out",
+          "value": 77056
+        },
+        {
+          "name": "show_desktop",
+          "description": "show_desktop",
+          "value": 526080
+        },
+        {
+          "name": "task_manager",
+          "description": "task_manager",
+          "value": 347136
+        },
+        {
+          "name": "save",
+          "description": "save",
+          "value": 71168
+        },
+        {
+          "name": "screen_bright_up",
+          "description": "screen_bright_up",
+          "value": 33554543
+        },
+        {
+          "name": "screen_bright_down",
+          "description": "screen_bright_down",
+          "value": 33554544
+        }
+      ]
+    }
+  ],
+  "layers": [
+    {
+      "layer": 0,
+      "keys": [
+        {
+          "pos": 1,
+          "value": 41
+        },
+        {
+          "pos": 98,
+          "value": 73
+        },
+        {
+          "pos": 15,
+          "value": 30
+        },
+        {
+          "pos": 16,
+          "value": 31
+        },
+        {
+          "pos": 17,
+          "value": 32
+        },
+        {
+          "pos": 18,
+          "value": 33
+        },
+        {
+          "pos": 19,
+          "value": 34
+        },
+        {
+          "pos": 20,
+          "value": 35
+        },
+        {
+          "pos": 21,
+          "value": 36
+        },
+        {
+          "pos": 22,
+          "value": 37
+        },
+        {
+          "pos": 23,
+          "value": 38
+        },
+        {
+          "pos": 24,
+          "value": 39
+        },
+        {
+          "pos": 25,
+          "value": 45
+        },
+        {
+          "pos": 26,
+          "value": 46
+        },
+        {
+          "pos": 27,
+          "value": 42
+        },
+        {
+          "pos": 28,
+          "value": 43
+        },
+        {
+          "pos": 29,
+          "value": 20
+        },
+        {
+          "pos": 30,
+          "value": 26
+        },
+        {
+          "pos": 31,
+          "value": 8
+        },
+        {
+          "pos": 32,
+          "value": 21
+        },
+        {
+          "pos": 33,
+          "value": 23
+        },
+        {
+          "pos": 34,
+          "value": 28
+        },
+        {
+          "pos": 35,
+          "value": 24
+        },
+        {
+          "pos": 36,
+          "value": 12
+        },
+        {
+          "pos": 37,
+          "value": 18
+        },
+        {
+          "pos": 38,
+          "value": 19
+        },
+        {
+          "pos": 39,
+          "value": 47
+        },
+        {
+          "pos": 40,
+          "value": 48
+        },
+        {
+          "pos": 41,
+          "value": 49
+        },
+        {
+          "pos": 99,
+          "value": 76
+        },
+        {
+          "pos": 42,
+          "value": 57
+        },
+        {
+          "pos": 43,
+          "value": 4
+        },
+        {
+          "pos": 44,
+          "value": 22
+        },
+        {
+          "pos": 45,
+          "value": 7
+        },
+        {
+          "pos": 46,
+          "value": 9
+        },
+        {
+          "pos": 47,
+          "value": 10
+        },
+        {
+          "pos": 48,
+          "value": 11
+        },
+        {
+          "pos": 49,
+          "value": 13
+        },
+        {
+          "pos": 50,
+          "value": 14
+        },
+        {
+          "pos": 51,
+          "value": 15
+        },
+        {
+          "pos": 52,
+          "value": 51
+        },
+        {
+          "pos": 53,
+          "value": 52
+        },
+        {
+          "pos": 54,
+          "value": 40
+        },
+        {
+          "pos": 102,
+          "value": 75
+        },
+        {
+          "pos": 55,
+          "value": 131072
+        },
+        {
+          "pos": 56,
+          "value": 29
+        },
+        {
+          "pos": 57,
+          "value": 27
+        },
+        {
+          "pos": 58,
+          "value": 6
+        },
+        {
+          "pos": 59,
+          "value": 25
+        },
+        {
+          "pos": 60,
+          "value": 5
+        },
+        {
+          "pos": 61,
+          "value": 17
+        },
+        {
+          "pos": 62,
+          "value": 16
+        },
+        {
+          "pos": 63,
+          "value": 54
+        },
+        {
+          "pos": 64,
+          "value": 55
+        },
+        {
+          "pos": 65,
+          "value": 56
+        },
+        {
+          "pos": 66,
+          "value": 2097152
+        },
+        {
+          "pos": 74,
+          "value": 82
+        },
+        {
+          "pos": 103,
+          "value": 78
+        },
+        {
+          "pos": 67,
+          "value": 65536
+        },
+        {
+          "pos": 68,
+          "value": 524288
+        },
+        {
+          "pos": 69,
+          "value": 262144
+        },
+        {
+          "pos": 70,
+          "value": 44
+        },
+        {
+          "pos": 71,
+          "value": 4194304
+        },
+        {
+          "pos": 72,
+          "value": 218103808
+        },
+        {
+          "pos": 76,
+          "value": 80
+        },
+        {
+          "pos": 75,
+          "value": 81
+        },
+        {
+          "pos": 77,
+          "value": 79
+        },
+        {
+          "pos": 73,
+          "value": 1048576
+        }
+      ]
+    },
+    {
+      "layer": 1,
+      "keys": [
+        {
+          "pos": 1,
+          "value": 41
+        },
+        {
+          "pos": 98,
+          "value": 73
+        },
+        {
+          "pos": 15,
+          "value": 58
+        },
+        {
+          "pos": 16,
+          "value": 59
+        },
+        {
+          "pos": 17,
+          "value": 60
+        },
+        {
+          "pos": 18,
+          "value": 61
+        },
+        {
+          "pos": 19,
+          "value": 62
+        },
+        {
+          "pos": 20,
+          "value": 63
+        },
+        {
+          "pos": 21,
+          "value": 64
+        },
+        {
+          "pos": 22,
+          "value": 65
+        },
+        {
+          "pos": 23,
+          "value": 66
+        },
+        {
+          "pos": 24,
+          "value": 67
+        },
+        {
+          "pos": 25,
+          "value": 68
+        },
+        {
+          "pos": 26,
+          "value": 69
+        },
+        {
+          "pos": 27,
+          "value": 42
+        },
+        {
+          "pos": 28,
+          "value": 43
+        },
+        {
+          "pos": 29,
+          "value": 20
+        },
+        {
+          "pos": 30,
+          "value": 26
+        },
+        {
+          "pos": 31,
+          "value": 8
+        },
+        {
+          "pos": 32,
+          "value": 21
+        },
+        {
+          "pos": 33,
+          "value": 23
+        },
+        {
+          "pos": 34,
+          "value": 28
+        },
+        {
+          "pos": 35,
+          "value": 24
+        },
+        {
+          "pos": 36,
+          "value": 12
+        },
+        {
+          "pos": 37,
+          "value": 18
+        },
+        {
+          "pos": 38,
+          "value": 71
+        },
+        {
+          "pos": 39,
+          "value": 74
+        },
+        {
+          "pos": 40,
+          "value": 77
+        },
+        {
+          "pos": 41,
+          "value": 49
+        },
+        {
+          "pos": 99,
+          "value": 76
+        },
+        {
+          "pos": 42,
+          "value": 57
+        },
+        {
+          "pos": 43,
+          "value": 117440526
+        },
+        {
+          "pos": 44,
+          "value": 117440527
+        },
+        {
+          "pos": 45,
+          "value": 7
+        },
+        {
+          "pos": 46,
+          "value": 9
+        },
+        {
+          "pos": 47,
+          "value": 10
+        },
+        {
+          "pos": 48,
+          "value": 11
+        },
+        {
+          "pos": 49,
+          "value": 13
+        },
+        {
+          "pos": 50,
+          "value": 14
+        },
+        {
+          "pos": 51,
+          "value": 15
+        },
+        {
+          "pos": 52,
+          "value": 70
+        },
+        {
+          "pos": 53,
+          "value": 72
+        },
+        {
+          "pos": 54,
+          "value": 40
+        },
+        {
+          "pos": 102,
+          "value": 75
+        },
+        {
+          "pos": 55,
+          "value": 131072
+        },
+        {
+          "pos": 56,
+          "value": 29
+        },
+        {
+          "pos": 57,
+          "value": 27
+        },
+        {
+          "pos": 58,
+          "value": 6
+        },
+        {
+          "pos": 59,
+          "value": 25
+        },
+        {
+          "pos": 60,
+          "value": 5
+        },
+        {
+          "pos": 61,
+          "value": 17
+        },
+        {
+          "pos": 62,
+          "value": 16
+        },
+        {
+          "pos": 63,
+          "value": 54
+        },
+        {
+          "pos": 64,
+          "value": 55
+        },
+        {
+          "pos": 65,
+          "value": 56
+        },
+        {
+          "pos": 66,
+          "value": 2097152
+        },
+        {
+          "pos": 74,
+          "value": 82
+        },
+        {
+          "pos": 103,
+          "value": 78
+        },
+        {
+          "pos": 67,
+          "value": 65536
+        },
+        {
+          "pos": 68,
+          "value": 524288
+        },
+        {
+          "pos": 69,
+          "value": 262144
+        },
+        {
+          "pos": 70,
+          "value": 44
+        },
+        {
+          "pos": 71,
+          "value": 4194304
+        },
+        {
+          "pos": 72,
+          "value": 218103808
+        },
+        {
+          "pos": 76,
+          "value": 80
+        },
+        {
+          "pos": 75,
+          "value": 81
+        },
+        {
+          "pos": 77,
+          "value": 79
+        },
+        {
+          "pos": 73,
+          "value": 1048576
+        }
+      ]
+    },
+    {
+      "layer": 2,
+      "keys": [
+        {
+          "pos": 1,
+          "value": 41
+        },
+        {
+          "pos": 98,
+          "value": 73
+        },
+        {
+          "pos": 15,
+          "value": 33554836
+        },
+        {
+          "pos": 16,
+          "value": 33554979
+        },
+        {
+          "pos": 17,
+          "value": 33554826
+        },
+        {
+          "pos": 18,
+          "value": 33554819
+        },
+        {
+          "pos": 19,
+          "value": 33554614
+        },
+        {
+          "pos": 20,
+          "value": 33554613
+        },
+        {
+          "pos": 21,
+          "value": 33554637
+        },
+        {
+          "pos": 22,
+          "value": 33554615
+        },
+        {
+          "pos": 23,
+          "value": 33554665
+        },
+        {
+          "pos": 24,
+          "value": 33554666
+        },
+        {
+          "pos": 25,
+          "value": 33554658
+        },
+        {
+          "pos": 26,
+          "value": 33554834
+        },
+        {
+          "pos": 27,
+          "value": 42
+        },
+        {
+          "pos": 28,
+          "value": 43
+        },
+        {
+          "pos": 29,
+          "value": 20
+        },
+        {
+          "pos": 30,
+          "value": 26
+        },
+        {
+          "pos": 31,
+          "value": 8
+        },
+        {
+          "pos": 32,
+          "value": 21
+        },
+        {
+          "pos": 33,
+          "value": 23
+        },
+        {
+          "pos": 34,
+          "value": 28
+        },
+        {
+          "pos": 35,
+          "value": 24
+        },
+        {
+          "pos": 36,
+          "value": 12
+        },
+        {
+          "pos": 37,
+          "value": 18
+        },
+        {
+          "pos": 38,
+          "value": 19
+        },
+        {
+          "pos": 39,
+          "value": 47
+        },
+        {
+          "pos": 40,
+          "value": 48
+        },
+        {
+          "pos": 41,
+          "value": 49
+        },
+        {
+          "pos": 99,
+          "value": 76
+        },
+        {
+          "pos": 42,
+          "value": 57
+        },
+        {
+          "pos": 43,
+          "value": 4
+        },
+        {
+          "pos": 44,
+          "value": 22
+        },
+        {
+          "pos": 45,
+          "value": 7
+        },
+        {
+          "pos": 46,
+          "value": 9
+        },
+        {
+          "pos": 47,
+          "value": 10
+        },
+        {
+          "pos": 48,
+          "value": 11
+        },
+        {
+          "pos": 49,
+          "value": 13
+        },
+        {
+          "pos": 50,
+          "value": 14
+        },
+        {
+          "pos": 51,
+          "value": 15
+        },
+        {
+          "pos": 52,
+          "value": 51
+        },
+        {
+          "pos": 53,
+          "value": 52
+        },
+        {
+          "pos": 54,
+          "value": 40
+        },
+        {
+          "pos": 102,
+          "value": 75
+        },
+        {
+          "pos": 55,
+          "value": 131072
+        },
+        {
+          "pos": 56,
+          "value": 29
+        },
+        {
+          "pos": 57,
+          "value": 27
+        },
+        {
+          "pos": 58,
+          "value": 6
+        },
+        {
+          "pos": 59,
+          "value": 25
+        },
+        {
+          "pos": 60,
+          "value": 5
+        },
+        {
+          "pos": 61,
+          "value": 17
+        },
+        {
+          "pos": 62,
+          "value": 16
+        },
+        {
+          "pos": 63,
+          "value": 54
+        },
+        {
+          "pos": 64,
+          "value": 55
+        },
+        {
+          "pos": 65,
+          "value": 56
+        },
+        {
+          "pos": 66,
+          "value": 2097152
+        },
+        {
+          "pos": 74,
+          "value": 82
+        },
+        {
+          "pos": 103,
+          "value": 78
+        },
+        {
+          "pos": 67,
+          "value": 65536
+        },
+        {
+          "pos": 68,
+          "value": 524288
+        },
+        {
+          "pos": 69,
+          "value": 262144
+        },
+        {
+          "pos": 70,
+          "value": 44
+        },
+        {
+          "pos": 71,
+          "value": 4194304
+        },
+        {
+          "pos": 72,
+          "value": 218103808
+        },
+        {
+          "pos": 76,
+          "value": 80
+        },
+        {
+          "pos": 75,
+          "value": 81
+        },
+        {
+          "pos": 77,
+          "value": 79
+        },
+        {
+          "pos": 73,
+          "value": 1048576
+        }
+      ]
+    }
+  ]
+}

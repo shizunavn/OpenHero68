@@ -1,0 +1,65 @@
+.remap-page{max-width:1240px;margin:0 auto}
+.remap-svg-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0}
+.remap-svg-icon svg{width:100%;height:100%;fill:currentColor}
+.remap-svg-icon svg.lucide{fill:none;stroke-width:1.8}
+.remap-svg-icon{--chakra-colors-icon-brand:#ffda64;--chakra-colors-icon-subtle:#899399}
+.remap-accordion-trigger>.remap-svg-icon:last-child{margin-left:auto;transition:transform 150ms ease}
+.remap-accordion-trigger[aria-expanded=true]>.remap-svg-icon:last-child{transform:rotate(180deg)}
+.remap-page .remap-function-grid button{display:flex;align-items:center;justify-content:center}
+.remap-page .remap-function-grid button .remap-svg-icon{width:30px;height:25px}
+.remap-page .remap-function-grid button.needs-key{opacity:.7}
+.remap-page .hero-key.is-preset-highlighted{border-color:#ffd65a}
+.remap-preview-layout{display:grid;grid-template-columns:160px minmax(0,1fr);gap:24px;align-items:center;padding:16px 0 8px}
+.remap-preview-layout .keyboard-stage{height:clamp(240px,23vw,330px);min-height:240px;padding:0}
+.remap-preview-layers h2{display:flex;align-items:center;gap:8px;margin:0 0 16px;font-size:14px;font-weight:600;text-transform:uppercase;color:var(--text-2)}
+.remap-preview-layers [role=group]{display:grid;gap:9px}
+.remap-layer-row{position:relative;display:flex;background:#24282a;border-radius:6px}
+.remap-preview-layers .remap-layer{font-size:13px;font-weight:650;padding:12px 30px 12px 12px;min-height:42px}
+.remap-preview-layers .remap-layer.is-active{background:#33383a;border-color:#e8c75c;color:#f4f5f5}
+.remap-layer-menu-trigger{position:absolute;right:4px;top:7px;height:28px;width:24px;display:grid;place-items:center;border:0;background:none;color:#8f9da4;cursor:pointer}
+.remap-layer-menu{position:absolute;top:calc(100% + 5px);right:0;z-index:10;background:#303739;padding:6px;border:1px solid #4c575c;border-radius:7px;min-width:145px;box-shadow:0 8px 22px #0005}
+.remap-layer-menu button{display:flex;align-items:center;gap:7px;width:100%;border:0;background:none;color:#e1e8ec;text-align:left;padding:9px;border-radius:4px;cursor:pointer}
+.remap-layer-menu button:hover:not(:disabled){background:#414b4e}
+.remap-layer-menu button:disabled{opacity:.35;cursor:default}
+.remap-page .remap-heading{margin:24px 0 18px}
+.remap-page .remap-editor{grid-template-columns:minmax(240px,32%) minmax(0,1fr);gap:16px}
+.remap-guide.settings-card{padding:24px;min-width:0}
+.remap-guide h2{margin:0 0 16px;font-size:20px;font-weight:750}
+.remap-guide p{font-size:15px;line-height:1.55;color:#b9c4ca;margin:0 0 22px}
+.remap-guide h3{font-size:12px;text-transform:uppercase;letter-spacing:.045em;margin:24px 0 12px;color:#c3cdd1}
+.remap-preset-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.remap-preset-grid button{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:9px;min-height:80px;border:1px solid #4b5358;border-radius:6px;background:#353c40;color:#edf1f3;cursor:pointer;padding:10px 4px}
+.remap-preset-grid button:hover:not(:disabled){border-color:#d7bc67;background:#414747}
+.remap-preset-grid button>span{height:27px;display:grid;place-items:center;font-size:12px;font-weight:800;letter-spacing:.08em}
+.remap-preset-grid strong{font-size:12px}
+.remap-guide .remap-preset-hint{font-size:12px;color:#8fa0aa;margin:16px 0 0}
+.remap-preset-notice{margin-top:18px;padding-top:16px;border-top:1px solid #3e474c}
+.remap-preset-notice p{font-size:13px;margin:0 0 12px;color:#e4d087}
+.remap-page .remap-picker.settings-card{padding:24px}
+.remap-page .remap-target{padding-bottom:20px;gap:12px}
+.remap-page .remap-target small{font-size:12px}
+.remap-page .remap-target strong{font-size:15px}
+.remap-page .remap-target .ghost-button{font-size:12px}
+.remap-page .remap-search{height:46px;background:#121617;border-color:#3c4448;border-radius:7px}
+.remap-page .remap-search:focus-within{outline:0;border-color:#d5b85e}
+.remap-page .remap-search input{font-size:14px;appearance:none}
+.remap-page .remap-search input:focus-visible{outline:0;box-shadow:none}
+.remap-page .remap-functions{max-height:560px;padding:12px 4px 0 0;margin-top:8px}
+.remap-page .remap-functions section+section{margin-top:4px}
+.remap-page .remap-functions h3{margin:0}
+.remap-accordion-trigger{display:flex;align-items:center;gap:12px;width:100%;padding:14px 8px;border:0;background:none;color:#e1e7ea;font-size:15px;text-align:left;cursor:pointer}
+.remap-accordion-trigger>svg{margin-left:auto;transition:transform 150ms ease}
+.remap-accordion-trigger[aria-expanded=true]>svg{transform:rotate(180deg)}
+.remap-group-icon{display:grid;place-items:center;flex-shrink:0;width:25px;height:25px;border-radius:4px;background:#383f42;color:#dce3e7;font-size:14px;font-weight:750}
+.remap-page .remap-function-grid{grid-template-columns:repeat(auto-fill,minmax(48px,1fr));gap:7px;padding:3px 8px 18px}
+.remap-page .remap-function-grid button{min-height:48px;font-size:13px;line-height:1.25;background:#353d41;border-color:#4c565c;color:#e0e7eb;padding:7px 4px}
+.remap-page .remap-function-grid button:disabled{opacity:.7}
+.remap-page .remap-function-grid button.is-active{border-color:#d9bc61;color:#ffe18a;background:#424234}
+.remap-page #remap-group-functions{grid-template-columns:repeat(auto-fill,minmax(105px,1fr))}
+.remap-page .remap-empty{font-size:14px;line-height:1.5;padding:14px 8px}
+.remap-page #remap-group-macros{padding:4px 8px 16px}
+.remap-page button:focus-visible{outline:2px solid #d8bf70;outline-offset:2px}
+@media(max-width:1000px){.remap-preview-layout{grid-template-columns:130px minmax(0,1fr);gap:16px}.remap-page .remap-editor{grid-template-columns:230px minmax(0,1fr)}.remap-guide.settings-card,.remap-page .remap-picker.settings-card{padding:18px}.remap-preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.remap-preview-layout{grid-template-columns:1fr}.remap-preview-layers h2{margin-bottom:9px}.remap-preview-layers [role=group]{display:flex;flex-wrap:wrap}.remap-layer-row{min-width:135px}.remap-page .remap-editor{grid-template-columns:1fr}.remap-preset-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.remap-page .remap-functions{max-height:480px}}
+@media(max-width:480px){.remap-preset-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.remap-page .remap-target{flex-wrap:wrap}.remap-page .remap-target .ghost-button{margin-left:auto}}
+@media(prefers-reduced-motion:reduce){.remap-accordion-trigger>svg{transition:none}}
