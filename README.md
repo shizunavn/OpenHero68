@@ -39,9 +39,9 @@ The production app is generated in `dist/`. Serve it over HTTPS for WebHID.
 3. In the web app, go to RGB Settings > Custom Effects and select **Start service RGB**.
 4. Closing the browser leaves playback running. Right-click the tray icon for controls.
 
-The menu includes Open web app, Open control panel, Start saved RGB, Stop RGB, Check for updates, Open log folder, Auto-start and Quit. Auto-start is optional, per Windows account, and disabled by default. Disable it before moving or deleting the service folder. Check for updates opens Releases; installation is manual.
+The menu includes Open web app, Open control panel, Start saved RGB, Stop RGB, Check for updates, Open log folder, Auto-start and Quit. Auto-start is optional, per Windows account, and disabled by default. Disable it before moving or deleting the service folder. The control panel installs verified core-only updates; major launcher changes still use a new ZIP.
 
-No Node/Python installation or administrator rights are required for the downloaded package. Keep all included files together. The control panel is http://127.0.0.1:16868/ and presets/logs are in `%LOCALAPPDATA%\OpenHero68\rgb-service`.
+No Node/Python installation or administrator rights are required for the downloaded package. Keep all included files together. The control panel is http://127.0.0.1:16868/ and presets/logs are in `%LOCALAPPDATA%\OpenHero68\rgb-service`. The service shares Hall samples with the web so the browser does not start a second USB polling loop.
 
 ## Build the Windows service
 

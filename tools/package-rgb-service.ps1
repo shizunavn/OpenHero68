@@ -6,7 +6,7 @@ $distribution = Join-Path $workspace 'service\dist'
 $releaseDirectory = Join-Path $workspace 'service\releases'
 [System.IO.Directory]::CreateDirectory($releaseDirectory) | Out-Null
 $archivePath = Join-Path $releaseDirectory 'OpenHero68-RGB-Windows-x64.zip'
-$files = @('Hero68RgbService.exe', 'hid-bridge.exe', 'runtime.exe', 'service.cjs', 'NODE-LICENSE.txt', 'README.txt')
+$files = @('Hero68RgbService.exe', 'hid-bridge.exe', 'runtime.exe', 'bootstrap.cjs', 'service.cjs', 'NODE-LICENSE.txt', 'README.txt')
 foreach ($name in $files) { if (!(Test-Path -LiteralPath (Join-Path $distribution $name))) { throw "Missing package file: $name" } }
 if (Test-Path -LiteralPath $archivePath) { Remove-Item -LiteralPath $archivePath }
 $archive = [System.IO.Compression.ZipFile]::Open($archivePath, [System.IO.Compression.ZipArchiveMode]::Create)

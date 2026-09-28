@@ -5,6 +5,8 @@ import { restoreCustomRgb } from '../keyboard/customRgb'
 import Hero68Preview from './Hero68Preview'
 import RgbColorPicker from './RgbColorPicker'
 import { FirmwareRgbPreview } from "../keyboard/rgbPreview"
+import { rgbService } from '../protocol/rgbService'
+import { hero68DeviceManager } from '../protocol/hero68/webhid'
 import { HERO68_KEY_IDS } from '../keyboard/hero68Layout'
 import { KEY_RGB_MODES, SIDE_RGB_MODES } from '../keyboard/rgbCatalog'
 import type { LightingFrame } from '../keyboard/lightingPreviewBus'
@@ -21,6 +23,8 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings}: 
   const [replay,setReplay]=useState(0)
   const [frame,setFrame]=useState<{keys:LightingFrame;side:string[]}>({keys:{},side:Array(18).fill('#35393b')})
   const [error,setError]=useState<string|null>(null)
+  const [modeBusy,setModeBusy]=useState(false)
+  const [modeError,setModeError]=useState<string|null>(null)
   const engineRef=useRef<FirmwareRgbPreview|null>(null)
   const replayRef=useRef(replay)
   const releases=useRef<{at:number;id:string}[]>([])
@@ -29,6 +33,22 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings}: 
   const capability=effects.find(mode=>mode.id===config.mode)
   const perKey=zone==='keys'&&config.mode===19
   const brightnessMax=zone==='side'?4:20
+  async function switchMode(custom:boolean){
+    if(custom===customMode||modeBusy)return
+    const next={...value,custom:{...restoreCustomRgb(value.custom,value),enabled:custom}}
+    setModeBusy(true);setModeError(null)
+    try{
+      const service=await rgbService.status().catch(()=>null)
+      if(service){
+        if((service.apiVersion??0)<3)throw Error('Update RGB service to switch lighting modes while it runs.')
+        if(custom&&hero68DeviceManager.connected&&!hero68DeviceManager.viaService)await hero68DeviceManager.disconnect()
+        await rgbService.mode(custom?'custom':'onboard',custom?next:undefined)
+        if(custom&&!hero68DeviceManager.viaService)await hero68DeviceManager.connectViaService()
+      }else setModeError('RGB service đang tắt. Trang editor đã đổi; hãy chạy service để đổi LED trên bàn phím.')
+      onChange(next)
+    }catch(e){setModeError(e instanceof Error?e.message:String(e))}
+    finally{setModeBusy(false)}
+  }
   function change(patch:Partial<RgbZone>) {onChange({...value,[zone]:{...config,...patch,...(patch.mix!==undefined||patch.rgb!==undefined?{mixValue:undefined}:{})}})}
   useEffect(()=>{
     if(customMode) return
@@ -69,7 +89,8 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings}: 
   }
   return <div className="page settings-page rgb-settings-page page-enter">
     <div className="settings-hero"><div><h1>RGB Settings</h1><p>{customMode?'Build a base and blend your own RGB effects.':'Onboard lighting · Changes are applied with Save.'}</p></div><span className="rgb-basic-badge">{customMode?'Custom':'Onboard'}</span></div>
-    <div className="rgb-zone-tabs" role="group" aria-label="RGB mode">{[false,true].map(custom=><button key={String(custom)} disabled={busy} aria-pressed={customMode===custom} onClick={()=>onChange({...value,custom:{...restoreCustomRgb(value.custom,value),enabled:custom}})}>{custom?'Custom Effects':'Onboard Effects'}</button>)}</div>
+    <div className="rgb-zone-tabs" role="group" aria-label="RGB mode">{[false,true].map(custom=><button key={String(custom)} disabled={busy||modeBusy} aria-pressed={customMode===custom} onClick={()=>void switchMode(custom)}>{custom?'Custom Effects':'Onboard Effects'}</button>)}</div>
+    {modeError&&<p role="status" className="rgb-inline-note">{modeError}</p>}
     {customMode?<CustomRgbEditor value={value} onChange={onChange} busy={busy} advancedBindings={advancedBindings}/>:<>
     <div className="rgb-preview-stage">
       <Hero68Preview advancedBindings={advancedBindings} selectedKeys={perKey?selected:new Set()} onToggleKey={toggle} lightingFrame={frame.keys} selectionEnabled={perKey}/>

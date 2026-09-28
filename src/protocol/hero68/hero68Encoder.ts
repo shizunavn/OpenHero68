@@ -116,13 +116,14 @@ export const hero68ProtocolEncoder: Hero68ProtocolEncoder = {
 export async function hydrateFromDevice(
   requester: Hero68Requester,
   profileSlot: ProfileSlot,
+  keyIds: readonly string[] = HERO68_KEY_IDS,
 ): Promise<Map<string, HydratedKeySettings>> {
   // Profile is session state: select it first, then read layer 0.
   await requester.request(selectProfile(profileSlot), 0x10, 0)
 
   // Preserve the physical order from the frontend layout while translating to real POS IDs.
   // keyIdToPos validates that all 68 keys are mapped.
-  const positions = HERO68_KEY_IDS.map(keyIdToPos)
+  const positions = keyIds.map(keyIdToPos)
 
   const hydrated = new Map<string, HydratedKeySettings>()
   const settingsForPos = (pos: number) => {

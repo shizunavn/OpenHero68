@@ -1392,6 +1392,19 @@ function App() {
       setProfileBusy(true)
       setDeviceActionError(null)
       const result = dirtyKeys.size ? await saveDeviceConfiguration(snapshot) : { mode: 'sent' as const }
+      if(result.mode==='sent'&&dirtyKeys.size){
+        const readback=await hydrateFromDevice(hero68DeviceManager,profileSlot,[...dirtyKeys])
+        const near=(actual:number|undefined,wanted:number)=>actual!==undefined&&Math.abs(actual-wanted)<=0.011
+        for(const expected of snapshot.keys){
+          const actual=readback.get(expected.keyId)
+          if(!actual||!near(actual.actuationMm,expected.actuationMm)||actual.rapidTriggerEnabled!==expected.rapidTriggerEnabled||
+            !near(actual.pressSensitivityMm,expected.pressSensitivityMm)||!near(actual.releaseSensitivityMm,expected.releaseSensitivityMm)||
+            actual.deadzoneEnabled!==expected.deadzoneEnabled||!near(actual.topDeadzoneMm,expected.topDeadzoneMm)||
+            !near(actual.bottomDeadzoneMm,expected.bottomDeadzoneMm)||actual.switchProfile!==expected.switchProfile){
+            throw Error(`Key setting readback mismatch: ${expected.keyId}`)
+          }
+        }
+      }
       if (result.mode === 'sent' && [...dirtyRemaps].some(change => {
         const [layerText, keyId] = change.split(':')
         const remapLayer = Number(layerText) as RemapLayer
@@ -1409,8 +1422,9 @@ function App() {
       }
       if (result.mode === 'sent' && rgbPending) await saveRgbProfile(hero68DeviceManager, rgb, rgbBaseline, setRgbBaseline)
       if (result.mode === 'sent') {
-        const refreshed = await readAndApplyProfile(profileSlot)
-        setSaveState(refreshed ? 'sent' : 'idle')
+        if(dirtyKeys.size)setDirtyKeys(new Set())
+        if(dirtyRemaps.size){remapBaselineRef.current=structuredClone(remapLayers);setDirtyRemaps(new Set())}
+        setSaveState('sent')
       } else setSaveState(result.mode)
       window.setTimeout(() => setSaveState('idle'), 1200)
     } catch (error) {

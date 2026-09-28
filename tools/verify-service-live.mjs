@@ -4,6 +4,7 @@ const b=await rolldown({input:'src/protocol/hero68/codec.ts'})
 const {output}=await b.generate({format:'esm',codeSplitting:false});await b.close()
 const {buildReport,decodeReport}=await import(`data:text/javascript;base64,${Buffer.from(output[0].code).toString('base64')}`)
 const base='http://127.0.0.1:16868'
+assert.equal((await(await fetch(base+'/status')).json()).enabled,true,'Start custom RGB before the live frame verification')
 async function request(command,data){
   const r=await fetch(base+'/device/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hex:Buffer.from(buildReport({command,data})).toString('hex')})})
   const value=await r.json();assert.equal(r.ok,true,JSON.stringify(value))

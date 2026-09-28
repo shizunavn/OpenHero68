@@ -5,7 +5,8 @@ Start service RGB. Start transfers this preset to the service and routes
 keyboard configuration through the service-owned HID connection, so AP, RT
 and deadzone remain editable while RGB runs. Preset edits coalesce at 40 ms
 intervals with at most one in-flight request. Closing the editor/page leaves
-playback running. Stop service RGB releases HID and reconnects WebHID.
+playback running. Switching to Onboard restores firmware lighting immediately;
+the bridge retains the HID handle so AP/RT/Save keep using one transport.
 Close other keyboard configuration applications while rendering.
 
 The executable is a Windows background application, not an installed Windows
@@ -19,7 +20,8 @@ the bundled Node runtime and existing TypeScript color engine; the native C++
 bridge owns Windows HID. Node/Python need not be installed on the user's PC.
 A Windows job object makes the helper processes end with the launcher.
 
-The control panel is http://127.0.0.1:16868/ (Stop RGB, Exit service, import).
+The control panel is http://127.0.0.1:16868/ (Onboard, Exit service, import,
+and Check for updates).
 Configuration and local transport logs are in
 `%LOCALAPPDATA%/OpenHero68/rgb-service`. A saved enabled preset resumes when
 the executable is restarted after an unexpected exit; graceful Exit disables
@@ -62,9 +64,15 @@ simulate full travel. Hall input in the service remains available without the
 browser, via passive `98/01`, at most nine positions per response. Whole-board
 snapshots are eight consecutive requests, not an atomic 68-key snapshot.
 
-Target output is 40 FPS; a native high-resolution waitable timer paces frames.
-Reactive presets read all 68 keys once per render cycle (approximately 40 Hz),
-not the separately benchmarked ten-key 200 Hz path. Firmware live RGB `08/01`
+Target output is 40 FPS; a native high-resolution waitable timer paces frames
+when Hall streaming is idle. Hall polling is owned by the service and shared
+with the web over `/hall/stream`. A web Hall Stream no longer starts a second
+USB polling loop. Up to ten selected keys are prioritized; a full-board viewer
+gets batched updates at about 30 Hz. Actual rate depends on simultaneous LED
+traffic: a live ten-key test with RGB measured about 152 samples/key/s and
+39 FPS, with no HID timeouts over two minutes. This is below the standalone
+200 Hz benchmark, so the UI must not claim 200 Hz during concurrent playback.
+Firmware live RGB `08/01`
 is fire-and-forget: IPC acknowledges OS write completion, not a firmware ACK.
 Hall and identity replies still validate checksum, command, zone and positions.
 Live LED IDs are POS bytes: the fw0320 parser at `08021C9C` calls `08012D08`,
@@ -81,13 +89,18 @@ need 340 bytes. The renderer therefore selects at most 32 colors by farthest
 point palette sampling, maps each key to the nearest color, and submits at most
 196 aggregate bytes / four sequential packets. Frames with <=32 colors retain
 their exact colors. Frames are serialized with Hall reads; there is no unbounded
-queue or overlapping device I/O. Stop submits `08/02 [0,0,0]` and closes HID.
+queue or overlapping device I/O. Onboard mode submits `08/02 [0,0,0]` but
+keeps HID open for configuration; Quit closes it.
 No persistent `06`/`04` writes are used for animation.
 
 The known live protocol addresses main keys only. The 18 side LEDs retain their
 onboard effect; the preview's side frame is not streamed. Rhythm Sync, Gamepad,
-Spiral/Noise host FX are outside this service. Check for updates opens GitHub
-Releases; updates are downloaded and extracted manually.
+Spiral/Noise host FX are outside this service. The control panel checks GitHub
+Releases and can install a signed core-only update. The stable native launcher
+verifies the Ed25519 manifest and SHA-256 hash, restarts the core, and rolls
+back if its health check fails. An update requiring a newer launcher directs
+the user to download the full ZIP. The private signing key stays outside the
+repository.
 
 ## Build and verification
 

@@ -11,6 +11,57 @@
 #include <memory>
 #include <chrono>
 #include <cmath>
+#include <mutex>
+#include <thread>
+#include <cwctype>
+
+std::mutex outputMutex;
+void emitLine(const std::string& value) {
+    std::lock_guard<std::mutex> guard(outputMutex);
+    std::cout << value << std::endl;
+}
+bool heroKeyboard(HANDLE handle) {
+    if (!handle) return false;
+    UINT length = 0;
+    if (GetRawInputDeviceInfoW(handle, RIDI_DEVICENAME, nullptr, &length) != 0 || !length) return false;
+    std::wstring name(length, L'\0');
+    if (GetRawInputDeviceInfoW(handle, RIDI_DEVICENAME, name.data(), &length) == UINT(-1)) return false;
+    for (auto& ch : name) ch = std::towupper(ch);
+    return name.find(L"VID_372E") != std::wstring::npos && name.find(L"PID_103E") != std::wstring::npos;
+}
+LRESULT CALLBACK rawWindow(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == WM_INPUT) {
+        UINT length = 0;
+        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lparam), RID_INPUT, nullptr, &length, sizeof(RAWINPUTHEADER)) == 0 && length >= sizeof(RAWINPUTHEADER)) {
+            std::vector<BYTE> bytes(length);
+            if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lparam), RID_INPUT, bytes.data(), &length, sizeof(RAWINPUTHEADER)) == length) {
+                const auto* raw = reinterpret_cast<const RAWINPUT*>(bytes.data());
+                if (raw->header.dwType == RIM_TYPEKEYBOARD && heroKeyboard(raw->header.hDevice)) {
+                    const auto& key = raw->data.keyboard;
+                    if (key.MakeCode && !(key.Flags & RI_KEY_E1)) {
+                        const unsigned scan = key.MakeCode | ((key.Flags & RI_KEY_E0) ? 0x100 : 0);
+                        char line[40];
+                        sprintf_s(line, "key:%03x:%d", scan, (key.Flags & RI_KEY_BREAK) ? 0 : 1);
+                        emitLine(line);
+                    }
+                }
+            }
+        }
+    }
+    return DefWindowProcW(window, message, wparam, lparam);
+}
+DWORD WINAPI rawThread(LPVOID) {
+    HINSTANCE module = GetModuleHandleW(nullptr);
+    WNDCLASSW wc{}; wc.hInstance = module; wc.lpfnWndProc = rawWindow; wc.lpszClassName = L"OpenHero68RawKeyboard";
+    RegisterClassW(&wc);
+    HWND window = CreateWindowExW(0, wc.lpszClassName, L"OpenHero68 Input", WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, module, nullptr);
+    if (!window) { emitLine("raw:unavailable"); return 1; }
+    RAWINPUTDEVICE input{}; input.usUsagePage = 1; input.usUsage = 6; input.dwFlags = RIDEV_INPUTSINK; input.hwndTarget = window;
+    emitLine(RegisterRawInputDevices(&input, 1, sizeof(input)) ? "raw:ready" : "raw:unavailable");
+    MSG message;
+    while (GetMessageW(&message, nullptr, 0, 0) > 0) { TranslateMessage(&message); DispatchMessageW(&message); }
+    DestroyWindow(window); return 0;
+}
 
 struct Device {
     HANDLE h = INVALID_HANDLE_VALUE;
@@ -84,6 +135,7 @@ bool allowed(const std::array<unsigned char,64>& p) {
            false;
 }
 int main() {
+    HANDLE rawWorker = CreateThread(nullptr, 0, rawThread, nullptr, 0, nullptr);
     std::unique_ptr<Device> device;
     HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002, TIMER_MODIFY_STATE | SYNCHRONIZE);
     std::string line;
@@ -96,9 +148,9 @@ int main() {
                 if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) WaitForSingleObject(timer, INFINITE);
                 else Sleep(static_cast<DWORD>(std::ceil(delay)));
             }
-            std::cout << "waited" << std::endl; continue;
+            emitLine("waited"); continue;
         }
-        if (line == "close") { device.reset(); std::cout << "closed" << std::endl; continue; }
+        if (line == "close") { device.reset(); emitLine("closed"); continue; }
         const bool sendOnly=line.rfind("send:",0)==0;
         if(sendOnly)line=line.substr(5);
         std::array<unsigned char,64> request{};
@@ -108,9 +160,9 @@ int main() {
             int a = digit(line[i*2]), b = digit(line[i*2+1]);
             if (a < 0 || b < 0) parsed = false; else request[i] = static_cast<unsigned char>(a*16+b);
         }
-        if (!parsed || !allowed(request) || (sendOnly && !(request[1]==4 && request[2]==23 && request[6]==1 && request[7]<=6))) { std::cout << "error:request" << std::endl; continue; }
+        if (!parsed || !allowed(request) || (sendOnly && !(request[1]==4 && request[2]==23 && request[6]==1 && request[7]<=6))) { emitLine("error:request"); continue; }
         if (!device) device = openDevice();
-        if (!device) { std::cout << "error:disconnected" << std::endl; continue; }
+        if (!device) { emitLine("error:disconnected"); continue; }
         std::vector<unsigned char> output(device->output);
         std::copy(request.begin(), request.end(), output.begin());
         DWORD count = 0;
@@ -118,6 +170,7 @@ int main() {
         // Live RGB is fire-and-forget; firmware does not emit a CMD08 ACK.
         // Echo the submitted report after OS write completion to acknowledge IPC.
         if ((request[1] == 8 || sendOnly) && okay) {
+            std::lock_guard<std::mutex> guard(outputMutex);
             for (auto v : request) std::cout << std::hex << std::setw(2) << std::setfill('0') << unsigned(v);
             std::cout << std::endl;
             continue;
@@ -139,9 +192,11 @@ int main() {
             }
             replied = true; break;
         }
-        if (!replied) { device.reset(); std::cout << "error:timeout" << std::endl; continue; }
+        if (!replied) { device.reset(); emitLine("error:timeout"); continue; }
+        std::lock_guard<std::mutex> guard(outputMutex);
         for (unsigned i = 0; i < 64; ++i) std::cout << std::hex << std::setw(2) << std::setfill('0') << unsigned(input[i]);
         std::cout << std::endl;
     }
     if (timer) CloseHandle(timer);
+    if (rawWorker) CloseHandle(rawWorker);
 }

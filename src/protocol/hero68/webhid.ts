@@ -124,10 +124,21 @@ export class Hero68DeviceManager implements Hero68Transport {
   #rawReportListeners = new Set<(report: Hero68RawInputReport) => void>()
   #waiters = new Set<ReportWaiter>()
   #viaService = false
+  #reconnectViaService = false
   get viaService() { return this.#viaService }
 
   constructor() {
     getHid()?.addEventListener?.('disconnect', this.#onHidDisconnect)
+    rgbService.onAvailability(online=>{
+      if(!online&&this.#viaService){
+        this.#viaService=false
+        this.#reconnectViaService=true
+        this.#setSnapshot({state:'disconnected',error:'RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe.'})
+      }else if(online&&this.#reconnectViaService&&!this.connected){
+        this.#reconnectViaService=false
+        void this.connectViaService().catch(()=>{this.#reconnectViaService=true})
+      }
+    })
   }
 
   get connected(): boolean {
@@ -152,7 +163,7 @@ export class Hero68DeviceManager implements Hero68Transport {
     if(this.connected)return
     if(typeof location!=='undefined'&&location.protocol.startsWith('http')){
       const service=await rgbService.status().catch(()=>null)
-      if(service?.enabled&&(service.apiVersion??0)>=2){await this.connectViaService();return}
+      if(service&&((service.apiVersion??0)>=3||(service.enabled&&(service.apiVersion??0)>=2))){await this.connectViaService();return}
     }
     const hid = getHid()
     if (!hid) {
@@ -204,6 +215,7 @@ export class Hero68DeviceManager implements Hero68Transport {
 
   async disconnect(): Promise<void> {
     this.#viaService=false
+    this.#reconnectViaService=false
     const device = this.#device
     this.#device = undefined
     this.#rejectWaiters(new Error('HERO68 disconnected'))
@@ -221,7 +233,7 @@ export class Hero68DeviceManager implements Hero68Transport {
     try {
       // An identity read verifies that the native helper can access this keyboard.
       await rgbService.deviceRequest(buildReport({command:0x82,zone:1}))
-      this.#viaService=true;this.#setSnapshot({state:'connected',deviceName:'AULA Hero68',error:null})
+      this.#viaService=true;this.#reconnectViaService=false;this.#setSnapshot({state:'connected',deviceName:'AULA Hero68',error:null})
     }catch(error){this.#viaService=false;this.#setSnapshot({state:'error',error:errorMessage(error)});throw error}
   }
 
@@ -357,6 +369,12 @@ export class Hero68DeviceManager implements Hero68Transport {
       }
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError))
+  }
+
+  async sendBatchHex(hexes:readonly string[]):Promise<void>{
+    if(!this.#viaService){for(const hex of hexes)await this.sendHex(hex);return}
+    const packets=hexes.map(hexToBytes)
+    for(let i=0;i<packets.length;i+=128)await rgbService.deviceBatch(packets.slice(i,i+128))
   }
 
   async request(

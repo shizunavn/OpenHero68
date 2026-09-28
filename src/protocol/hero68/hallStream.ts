@@ -9,6 +9,7 @@ import {
 import { decodeDistanceCalibrationLive } from './codec'
 import { HERO68_KEY_POSITIONS, keyIdToPos, posToKeyId } from './keyPositions'
 import { hero68DeviceManager } from './webhid'
+import { rgbService, type RgbServiceHallRecord } from '../rgbService'
 import { HERO68_DISTANCE_UNIT_MM } from './precision'
 
 /** The usable HERO68 key travel tops out around 3.4 mm. Clamp the UI to 3.40 mm so full travel visually reaches 100%. */
@@ -76,6 +77,7 @@ class Hero68HallStream {
   #stage = 'idle'
   #pollGeneration = 0
   #pollPromise: Promise<void> | null = null
+  #notifyTimer: ReturnType<typeof setTimeout> | null = null
 
   getSnapshot = (): HallStreamState => this.#state
 
@@ -89,7 +91,17 @@ class Hero68HallStream {
     this.#listeners.forEach((listener) => listener())
   }
 
+  #publishSamples(next: Partial<HallStreamState>) {
+    this.#state = { ...this.#state, ...next }
+    if(this.#notifyTimer!==null)return
+    this.#notifyTimer=setTimeout(()=>{
+      this.#notifyTimer=null
+      this.#listeners.forEach(listener=>listener())
+    },32)
+  }
+
   #cleanupListeners() {
+    if(this.#notifyTimer!==null){clearTimeout(this.#notifyTimer);this.#notifyTimer=null}
     this.#unsubscribeReport?.()
     this.#unsubscribeReport = null
     this.#unsubscribeDevice?.()
@@ -182,10 +194,7 @@ class Hero68HallStream {
     this.#sampleExpiryTimers.delete(keyId)
   }
 
-  #installDistanceReportHandler() {
-    this.#unsubscribeReport = hero68DeviceManager.onReport((report) => {
-      if (report.command !== 0x98 || report.zone !== 1) return
-      const records = decodeDistanceCalibrationLive(report.data)
+  #ingestRecords(records:readonly {keyId:number;distanceUnits:number;adc:number;pressed:boolean}[]) {
       if (records.length === 0) return
       const timestampMs = performance.now()
       const telemetryHz = this.#recordFrameTime(timestampMs)
@@ -216,13 +225,19 @@ class Hero68HallStream {
         else this.#scheduleSampleExpiry(keyId, 450)
         added += 1
       }
-      if (added) this.#setState({
+      if (added) this.#publishSamples({
         samples: next,
         sampleCount: this.#state.sampleCount + added,
         frameCount: this.#state.frameCount + 1,
         telemetryHz,
         keyTelemetryHz,
       })
+  }
+
+  #installDistanceReportHandler() {
+    this.#unsubscribeReport = hero68DeviceManager.onReport((report) => {
+      if (report.command !== 0x98 || report.zone !== 1) return
+      this.#ingestRecords(decodeDistanceCalibrationLive(report.data))
     })
   }
 
@@ -301,6 +316,13 @@ class Hero68HallStream {
       ? preferredPositions
       : Object.values(HERO68_KEY_POSITIONS)
 
+    const viaService=hero68DeviceManager.viaService
+    if(viaService){
+      const status=await rgbService.status()
+      if((status.apiVersion??0)<4)throw Error('Update RGB service to share Hall samples with the web.')
+      if(source!=='direct-poll')throw Error('Service Hall stream uses direct polling only.')
+    }
+
     if (this.#restoreAutoCalibration) {
       this.#stage = 'restore-auto-calibration-after-reconnect'
       await this.#restoreAutoCalibrationIfNeeded()
@@ -322,10 +344,10 @@ class Hero68HallStream {
     })
     this.#installHostKeyFallback()
     this.#installDeviceWatcher()
-    this.#installDistanceReportHandler()
+    if(!viaService)this.#installDistanceReportHandler()
 
     try {
-      if (source !== 'direct-poll') {
+      if (source !== 'direct-poll'&&!viaService) {
         // Only the started modes need the safe 0x98 precondition discovered on
         // hardware. Direct polling never sets the 0x98 mode bit at all.
         this.#stage = 'read-auto-calibration'
@@ -342,7 +364,13 @@ class Hero68HallStream {
 
       this.#stage = `${source}-streaming`
       this.#setState({ active: true, starting: false, error: null })
-      if (source === 'direct-poll' || source === 'mode-poll') {
+      if(viaService){
+        const ids=preferredPositions.length?Array.from(preferredKeyIds).filter(id=>HERO68_KEY_POSITIONS[id]!==undefined):Object.keys(HERO68_KEY_POSITIONS)
+        this.#unsubscribeReport=rgbService.hallStream(ids,(records:RgbServiceHallRecord[])=>this.#ingestRecords(records.map(record=>({keyId:record.pos,distanceUnits:record.distanceUnits,adc:record.adc,pressed:record.pressed}))),()=>{
+          this.#cleanupListeners()
+          this.#setState({active:false,starting:false,error:'Service Hall stream disconnected',telemetryHz:null,keyTelemetryHz:{}})
+        })
+      }else if (source === 'direct-poll' || source === 'mode-poll') {
         const generation = ++this.#pollGeneration
         this.#pollPromise = this.#runFirmwarePolling(generation, pollingPositions).catch((error) => {
           if (generation !== this.#pollGeneration) return
@@ -419,7 +447,7 @@ class Hero68HallStream {
       try { await pollPromise } catch { /* polling errors are surfaced in state */ }
     }
     try {
-      if (hero68DeviceManager.connected && this.#state.source !== 'direct-poll') {
+      if (hero68DeviceManager.connected && this.#state.source !== 'direct-poll'&&!hero68DeviceManager.viaService) {
         this.#stage = 'exit-0x98-await-ack'
         await hero68DeviceManager.request(calibrationDistanceExit(), 0x98, 2, 1000)
       }

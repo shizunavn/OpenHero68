@@ -1,18 +1,22 @@
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
+import {createHash,generateKeyPairSync,sign} from 'node:crypto'
 import {rolldown} from 'rolldown'
-async function bundle(path){const b=await rolldown({input:path});try{const {output}=await b.generate({format:'esm',codeSplitting:false});return import(`data:text/javascript;base64,${Buffer.from(output[0].code).toString('base64')}`)}finally{await b.close()}}
+async function bundle(path){const b=await rolldown({input:path,external:/^node:/});try{const {output}=await b.generate({format:'esm',codeSplitting:false});return import(`data:text/javascript;base64,${Buffer.from(output[0].code).toString('base64')}`)}finally{await b.close()}}
 const {validateDeviceRequest}=await bundle('service/deviceRequests.ts')
 const {buildReport,decodeReport}=await bundle('src/protocol/hero68/codec.ts')
 const {latestUpdates}=await bundle('src/protocol/latestUpdates.ts')
 const {Hero68DeviceManager}=await bundle('src/protocol/hero68/webhid.ts')
 const {prepareFrame}=await bundle('service/frame.ts')
+const {decodeHero68Input}=await bundle('service/keyInput.ts')
+const {verifyCore}=await bundle('service/updatePackage.ts')
 const packet=(command,zone=0,data=[])=>({hex:Buffer.from(buildReport({command,zone,data})).toString('hex')})
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 
 test('service permits AP/RT/deadzone and matching readback, and rejects update/reset/calibration commands',()=>{
   for(const c of [0x13,0x19,0x16,0x93,0x99,0x96])assert.equal(validateDeviceRequest(packet(c,0,[0,1])).packet[1],c)
   for(const [c,z] of [[0x11,0],[0x14,0],[0x98,0],[0x98,2],[0x01,0],[0xff,0]])assert.throws(()=>validateDeviceRequest(packet(c,z)))
+  assert.throws(()=>validateDeviceRequest(packet(0x98,1,[0,1])),/Unsupported/)
   assert.throws(()=>validateDeviceRequest({hex:'00'}))
   const corrupt=packet(0x93,0,[0,1]);corrupt.hex=corrupt.hex.slice(0,-2)+'00';assert.throws(()=>validateDeviceRequest(corrupt),/checksum/)
   assert.throws(()=>validateDeviceRequest({...packet(0x13,0,[0,1]),reenumerate:true}))
@@ -61,4 +65,23 @@ test('preview frame colors match the quantized color values actually encoded for
     for(let i=0;i<body.length;){encoded.add('#'+body.slice(i,i+3).map(c=>c.toString(16).padStart(2,'0')).join(''));i+=4+body[i+3]}
     assert.deepEqual(new Set(Object.values(prepared.keys)),encoded)
   })
+})
+
+test('native output uses emitted key identity: RT re-press and macro Z map to ordinary key events',()=>{
+  assert.deepEqual(decodeHero68Input('key:011:1'),{id:'KeyW',pressed:true})
+  assert.deepEqual(decodeHero68Input('key:011:0'),{id:'KeyW',pressed:false})
+  assert.deepEqual(decodeHero68Input('key:02c:1'),{id:'KeyZ',pressed:true})
+  assert.deepEqual(decodeHero68Input('key:148:1'),{id:'ArrowUp',pressed:true})
+  assert.equal(decodeHero68Input('key:000:1'),null)
+  assert.equal(decodeHero68Input('raw:ready'),null)
+})
+
+test('signed core package rejects tampering and incompatible launcher',()=>{
+  const pair=generateKeyPairSync('ed25519'),key=pair.publicKey.export({format:'pem',type:'spki'}).toString(),bytes=Buffer.from('example core')
+  const payload={version:'0.2.1',apiVersion:4,minLauncher:'0.2.0',sha256:createHash('sha256').update(bytes).digest('hex'),size:bytes.length,asset:'OpenHero68-RGB-core.cjs'}
+  const manifest={payload,signature:sign(null,Buffer.from(JSON.stringify(payload)),pair.privateKey).toString('base64')}
+  assert.equal(verifyCore(manifest,bytes,key),'0.2.1')
+  assert.throws(()=>verifyCore(manifest,Buffer.from('tampered'),key),/checksum/)
+  assert.throws(()=>verifyCore({...manifest,payload:{...payload,minLauncher:'0.3.0'}},bytes,key),/signature|compatibility/)
+  assert.throws(()=>verifyCore({...manifest,signature:'AAAA'},bytes,key),/signature|compatibility/)
 })

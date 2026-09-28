@@ -34,6 +34,7 @@ export type Hero68ProtocolEncoder = {
 
 export type Hero68Transport = {
   sendHex(hex: string): Promise<void>
+  sendBatchHex?(hexes: readonly string[]): Promise<void>
 }
 
 let protocolEncoder: Hero68ProtocolEncoder | null = null
@@ -57,7 +58,8 @@ export async function saveDeviceConfiguration(snapshot: DeviceConfigurationSnaps
   }
 
   const packets = protocolEncoder.encodeSave(snapshot)
-  for (const packet of packets) await transport.sendHex(packet)
+  if(transport.sendBatchHex)await transport.sendBatchHex(packets)
+  else for (const packet of packets) await transport.sendHex(packet)
   return { mode: 'sent' as const, packets }
 }
 

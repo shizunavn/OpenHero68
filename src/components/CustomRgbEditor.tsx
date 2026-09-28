@@ -29,7 +29,7 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
   const [service, setService] = useState<RgbServiceStatus|null>(null)
   const [serviceBusy, setServiceBusy] = useState(false)
   const serviceRendering = useRef(false)
-  const updates = useRef<ReturnType<typeof latestUpdates<RgbProfile>>|null>(null)
+  const updates = useRef<ReturnType<typeof latestUpdates<{profile:RgbProfile;sessionId:string}>>|null>(null)
   const previousValue = useRef(value)
   const [previewSynced,setPreviewSynced]=useState(false)
   const engineRef = useRef<CustomRgbEngine|null>(null)
@@ -50,14 +50,14 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
   },[])
   useEffect(()=>{
     let disposed=false
-    const queue=latestUpdates<RgbProfile>(async next=>{const status=await rgbService.update(next);if(!disposed)setService(status)},e=>{if(!disposed)setError(String(e))})
+    const queue=latestUpdates<{profile:RgbProfile;sessionId:string}>(async next=>{const status=await rgbService.update(next.profile,next.sessionId);if(!disposed)setService(status)},e=>{if(!disposed)setError(String(e))})
     updates.current=queue
     return()=>{disposed=true;queue.close();updates.current=null}
   },[])
   useEffect(()=>{
     const changed=previousValue.current!==value;previousValue.current=value
-    if(changed&&service?.enabled)updates.current?.stage(value)
-  },[value,service?.enabled])
+    if(changed&&service?.enabled&&service.sessionId)updates.current?.stage({profile:value,sessionId:service.sessionId})
+  },[value,service?.enabled,service?.sessionId])
   useEffect(()=>{
     serviceRendering.current=service?.enabled===true
     if(!service?.enabled){setPreviewSynced(false);return}
@@ -70,12 +70,14 @@ export default function CustomRgbEditor({ value, onChange, busy, advancedBinding
   async function toggleService(){
     setServiceBusy(true);setError(null)
     try{
-      if(service?.enabled){setService(await rgbService.stop());await hero68DeviceManager.disconnect();await hero68DeviceManager.connect(false)}
+      if(service?.enabled){
+        setService(await ((service.apiVersion??0)>=3?rgbService.mode('onboard'):rgbService.stop()))
+      }
       else {
         if(hero68HallStream.getSnapshot().active)await hero68HallStream.stop()
         ownsHall.current=false
         await hero68DeviceManager.disconnect()
-        const started=await rgbService.start(value);setService(started)
+        const started=await ((service?.apiVersion??0)>=3?rgbService.mode('custom',value):rgbService.start(value));setService(started)
         if((started.apiVersion??0)>=2)await hero68DeviceManager.connectViaService()
       }
     }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setServiceBusy(false)}

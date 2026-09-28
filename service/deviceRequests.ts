@@ -17,8 +17,7 @@ export function validateDeviceRequest(input:unknown):{packet:Uint8Array;reenumer
     (c===0x05&&z===0)||
     ([0x04,0x84].includes(c)&&[1,6,17,19,21,23,24,25,29,30].includes(z))||
     ([0x06,0x86].includes(c)&&z===0)||
-    (c===0x82&&[1,2,3,4,6,8,9].includes(z))||
-    (c===0x98&&z===1&&n>0&&n<=18&&n%2===0)
+    (c===0x82&&[1,2,3,4,6,8,9].includes(z))
   if(!allowed)throw Error('Unsupported configuration command')
   const reenumerate=value.reenumerate===true
   if(reenumerate&&!(c===4&&z===23&&n===1&&d[0]<=6))throw Error('Only polling-rate changes may re-enumerate')

@@ -28,7 +28,7 @@ void toggleAutoStart(HWND window) {
     if (result != ERROR_SUCCESS) MessageBoxW(window, L"Could not change auto-start for your Windows account.", L"OpenHero68 RGB", MB_ICONERROR);
 }
 bool post(const wchar_t* endpoint) {
-    HINTERNET session = WinHttpOpen(L"OpenHero68 RGB/0.1.1", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
+    HINTERNET session = WinHttpOpen(L"OpenHero68 RGB/0.2.0", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
     if (!session) return false;
     WinHttpSetTimeouts(session, 500, 500, 1000, 1500);
     HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", 16868, 0);
@@ -45,7 +45,7 @@ void addTray() { Shell_NotifyIconW(NIM_ADD, &tray); tray.uVersion = NOTIFYICON_V
 void menu(HWND window) {
     HMENU popup = CreatePopupMenu();
     AppendMenuW(popup, MF_STRING | MF_DISABLED, 0, L"OpenHero68 Background Service");
-    AppendMenuW(popup, MF_STRING | MF_DISABLED, 0, L"Version: 0.1.1");
+    AppendMenuW(popup, MF_STRING | MF_DISABLED, 0, L"Version: 0.2.0");
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(popup, MF_STRING, 1, L"Open web app");
     AppendMenuW(popup, MF_STRING, 2, L"Open control panel");
@@ -65,7 +65,7 @@ void menu(HWND window) {
     case 3: case 4:
         if (!post(selected == 3 ? L"/start" : L"/stop")) MessageBoxW(window, L"The RGB command failed. Open the control panel for details; Start requires a saved preset.", L"OpenHero68 RGB", MB_ICONWARNING);
         break;
-    case 5: open(L"https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest"); break;
+    case 5: open(L"http://127.0.0.1:16868/"); break;
     case 6: {
         wchar_t local[32768]; DWORD count = GetEnvironmentVariableW(L"LOCALAPPDATA", local, 32768);
         if (count && count < 32768) open((std::wstring(local) + L"\\OpenHero68\\rgb-service").c_str());
@@ -100,7 +100,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int) {
     launchCommand = L"\"" + std::wstring(path) + L"\"";
     if (*arguments) launchCommand += L" " + std::wstring(arguments);
     std::wstring runtime = dir + L"\\runtime.exe";
-    std::wstring command = L"\"" + runtime + L"\" \"" + dir + L"\\service.cjs\" " + arguments;
+    std::wstring command = L"\"" + runtime + L"\" \"" + dir + L"\\bootstrap.cjs\" " + arguments;
     HANDLE job = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -121,7 +121,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int) {
     if (window) {
         tray.cbSize = sizeof(tray); tray.hWnd = window; tray.uID = 1;
         tray.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP; tray.uCallbackMessage = WM_APP + 1;
-        tray.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1)); wcscpy_s(tray.szTip, L"OpenHero68 RGB Service 0.1.1");
+        tray.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1)); wcscpy_s(tray.szTip, L"OpenHero68 RGB Service 0.2.0");
         addTray(); SetTimer(window, 1, 500, nullptr);
         MSG message; while (GetMessageW(&message, nullptr, 0, 0) > 0) { TranslateMessage(&message); DispatchMessageW(&message); }
     }
