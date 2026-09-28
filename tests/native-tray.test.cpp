@@ -21,6 +21,11 @@ int main() {
     ok = ok && (restored == ERROR_SUCCESS || (previous == ERROR_FILE_NOT_FOUND && restored == ERROR_FILE_NOT_FOUND));
     HICON icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1));
     ok = ok && icon != nullptr;
-    std::cout << (ok ? "PASS: auto-start toggle, quoted path and arguments, registry restoration, embedded H icon\n" : "FAIL: native tray checks\n");
+    const UpdateReply current = parseUpdateReply({200, "none|0.2.1"});
+    const UpdateReply package = parseUpdateReply({200, "package|0.3.0|C:\\Updates\\Hero68.zip"});
+    ok = ok && current.valid && current.kind == "none" && current.version == L"0.2.1";
+    ok = ok && package.valid && package.kind == "package" && package.file == L"C:\\Updates\\Hero68.zip";
+    ok = ok && !parseUpdateReply({400, "error"}).valid && !parseUpdateReply({200, "none"}).valid;
+    std::cout << (ok ? "PASS: auto-start, H icon, and update reply parsing\n" : "FAIL: native tray checks\n");
     return ok ? 0 : 1;
 }

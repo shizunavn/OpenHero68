@@ -9,7 +9,7 @@ const {latestUpdates}=await bundle('src/protocol/latestUpdates.ts')
 const {Hero68DeviceManager}=await bundle('src/protocol/hero68/webhid.ts')
 const {prepareFrame}=await bundle('service/frame.ts')
 const {decodeHero68Input}=await bundle('service/keyInput.ts')
-const {verifyCore}=await bundle('service/updatePackage.ts')
+const {inspectManifest,verifyCore}=await bundle('service/updatePackage.ts')
 const packet=(command,zone=0,data=[])=>({hex:Buffer.from(buildReport({command,zone,data})).toString('hex')})
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 
@@ -81,6 +81,10 @@ test('signed core package rejects tampering and incompatible launcher',()=>{
   const payload={version:'0.2.1',apiVersion:4,minLauncher:'0.2.0',sha256:createHash('sha256').update(bytes).digest('hex'),size:bytes.length,asset:'OpenHero68-RGB-core.cjs'}
   const manifest={payload,signature:sign(null,Buffer.from(JSON.stringify(payload)),pair.privateKey).toString('base64')}
   assert.equal(verifyCore(manifest,bytes,key),'0.2.1')
+  const newerPayload={...payload,minLauncher:'0.3.0'}
+  const newerManifest={payload:newerPayload,signature:sign(null,Buffer.from(JSON.stringify(newerPayload)),pair.privateKey).toString('base64')}
+  assert.equal(inspectManifest(newerManifest,key).minLauncher,'0.3.0')
+  assert.throws(()=>verifyCore(newerManifest,bytes,key),/newer launcher/)
   assert.throws(()=>verifyCore(manifest,Buffer.from('tampered'),key),/checksum/)
   assert.throws(()=>verifyCore({...manifest,payload:{...payload,minLauncher:'0.3.0'}},bytes,key),/signature|compatibility/)
   assert.throws(()=>verifyCore({...manifest,signature:'AAAA'},bytes,key),/signature|compatibility/)

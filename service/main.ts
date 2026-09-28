@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync } from 'node:fs'
-import {randomUUID} from 'node:crypto'
+import {createHash,randomUUID} from 'node:crypto'
 import path from 'node:path'
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
 import { CustomRgbEngine, restoreCustomRgb } from '../src/keyboard/customRgb'
@@ -13,7 +13,7 @@ import { HERO68_KEY_POSITIONS } from '../src/protocol/hero68/keyPositions'
 import { prepareFrame } from './frame'
 import { validateDeviceRequest } from './deviceRequests'
 import { decodeHero68Input } from './keyInput'
-import {LAUNCHER_VERSION,CORE_API_VERSION,newer,verifyManifest,verifyCore,type CoreManifest} from './updatePackage'
+import {LAUNCHER_VERSION,CORE_API_VERSION,newer,inspectManifest,verifyManifest,verifyCore,type CoreManifest} from './updatePackage'
 
 const port=16868
 const stateDir=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
@@ -226,26 +226,48 @@ async function hallLoop(){
 function status(){const values=[...inputLatencies].sort((a,b)=>a-b),gaps=[...frameGaps].sort((a,b)=>a-b);return {service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,enabled:mode==='custom',connected,preset:!!profile,sessionId,fps,frameMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,frameGapP95Ms:gaps.length?gaps[Math.ceil(gaps.length*.95)-1]:null,frameGapP99Ms:gaps.length?gaps[Math.ceil(gaps.length*.99)-1]:null,gapsOver100,lastLongGapAt,eventLoopDelayP99Ms:eventLoopDelay.percentile(99)/1e6,eventLoopDelayMaxMs:eventLoopDelay.max/1e6,lastError,rawInputReady,inputTransitions,inputToLedP95Ms:values.length?values[Math.ceil(values.length*.95)-1]:null,targetFps:40,paletteColors:32,sideOutput:false}}
 const releaseApi='https://api.github.com/repos/shizunavn/OpenHero68-RGB-Service/releases/latest'
 const assetPrefix='https://github.com/shizunavn/OpenHero68-RGB-Service/releases/download/'
+type ReleaseAsset={name:string;browser_download_url:string;size:number;digest?:string}
 async function latestCore(){
   const response=await fetch(releaseApi,{headers:{'User-Agent':'OpenHero68-RGB-Service','Accept':'application/vnd.github+json'},signal:AbortSignal.timeout(10000)})
   if(!response.ok)throw Error(`GitHub release check failed (${response.status})`)
-  const release=await response.json() as {tag_name:string;assets:{name:string;browser_download_url:string;size:number}[]}
+  const release=await response.json() as {tag_name:string;assets:ReleaseAsset[]}
   const version=release.tag_name?.replace(/^v/,'')
   if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Invalid release version')
   const manifest=release.assets.find(asset=>asset.name==='OpenHero68-RGB-core.json')
   const core=release.assets.find(asset=>asset.name==='OpenHero68-RGB-core.cjs')
-  return {version,available:newer(version,coreVersion),requiresFullPackage:newer(version,coreVersion)&&(!manifest||!core),manifest,core}
+  const fullPackage=release.assets.find(asset=>asset.name==='OpenHero68-RGB-Windows-x64.zip')
+  const available=newer(version,coreVersion)
+  let requiresFullPackage=available&&(!manifest||!core)
+  if(available&&manifest&&core){
+    if(manifest.size>8192)throw Error('Core manifest exceeds the size limit')
+    const signed=JSON.parse((await downloadAsset(manifest.browser_download_url,8192)).toString('utf8')) as CoreManifest
+    const payload=inspectManifest(signed)
+    if(payload.version!==version)throw Error('Core manifest version does not match release')
+    requiresFullPackage=newer(payload.minLauncher,LAUNCHER_VERSION)||payload.apiVersion!==CORE_API_VERSION
+  }
+  return {version,available,requiresFullPackage,manifest,core,fullPackage}
 }
 async function downloadAsset(url:string,limit:number){
   if(!url.startsWith(assetPrefix))throw Error('Unexpected update source')
-  const response=await fetch(url,{signal:AbortSignal.timeout(30000)})
-  if(!response.ok)throw Error(`Core download failed (${response.status})`)
-  const bytes=Buffer.from(await response.arrayBuffer())
-  if(bytes.length>limit)throw Error('Core asset exceeds the size limit')
-  return bytes
+  const response=await fetch(url,{signal:AbortSignal.timeout(limit>8_000_000?120000:30000)})
+  if(!response.ok||!response.body)throw Error(`Update download failed (${response.status})`)
+  const chunks:Buffer[]=[];let size=0
+  for await(const chunk of response.body){size+=chunk.length;if(size>limit)throw Error('Update asset exceeds the size limit');chunks.push(Buffer.from(chunk))}
+  return Buffer.concat(chunks,size)
 }
-async function stageCoreUpdate(){
-  const release=await latestCore()
+async function downloadFullPackage(release:Awaited<ReturnType<typeof latestCore>>){
+  const asset=release.fullPackage
+  if(!asset||asset.size<1||asset.size>100_000_000||!/^sha256:[0-9a-f]{64}$/.test(asset.digest??''))throw Error('Release has no verifiable Windows package')
+  const folder=path.join(stateDir,'downloads'),file=path.join(folder,`OpenHero68-RGB-Windows-x64-v${release.version}.zip`)
+  mkdirSync(folder,{recursive:true})
+  try{const saved=readFileSync(file);if(saved.length===asset.size&&`sha256:${createHash('sha256').update(saved).digest('hex')}`===asset.digest)return file}catch{/* Download missing or invalid. */}
+  const bytes=await downloadAsset(asset.browser_download_url,100_000_000)
+  if(bytes.length!==asset.size||`sha256:${createHash('sha256').update(bytes).digest('hex')}`!==asset.digest)throw Error('Windows package checksum mismatch')
+  writeFileSync(file+'.tmp',bytes);renameSync(file+'.tmp',file)
+  return file
+}
+async function stageCoreUpdate(release?:Awaited<ReturnType<typeof latestCore>>){
+  release??=await latestCore()
   if(!release.available||release.requiresFullPackage||!release.manifest||!release.core)throw Error(release.requiresFullPackage?'This release requires a new EXE package':'No compatible core update available')
   if(release.core.size>8_000_000||release.manifest.size>8192)throw Error('Core asset exceeds the size limit')
   const manifest=JSON.parse((await downloadAsset(release.manifest.browser_download_url,8192)).toString('utf8')) as CoreManifest
@@ -270,6 +292,7 @@ const server=createServer(async(req,res)=>{
   res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type');res.setHeader('Access-Control-Allow-Private-Network','true')
   if(req.method==='OPTIONS'){res.writeHead(204).end();return}
   const json=(code:number,value:unknown)=>{res.writeHead(code,{'Content-Type':'application/json'}).end(JSON.stringify(value))}
+  const plain=(code:number,value:string)=>{res.writeHead(code,{'Content-Type':'text/plain; charset=utf-8'}).end(value)}
   try{
     if(req.method==='GET'&&req.url==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(panel);return}
     if(req.method==='GET'&&req.url==='/status'){json(200,status());return}
@@ -292,12 +315,20 @@ const server=createServer(async(req,res)=>{
       const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);heartbeat.unref()
       req.on('close',()=>{clearInterval(heartbeat);hallClients.delete(res)});return
     }
-    if(req.method!=='POST'||!['/start','/stop','/mode','/preset','/shutdown','/updates/apply','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
+    if(req.method!=='POST'||!['/start','/stop','/mode','/preset','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
     if(req.headers['content-type']?.split(';')[0]!=='application/json'){json(415,{error:'Expected application/json'});return}
     let body='',size=0
     for await(const chunk of req){size+=chunk.length;if(size>65536)throw Error('Preset too large');body+=chunk}
     const input=JSON.parse(body||'{}')
     if(updating&&req.url!=='/shutdown')throw Error('Core update in progress')
+    if(req.url==='/updates/tray-check'){
+      const release=await latestCore()
+      if(!release.available){plain(200,`none|${coreVersion}`);return}
+      if(release.requiresFullPackage){const file=await downloadFullPackage(release);plain(200,`package|${release.version}|${file}`);return}
+      updating=true
+      try{const version=await stageCoreUpdate(release);plain(200,`core|${version}`);setTimeout(()=>void restartForUpdate(),250).unref();return}
+      catch(e){updating=false;throw e}
+    }
     if(req.url==='/updates/apply'){
       updating=true
       try{await exclusive(async()=>{});const version=await stageCoreUpdate();json(200,{staged:true,version});setImmediate(()=>void restartForUpdate());return}

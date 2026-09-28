@@ -95,12 +95,15 @@ No persistent `06`/`04` writes are used for animation.
 
 The known live protocol addresses main keys only. The 18 side LEDs retain their
 onboard effect; the preview's side frame is not streamed. Rhythm Sync, Gamepad,
-Spiral/Noise host FX are outside this service. The control panel checks GitHub
-Releases and can install a signed core-only update. The stable native launcher
-verifies the Ed25519 manifest and SHA-256 hash, restarts the core, and rolls
-back if its health check fails. An update requiring a newer launcher directs
-the user to download the full ZIP. The private signing key stays outside the
-repository.
+Spiral/Noise host FX are outside this service. The tray Check for updates
+checks GitHub Releases through the local service and shows a window message
+when current, without opening the control panel. Compatible signed core
+updates are applied and restarted automatically. A release requiring a newer
+native launcher downloads a checksum-verified ZIP into the local service
+downloads folder and asks whether to open it; quit the old tray app and
+extract the ZIP over its folder before restarting. The native launcher
+verifies the Ed25519 manifest and SHA-256 hash for core updates and rolls back
+if its health check fails. The private signing key stays outside the repository.
 
 ## Build and verification
 
