@@ -2,7 +2,7 @@ import {spawn, type ChildProcess} from 'node:child_process'
 import {copyFileSync,existsSync,mkdirSync,readFileSync,writeFileSync,renameSync} from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import {LAUNCHER_VERSION,CORE_API_VERSION,validVersion,verifyCore,type CoreManifest} from './updatePackage'
+import {CORE_VERSION,CORE_API_VERSION,validVersion,verifyCore,type CoreManifest} from './updatePackage'
 
 const state=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
 const coreDir=path.join(state,'core')
@@ -12,7 +12,7 @@ mkdirSync(coreDir,{recursive:true})
 function verifiedCore(manifest:CoreManifest,filename:string){return verifyCore(manifest,readFileSync(filename))}
 function readManifest(filename:string){return JSON.parse(readFileSync(filename,'utf8')) as CoreManifest}
 function installed(){
-  if(!existsSync(activeFile))return {file:bundled,version:LAUNCHER_VERSION}
+  if(!existsSync(activeFile))return {file:bundled,version:CORE_VERSION}
   try{
     const record=JSON.parse(readFileSync(activeFile,'utf8')) as {version:string}
     if(!validVersion(record.version))throw Error('Invalid active version')
@@ -20,7 +20,7 @@ function installed(){
     const version=verifiedCore(readManifest(path.join(folder,'manifest.json')),file)
     if(version!==record.version)throw Error('Wrong active version')
     return {file,version}
-  }catch(error){process.stderr.write(`Core fallback: ${error}\n`);return {file:bundled,version:LAUNCHER_VERSION}}
+  }catch(error){process.stderr.write(`Core fallback: ${error}\n`);return {file:bundled,version:CORE_VERSION}}
 }
 async function healthy(pid:number|undefined,version:string){
   for(let i=0;i<35;i++){

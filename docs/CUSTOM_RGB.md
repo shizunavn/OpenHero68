@@ -67,11 +67,13 @@ snapshots are eight consecutive requests, not an atomic 68-key snapshot.
 Target output is 40 FPS; a native high-resolution waitable timer paces frames
 when Hall streaming is idle. Hall polling is owned by the service and shared
 with the web over `/hall/stream`. A web Hall Stream no longer starts a second
-USB polling loop. Up to ten selected keys are prioritized; a full-board viewer
-gets batched updates at about 30 Hz. Actual rate depends on simultaneous LED
-traffic: a live ten-key test with RGB measured about 152 samples/key/s and
-39 FPS, with no HID timeouts over two minutes. This is below the standalone
-200 Hz benchmark, so the UI must not claim 200 Hz during concurrent playback.
+USB polling loop. Up to ten selected keys are prioritized at a 100 Hz target;
+a full-board viewer gets batched updates at about 30 Hz. Actual rate depends
+on simultaneous LED traffic: a 60-second live ten-key test with RGB measured
+88.9 samples/key/s and 38.4 FPS, with no HID timeouts. Ten keys require two
+sequential Hall requests per snapshot, so the UI must not claim an achieved
+100 Hz rate during concurrent playback. This measures telemetry throughput,
+not end-to-end game input latency.
 Firmware live RGB `08/01`
 is fire-and-forget: IPC acknowledges OS write completion, not a firmware ACK.
 Hall and identity replies still validate checksum, command, zone and positions.

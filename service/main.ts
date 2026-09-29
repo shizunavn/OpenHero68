@@ -13,11 +13,11 @@ import { HERO68_KEY_POSITIONS } from '../src/protocol/hero68/keyPositions'
 import { prepareFrame } from './frame'
 import { validateDeviceRequest } from './deviceRequests'
 import { decodeHero68Input } from './keyInput'
-import {LAUNCHER_VERSION,CORE_API_VERSION,newer,inspectManifest,verifyManifest,verifyCore,type CoreManifest} from './updatePackage'
+import {LAUNCHER_VERSION,CORE_VERSION,CORE_API_VERSION,newer,inspectManifest,verifyManifest,verifyCore,type CoreManifest} from './updatePackage'
 
 const port=16868
 const stateDir=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
-const coreVersion=process.env.OPENHERO68_CORE_VERSION??LAUNCHER_VERSION
+const coreVersion=process.env.OPENHERO68_CORE_VERSION??CORE_VERSION
 mkdirSync(stateDir,{recursive:true})
 const log=(message:string)=>appendFileSync(path.join(stateDir,'service.log'),`${new Date().toISOString()} ${message}\n`)
 const origins=new Set(['https://shizuna.ddns.net:5173','http://localhost:5173','https://localhost:5173','http://127.0.0.1:5173','https://127.0.0.1:5173',`http://127.0.0.1:${port}`,`http://localhost:${port}`])
@@ -65,6 +65,7 @@ type HallClient={keys:Set<string>;pending:Map<string,HallRecord>;lastSent:number
 const hallClients=new Map<ServerResponse,HallClient>()
 const hallSamples=new Map<string,HallRecord>()
 let nextPriorityAt=0,nextSecondaryAt=0,secondaryIndex=0,hallPolls=0,priorityCount=0,secondaryCount=0
+const priorityHallIntervalMs=10
 function needsAnalogHall(){return mode==='custom'&&!!profile?.custom?.layers.some(l=>l.enabled&&['jelly','aoe','touch','mixing'].includes(l.effect))}
 function publishHall(records:HallRecord[]){
   const now=performance.now()
@@ -87,7 +88,7 @@ async function pollHall(){
   priorityCount=priority.length;secondaryCount=secondary.length
   const now=performance.now()
   let ids:string[]=[]
-  if(priority.length&&now>=nextPriorityAt){ids=priority;nextPriorityAt=now+5}
+  if(priority.length&&now>=nextPriorityAt){ids=priority;nextPriorityAt=now+priorityHallIntervalMs}
   else if(secondary.length&&now>=nextSecondaryAt){ids=secondary.slice(secondaryIndex,secondaryIndex+9);secondaryIndex=(secondaryIndex+ids.length)%secondary.length;nextSecondaryAt=now+(priority.length?8:5)}
   if(!ids.length)return
   const records:HallRecord[]=[]

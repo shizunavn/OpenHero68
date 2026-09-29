@@ -1,7 +1,7 @@
 import {createHash,sign} from 'node:crypto'
 import {mkdir,readFile,writeFile} from 'node:fs/promises'
 import path from 'node:path'
-const root=process.cwd(),version=process.argv[2]??'0.2.1'
+const root=process.cwd(),version=process.argv[2]??'0.2.2'
 if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Expected semver core version')
 const privateKey=await readFile(path.join(process.env.LOCALAPPDATA??root,'OpenHero68','release-signing-key.pem'),'utf8')
 const core=await readFile(path.join(root,'service','dist','service.cjs'))
