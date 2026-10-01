@@ -1,0 +1,4 @@
+#pragma once
+#define HERO68_VERSION_W L"0.2.3"
+#define HERO68_VERSION_TEXT "0.2.3\0"
+#define HERO68_VERSION_NUMBERS 0,2,3,0

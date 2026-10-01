@@ -44,6 +44,10 @@ The production app is generated in `dist/`. Serve it over HTTPS for WebHID.
 The Pages website requires service core 0.2.3 or later. Upgrading from 0.2.2 or
 earlier requires the full 0.2.3 Windows ZIP: quit the old tray app, extract all files
 over its folder, then run the new launcher. Check for updates can download this ZIP.
+If your old tray says the 0.2.3 core is latest while its launcher is older, download
+the ZIP manually. The corrected 0.2.3 package shows **Launcher: 0.2.3** in its menu.
+If Auto-start points to another folder, the new tray offers **Auto-start: replace
+old app path**. Click it to register this folder instead; auto-start stays optional.
 Without the app, select **Try demo** to edit and preview effects locally. Opening
 RGB defaults to Onboard Effects and does not change the lighting running on the keyboard.
 

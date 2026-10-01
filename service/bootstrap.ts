@@ -2,7 +2,8 @@ import {spawn, type ChildProcess} from 'node:child_process'
 import {copyFileSync,existsSync,mkdirSync,readFileSync,writeFileSync,renameSync} from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import {CORE_VERSION,CORE_API_VERSION,validVersion,newer,verifyCore,type CoreManifest} from './updatePackage'
+import {CORE_VERSION,CORE_API_VERSION,LAUNCHER_VERSION,validVersion,newer,verifyCore,type CoreManifest} from './updatePackage'
+import {superviseCore} from './coreSupervisor'
 
 const state=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
 const coreDir=path.join(state,'core')
@@ -17,7 +18,7 @@ function installed(){
     const record=JSON.parse(readFileSync(activeFile,'utf8')) as {version:string}
     if(!validVersion(record.version))throw Error('Invalid active version')
     // A newly extracted app must not load an older downloaded core instead.
-    if(newer(CORE_VERSION,record.version))return {file:bundled,version:CORE_VERSION}
+    if(!newer(record.version,CORE_VERSION))return {file:bundled,version:CORE_VERSION}
     const folder=path.join(coreDir,record.version),file=path.join(folder,'service.cjs')
     const version=verifiedCore(readManifest(path.join(folder,'manifest.json')),file)
     if(version!==record.version)throw Error('Wrong active version')
@@ -40,55 +41,43 @@ async function healthy(pid:number|undefined,version:string){
 }
 let child:ChildProcess|null=null,quitting=false
 function launch(file:string,version:string){
-  child=spawn(runtime,[file,...process.argv.slice(2)],{cwd:__dirname,stdio:'ignore',windowsHide:true,env:{...process.env,OPENHERO68_CORE_VERSION:version}})
+  child=spawn(runtime,[file,...process.argv.slice(2)],{cwd:__dirname,stdio:'ignore',windowsHide:true,env:{...process.env,OPENHERO68_CORE_VERSION:version,OPENHERO68_LAUNCHER_VERSION:LAUNCHER_VERSION}})
   return child
 }
 function shutdown(){quitting=true;child?.kill();setTimeout(()=>process.exit(0),1500).unref()}
 process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown)
 async function run(){
-  let current=installed(),crashes=0
-  while(!quitting){
-    const next=launch(current.file,current.version)
-    const exit=await new Promise<number>(resolve=>{next.on('exit',code=>resolve(code??1));next.on('error',()=>resolve(1))})
-    child=null
-    if(quitting)break
-    if(exit===73&&existsSync(pendingFile)){
-      const previous=current
-      try{
-        const manifest=readManifest(pendingFile),folder=path.join(coreDir,manifest.payload.version)
-        const file=path.join(folder,'service.cjs')
-        verifiedCore(manifest,file)
-        const backup=path.join(coreDir,'preset-before-update.json')
-        if(existsSync(path.join(state,'preset.json')))copyFileSync(path.join(state,'preset.json'),backup)
-        const staged=activeFile+'.tmp';writeFileSync(staged,JSON.stringify({version:manifest.payload.version}));renameSync(staged,activeFile)
-        current={file,version:manifest.payload.version}
-        const trial=launch(current.file,current.version)
-        const trialExit=new Promise<number>(resolve=>{trial.on('exit',code=>resolve(code??1));trial.on('error',()=>resolve(1))})
-        if(await healthy(trial.pid,current.version)){
-          // A verified and healthy core remains the active child.
-          const result=await trialExit
-          child=null
-          if(result===0)break
-          if(result===73)continue
-          throw Error(`Updated core exited: ${result}`)
-        }
-        if(trial.exitCode===null)trial.kill()
-        await trialExit
-        throw Error('Updated core did not become healthy')
-      }catch(error){
-        process.stderr.write(`Core update rolled back: ${error}\n`)
-        current=previous
-        const staged=activeFile+'.tmp'
-        if(previous.file===bundled){if(existsSync(activeFile)){writeFileSync(staged,'{}');renameSync(staged,activeFile)}}
-        else{writeFileSync(staged,JSON.stringify({version:previous.version}));renameSync(staged,activeFile)}
-        const backup=path.join(coreDir,'preset-before-update.json')
-        if(existsSync(backup))copyFileSync(backup,path.join(state,'preset.json'))
-      }
-      continue
-    }
-    if(exit===0)break
-    if(++crashes>=3)break
-    await new Promise(resolve=>setTimeout(resolve,1000))
-  }
+  let presetBackupReady=false
+  await superviseCore(installed(),{
+    launch(core){
+      const process=launch(core.file,core.version)
+      return {pid:process.pid,exit:new Promise<number>(resolve=>{
+        process.on('exit',code=>resolve(code??1));process.on('error',()=>resolve(1))
+      }),kill(){if(process.exitCode===null)process.kill()}}
+    },
+    pending:()=>existsSync(pendingFile),
+    prepare(){
+      presetBackupReady=false
+      const manifest=readManifest(pendingFile),folder=path.join(coreDir,manifest.payload.version)
+      const file=path.join(folder,'service.cjs')
+      verifiedCore(manifest,file)
+      const backup=path.join(coreDir,'preset-before-update.json')
+      if(existsSync(path.join(state,'preset.json'))){copyFileSync(path.join(state,'preset.json'),backup);presetBackupReady=true}
+      const staged=activeFile+'.tmp';writeFileSync(staged,JSON.stringify({version:manifest.payload.version}));renameSync(staged,activeFile)
+      return {file,version:manifest.payload.version}
+    },
+    healthy:(trial,core)=>healthy(trial.pid,core.version),
+    rollback(previous){
+      const staged=activeFile+'.tmp'
+      if(previous.file===bundled){if(existsSync(activeFile)){writeFileSync(staged,'{}');renameSync(staged,activeFile)}}
+      else{writeFileSync(staged,JSON.stringify({version:previous.version}));renameSync(staged,activeFile)}
+      const backup=path.join(coreDir,'preset-before-update.json')
+      if(presetBackupReady&&existsSync(backup))copyFileSync(backup,path.join(state,'preset.json'))
+    },
+    quitting:()=>quitting,
+    error:error=>process.stderr.write(`Core update rolled back: ${error}\n`),
+    wait:()=>new Promise(resolve=>setTimeout(resolve,1000))
+  })
 }
+
 void run().then(()=>process.exit(0),error=>{process.stderr.write(String(error));process.exit(1)})

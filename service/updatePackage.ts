@@ -1,7 +1,9 @@
 import {createHash,verify} from 'node:crypto'
 import {UPDATE_PUBLIC_KEY} from './updatePublicKey'
 
-export const LAUNCHER_VERSION='0.2.3'
+export const BUNDLED_LAUNCHER_VERSION='0.2.3'
+// The native launcher keeps its identity when a newer JS core is installed.
+export const LAUNCHER_VERSION=validVersion(process.env.OPENHERO68_LAUNCHER_VERSION??'')?process.env.OPENHERO68_LAUNCHER_VERSION!:BUNDLED_LAUNCHER_VERSION
 export const CORE_VERSION='0.2.3'
 export const CORE_API_VERSION=4
 export type CoreManifest={payload:{version:string;apiVersion:number;minLauncher:string;sha256:string;size:number;asset:string};signature:string}
@@ -19,14 +21,14 @@ export function inspectManifest(manifest:CoreManifest,publicKey:string=UPDATE_PU
     throw Error('Core manifest signature is invalid')
   return payload
 }
-export function verifyManifest(manifest:CoreManifest,publicKey:string=UPDATE_PUBLIC_KEY){
+export function verifyManifest(manifest:CoreManifest,publicKey:string=UPDATE_PUBLIC_KEY,launcherVersion:string=LAUNCHER_VERSION){
   const payload=inspectManifest(manifest,publicKey)
-  if(newer(payload.minLauncher,LAUNCHER_VERSION)||payload.apiVersion!==CORE_API_VERSION)
+  if(newer(payload.minLauncher,launcherVersion)||payload.apiVersion!==CORE_API_VERSION)
     throw Error('Core update requires a newer launcher')
   return payload
 }
-export function verifyCore(manifest:CoreManifest,bytes:Buffer,publicKey:string=UPDATE_PUBLIC_KEY){
-  const payload=verifyManifest(manifest,publicKey)
+export function verifyCore(manifest:CoreManifest,bytes:Buffer,publicKey:string=UPDATE_PUBLIC_KEY,launcherVersion:string=LAUNCHER_VERSION){
+  const payload=verifyManifest(manifest,publicKey,launcherVersion)
   if(bytes.length!==payload.size||createHash('sha256').update(bytes).digest('hex')!==payload.sha256)throw Error('Core checksum mismatch')
   return payload.version
 }

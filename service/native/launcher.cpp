@@ -7,6 +7,7 @@
 #include <atomic>
 #include <string>
 #include <thread>
+#include "version.h"
 
 namespace {
 HANDLE child;
@@ -18,10 +19,12 @@ UINT taskbarCreated;
 std::atomic<bool> checkingUpdates{false};
 std::atomic<bool> exiting{false};
 void open(const wchar_t* url) { ShellExecuteW(nullptr, L"open", url, nullptr, nullptr, SW_SHOWNORMAL); }
-bool autoStart() {
+std::wstring autoStartCommand() {
     wchar_t value[32768]; DWORD size = sizeof(value);
-    return RegGetValueW(HKEY_CURRENT_USER, RunKey, RunName, RRF_RT_REG_SZ, nullptr, value, &size) == ERROR_SUCCESS && launchCommand == value;
+    if (RegGetValueW(HKEY_CURRENT_USER, RunKey, RunName, RRF_RT_REG_SZ, nullptr, value, &size) != ERROR_SUCCESS) return L"";
+    return value;
 }
+bool autoStart() { return autoStartCommand() == launchCommand; }
 void toggleAutoStart(HWND window) {
     HKEY key; LONG result = RegCreateKeyExW(HKEY_CURRENT_USER, RunKey, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr);
     if (result == ERROR_SUCCESS) {
@@ -34,7 +37,7 @@ void toggleAutoStart(HWND window) {
 struct HttpResult { DWORD status = 0; std::string body; };
 HttpResult post(const wchar_t* endpoint, int receiveTimeout = 1500) {
     HttpResult result;
-    HINTERNET session = WinHttpOpen(L"OpenHero68 RGB/0.2.3", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
+    HINTERNET session = WinHttpOpen(L"OpenHero68 RGB/" HERO68_VERSION_W, WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
     if (!session) return result;
     WinHttpSetTimeouts(session, 500, 500, 1000, receiveTimeout);
     HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", 16868, 0);
@@ -86,10 +89,10 @@ void checkUpdates() {
     if (checkingUpdates.exchange(true)) { MessageBoxW(nullptr, L"An update check is already running.", L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND); return; }
     notify(L"Checking and downloading updates...");
     std::thread([] {
-        const UpdateReply reply = parseUpdateReply(post(L"/updates/tray-check", 150000));
+        const UpdateReply reply = parseUpdateReply(post(L"/updates/tray-check", 190000));
         if (!exiting) {
             if (!reply.valid) MessageBoxW(nullptr, L"Update check or download failed. Open the service log folder for details.", L"OpenHero68 RGB", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-            else if (reply.kind == "none") MessageBoxW(nullptr, (L"No updates available. Version " + reply.version + L" is the latest.").c_str(), L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+            else if (reply.kind == "none") MessageBoxW(nullptr, (L"Up to date. Core " + reply.version + L"; launcher " HERO68_VERSION_W L".").c_str(), L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
             else if (reply.kind == "core") MessageBoxW(nullptr, (L"Core update " + reply.version + L" downloaded and verified. The service is restarting to apply it.").c_str(), L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
             else if (reply.kind == "package") {
                 const std::wstring message = L"Windows update " + reply.version + L" downloaded and verified to:\n" + reply.file + L"\n\nQuit the tray app, extract the ZIP over its folder, then restart it. Open the download folder?";
@@ -106,7 +109,7 @@ void addTray() { Shell_NotifyIconW(NIM_ADD, &tray); tray.uVersion = NOTIFYICON_V
 void menu(HWND window) {
     HMENU popup = CreatePopupMenu();
     AppendMenuW(popup, MF_STRING | MF_DISABLED, 0, L"OpenHero68 Background Service");
-    AppendMenuW(popup, MF_STRING | MF_DISABLED, 0, L"Version: 0.2.1");
+    AppendMenuW(popup, MF_STRING | MF_DISABLED, 0, L"Launcher: " HERO68_VERSION_W);
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(popup, MF_STRING, 1, L"Open web app");
     AppendMenuW(popup, MF_STRING, 2, L"Open control panel");
@@ -115,7 +118,9 @@ void menu(HWND window) {
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(popup, MF_STRING, 5, L"Check for updates");
     AppendMenuW(popup, MF_STRING, 6, L"Open log folder");
-    AppendMenuW(popup, MF_STRING | (autoStart() ? MF_CHECKED : 0), 7, L"Auto-start");
+    const bool differentStartup = !autoStartCommand().empty() && !autoStart();
+    AppendMenuW(popup, MF_STRING | (autoStart() ? MF_CHECKED : 0), 7,
+        differentStartup ? L"Auto-start: replace old app path" : L"Auto-start");
     AppendMenuW(popup, MF_STRING, 8, L"Quit");
     POINT point; GetCursorPos(&point); SetForegroundWindow(window);
     UINT selected = TrackPopupMenu(popup, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, window, nullptr);
@@ -167,6 +172,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int) {
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) { if (job) CloseHandle(job); CloseHandle(mutex); return 1; }
     STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
+    SetEnvironmentVariableW(L"OPENHERO68_LAUNCHER_VERSION", HERO68_VERSION_W);
     if (!CreateProcessW(runtime.c_str(), command.data(), nullptr, nullptr, FALSE,
         CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, dir.c_str(), &startup, &process)) {
         MessageBoxW(nullptr, L"Cannot start bundled RGB runtime. Keep the service folder together.", L"OpenHero68 RGB", MB_ICONERROR);
@@ -182,7 +188,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int) {
     if (window) {
         tray.cbSize = sizeof(tray); tray.hWnd = window; tray.uID = 1;
         tray.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP; tray.uCallbackMessage = WM_APP + 1;
-        tray.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1)); wcscpy_s(tray.szTip, L"OpenHero68 RGB Service 0.2.1");
+        tray.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1)); wcscpy_s(tray.szTip, L"OpenHero68 RGB Launcher " HERO68_VERSION_W);
         addTray(); SetTimer(window, 1, 500, nullptr);
         MSG message; while (GetMessageW(&message, nullptr, 0, 0) > 0) { TranslateMessage(&message); DispatchMessageW(&message); }
     }
