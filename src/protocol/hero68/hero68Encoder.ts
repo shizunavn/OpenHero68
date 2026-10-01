@@ -171,7 +171,12 @@ export async function hydrateFromDevice(
 
   for (const keys of chunk(positions, 18)) {
     const reply = await requester.request(readSwitchType(keys), 0x95, 0)
-    for (const record of decodeSwitchTypeRecords(reply.data)) {
+    const records = decodeSwitchTypeRecords(reply.data)
+    const seen = new Set<number>()
+    if (reply.data.length !== keys.length * 3) throw new Error('Incomplete switch profile readback')
+    for (const record of records) {
+      if (!keys.includes(record.keyId) || seen.has(record.keyId)) throw new Error('Unexpected switch profile readback position')
+      seen.add(record.keyId)
       const target = settingsForPos(record.keyId)
       if (target) target.switchProfile = switchProfileId(record.switchType)
     }

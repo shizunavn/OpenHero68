@@ -1,7 +1,7 @@
 import {createHash,verify} from 'node:crypto'
 import {UPDATE_PUBLIC_KEY} from './updatePublicKey'
 
-export const LAUNCHER_VERSION='0.2.1'
+export const LAUNCHER_VERSION='0.2.3'
 export const CORE_VERSION='0.2.3'
 export const CORE_API_VERSION=4
 export type CoreManifest={payload:{version:string;apiVersion:number;minLauncher:string;sha256:string;size:number;asset:string};signature:string}

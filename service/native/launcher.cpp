@@ -34,7 +34,7 @@ void toggleAutoStart(HWND window) {
 struct HttpResult { DWORD status = 0; std::string body; };
 HttpResult post(const wchar_t* endpoint, int receiveTimeout = 1500) {
     HttpResult result;
-    HINTERNET session = WinHttpOpen(L"OpenHero68 RGB/0.2.1", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
+    HINTERNET session = WinHttpOpen(L"OpenHero68 RGB/0.2.3", WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
     if (!session) return result;
     WinHttpSetTimeouts(session, 500, 500, 1000, receiveTimeout);
     HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", 16868, 0);
@@ -121,7 +121,7 @@ void menu(HWND window) {
     UINT selected = TrackPopupMenu(popup, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, window, nullptr);
     DestroyMenu(popup); PostMessageW(window, WM_NULL, 0, 0);
     switch (selected) {
-    case 1: open(L"https://shizuna.ddns.net:5173/"); break;
+    case 1: open(L"https://open-hero68.pages.dev/"); break;
     case 2: open(L"http://127.0.0.1:16868/"); break;
     case 3: case 4:
         if (!command(selected == 3 ? L"/start" : L"/stop")) MessageBoxW(window, L"The RGB command failed. Open the control panel for details; Start requires a saved preset.", L"OpenHero68 RGB", MB_ICONWARNING);

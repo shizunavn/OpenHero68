@@ -41,8 +41,9 @@ The production app is generated in `dist/`. Serve it over HTTPS for WebHID.
 4. Go to RGB Settings > Custom Effects, choose your preset, and select **Apply to keyboard**.
 5. Closing the browser leaves playback running. Right-click the tray icon for controls.
 
-The Pages website requires service core 0.2.3 or later. Source updates do not
-automatically publish a Windows release; check the release notes before downloading.
+The Pages website requires service core 0.2.3 or later. Upgrading from 0.2.2 or
+earlier requires the full 0.2.3 Windows ZIP: quit the old tray app, extract all files
+over its folder, then run the new launcher. Check for updates can download this ZIP.
 Without the app, select **Try demo** to edit and preview effects locally. Opening
 RGB defaults to Onboard Effects and does not change the lighting running on the keyboard.
 

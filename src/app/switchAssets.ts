@@ -38,7 +38,7 @@ const SWITCH_IMAGES: Partial<Record<SwitchTone, { front: string; top: string }>>
   'switch-14': { front: jadeProFront, top: jadeProTop },
 }
 const SWITCH_OPTIONS: SwitchOption[] = HERO68_SWITCH_PROFILES
-  .filter(option => ![5, 22, 24, 27].includes(option.firmwareId))
+  .filter(option => ![5, 22, 24].includes(option.firmwareId))
   .map(option => ({
   id: option.id, name: option.name, fullName: `${option.name} Switch`,
   brand: 'AULA presets', accent: option.color, note: '', ...SWITCH_IMAGES[option.id],

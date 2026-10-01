@@ -5,34 +5,63 @@ import urllib.request
 import urllib.error
 
 root = Path(__file__).resolve().parents[1]
-version = '0.2.2'
+version = '0.2.3'
+commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+remote_commit = subprocess.check_output(['git', 'ls-remote', 'origin', 'refs/heads/main'], cwd=root, text=True).split()[0]
+if commit != remote_commit:
+    raise SystemExit('Push the release commit to main before publishing.')
+names = ['OpenHero68-RGB-Windows-x64.zip', 'SHA256SUMS.txt', 'OpenHero68-RGB-core.cjs', 'OpenHero68-RGB-core.json']
+payloads = {name: (root / 'service/releases' / name).read_bytes() for name in names}
 result = subprocess.run(['git', 'credential', 'fill'], input='protocol=https\nhost=github.com\n\n', text=True, capture_output=True, check=True)
 credential = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
 token = credential['password']
 api = 'https://api.github.com/repos/shizunavn/OpenHero68-RGB-Service'
 headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'User-Agent': 'OpenHero68-release', 'X-GitHub-Api-Version': '2022-11-28'}
-def request(url, data=None, content='application/json'):
+def request(url, data=None, content='application/json', method=None):
     request_headers = dict(headers)
     if data is not None:
         request_headers['Content-Type'] = content
-    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=request_headers), timeout=60) as response:
+    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=request_headers, method=method), timeout=60) as response:
         return json.load(response)
+body = '''Custom RGB now includes an Aurora base, Comet and Pressure Wave, a cleaner layer editor, and a local Demo that works without the background app. Pressure Wave uses Hall movement speed to estimate press intensity; Hall sensors do not measure physical force. RGB settings open Onboard Effects without changing playback.
+
+The service supports https://open-hero68.pages.dev and the launcher opens this website. Allow the browser's local app/service permission when prompted. Background Service setup and recovery preserve your editor draft and require Apply before live updates resume.
+
+Switch profiles are saved calibration IDs, not automatic identification of physical switches. The retired Ice King Axle label is removed; unknown IDs remain intact, and incomplete switch readback is rejected. Saving a full Meteor selection is covered by protocol tests.
+
+Upgrade from v0.2.2 or earlier: download the full Windows x64 ZIP (or use tray Check for updates), quit the old tray app, extract every file over the service folder, then run Hero68RgbService.exe. This release requires launcher 0.2.3; a core-only update cannot upgrade the launcher. Keep all included files together.
+
+Main keyboard LEDs only; side LEDs retain their onboard effect. Hall sampling targets up to 100 Hz for ten selected keys, while LED output targets 40 FPS. Tests, production build, native service build and signed package verification passed. A read-only hardware check confirmed all 68 saved switches as Meteor in profile 0; new RGB behavior and sustained FPS were not revalidated on hardware for this release.'''
 try:
     release = request(api + '/releases/tags/v' + version)
 except urllib.error.HTTPError as error:
     if error.code != 404:
         raise SystemExit('GitHub release lookup failed: ' + str(error.code))
     release = request(api + '/releases', json.dumps({
-        'tag_name': 'v' + version, 'target_commitish': 'main', 'name': 'OpenHero68 RGB Service v' + version,
-        'body': 'The service now targets 100 Hz Hall sampling for up to ten selected keys during RGB playback, reducing device request load while retaining the 40 FPS LED target. Whole-board Hall viewing remains batched at about 30 Hz. Keyboard output and RT are unchanged.\n\nExisting v0.2.1 installations can use the tray Check for updates to install this signed core automatically. Fresh installs can use the Windows ZIP. Main keyboard LEDs only; side LEDs retain their onboard effect.',
-        'draft': False, 'prerelease': False, 'make_latest': 'true'
+        'tag_name': 'v' + version, 'target_commitish': commit, 'name': 'OpenHero68 RGB Service v' + version,
+        'body': body, 'draft': True, 'prerelease': False
     }).encode())
-names = {asset['name'] for asset in release['assets']}
+assets = {asset['name']: asset for asset in release['assets']}
 upload = release['upload_url'].split('{')[0]
-for name in ['OpenHero68-RGB-Windows-x64.zip', 'SHA256SUMS.txt', 'OpenHero68-RGB-core.cjs', 'OpenHero68-RGB-core.json']:
-    if name in names:
-        print('Existing release asset: ' + name)
-        continue
-    asset = request(upload + '?name=' + name, (root / 'service/releases' / name).read_bytes(), 'application/zip' if name.endswith('.zip') else 'application/json' if name.endswith('.json') else 'application/octet-stream')
-    print('Uploaded ' + asset['name'] + ' (' + str(asset['size']) + ' bytes)')
+for name, payload in payloads.items():
+    import hashlib
+    asset = assets.get(name)
+    expected = 'sha256:' + hashlib.sha256(payload).hexdigest()
+    if asset:
+        if asset['size'] != len(payload) or asset.get('digest') != expected:
+            raise SystemExit('Existing release asset differs: ' + name)
+    else:
+        if not release['draft']:
+            raise SystemExit('Published release is missing asset: ' + name)
+        asset = request(upload + '?name=' + name, payload, 'application/zip' if name.endswith('.zip') else 'application/json' if name.endswith('.json') else 'application/octet-stream')
+        if asset['size'] != len(payload) or asset.get('digest') != expected:
+            raise SystemExit('Uploaded asset verification failed: ' + name)
+    print('Verified ' + name + ' (' + str(asset['size']) + ' bytes)')
+if release['draft']:
+    release = request(api + '/releases/' + str(release['id']), json.dumps({
+        'draft': False, 'prerelease': False, 'make_latest': 'true', 'body': body
+    }).encode(), method='PATCH')
+latest = request(api + '/releases/latest')
+if latest['tag_name'] != 'v' + version or latest['draft']:
+    raise SystemExit('Latest release verification failed.')
 print(release['html_url'])

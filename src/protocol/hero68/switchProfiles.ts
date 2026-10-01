@@ -13,7 +13,6 @@ export const HERO68_SWITCH_PROFILES = [
   { id: 'clear', firmwareId: 16, name: 'Jade', color: '#6569f8', travelMm: 3.4 },
   { id: 'switch-22', firmwareId: 22, name: 'Pink King Scroll', color: '#ff0ed6', travelMm: 3.4 },
   { id: 'switch-24', firmwareId: 24, name: 'Jade Emperor Scroll', color: '#00ff76', travelMm: 3.4 },
-  { id: 'switch-27', firmwareId: 27, name: 'Ice King Axle', color: '#5887ff', travelMm: 3.3 },
   { id: 'black', firmwareId: 8, name: 'Black King', color: '#b1f835', travelMm: 3.4 },
 ] as const satisfies readonly { id: SwitchProfileId; firmwareId: number; name: string; color: string; travelMm: number }[]
 
@@ -37,5 +36,5 @@ export function isSwitchProfileId(value: unknown): value is SwitchProfileId {
 }
 
 export function switchProfileLabel(profile: string): string {
-  return HERO68_SWITCH_PROFILES.find(option => option.id === profile)?.name ?? `Switch ID ${switchFirmwareId(profile)}`
+  return HERO68_SWITCH_PROFILES.find(option => option.id === profile)?.name ?? `Stored profile (ID ${switchFirmwareId(profile)})`
 }

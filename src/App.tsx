@@ -197,7 +197,7 @@ function App() {
     { id: 'background-service', label: 'Background Service', icon: <Activity size={18} /> },
   ], [])
 
-  const selectedSwitch: SwitchOption = SWITCH_OPTIONS.find((option) => option.id === selectedSwitchId) ?? { id: selectedSwitchId, name: switchProfileLabel(selectedSwitchId), fullName: switchProfileLabel(selectedSwitchId), brand: 'AULA presets', accent: '#9ba3a8', note: '' }
+  const selectedSwitch: SwitchOption = SWITCH_OPTIONS.find((option) => option.id === selectedSwitchId) ?? { id: selectedSwitchId, name: switchProfileLabel(selectedSwitchId), fullName: switchProfileLabel(selectedSwitchId), brand: 'Stored keyboard profile', accent: '#9ba3a8', note: '' }
   const switchTopImageById = useMemo(() => Object.fromEntries(SWITCH_OPTIONS.map((option) => [option.id, option.top ?? ''])) as Record<SwitchTone, string>, [])
   const switchPreviewByKey = useMemo(() => Object.fromEntries(HERO68_KEY_IDS.map((keyId) => [keyId, switchTopImageById[assignedSwitchesByKey[keyId] ?? 'white']])) as Record<string, string>, [assignedSwitchesByKey, switchTopImageById])
   const rapidPreviewByKey = useMemo(() => Object.fromEntries(HERO68_KEY_IDS.map((keyId) => {
@@ -1435,7 +1435,7 @@ function App() {
                 <article className="settings-card switch-assignment-card">
                   <div className="settings-card-head">
                     <h2>Assign Switch Profiles</h2>
-                    <p>Select keys directly on the keyboard preview, then assign your installed switch profile from the list below for optimal accuracy.</p>
+                    <p>Select keys on the keyboard preview, then choose a calibration profile for your installed switches. The keyboard reports its saved profile IDs; it does not detect the physical switch model.</p>
                   </div>
 
                   <div className="switch-toolbar">
@@ -1501,6 +1501,8 @@ function App() {
                         key={option.id}
                         type="button"
                         className={`switch-profile-card ${(!hasSelection || !switchProfileMixed) && option.id === selectedSwitch.id ? 'is-active' : ''}`}
+                        disabled={!hasSelection || profileBusy}
+                        title={!hasSelection ? 'Select one or more keys first' : undefined}
                         onClick={() => assignSwitchProfile(option.id)}
                       >
                         <span className="switch-profile-thumb" style={{ color: option.accent }}>

@@ -19,6 +19,12 @@ Verified against the supplied USB captures and the extracted official web-app ca
 | Ice King Axle | 27 |
 | Black King | 8 |
 
+The table records the historical official catalog. OpenHero68 no longer exposes
+the preset for ID 27 or labels it with that model name. It displays
+`Stored profile (ID 27)` and preserves the raw ID during reads and saves.
+Command `0x95` reads the firmware's stored calibration profile, not the physical
+switch model. Removing a UI preset must not silently rewrite that stored ID.
+
 The individual-key capture contains 13 switch writes, in this order:
 
 `8 → 4 → 13 → 1 → 3 → 5 → 14 → 15 → 16 → 22 → 24 → 27 → 8`
