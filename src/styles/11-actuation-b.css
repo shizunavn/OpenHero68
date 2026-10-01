@@ -1,0 +1,368 @@
+/* v0.9.43 — Actuation UI rebuilt from the supplied Wootility DOM/screenshot.
+   Keep Wootility's flat two-line key content and two-panel editor; HERO68 logic stays native. */
+.actuation-page .actuation-keyboard-stage {
+  min-height: clamp(226px, 26vh, 276px);
+  padding-top: 0;
+}
+.actuation-page .actuation-keyboard-stage.is-streaming .hero68-case {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.065),
+    inset 0 -3px rgba(0,0,0,.42),
+    0 0 0 1px rgba(255,255,255,.012),
+    0 10px 22px rgba(0,0,0,.22);
+}
+.actuation-page .actuation-selection-instruction,
+.actuation-page .actuation-heading-row,
+.actuation-page .source-faithful-actuation-workspace {
+  width: min(100%, 860px);
+  margin-left: auto;
+  margin-right: auto;
+}
+.actuation-page .actuation-selection-instruction {
+  min-height: 36px;
+  padding: 3px 0 8px;
+  color: #bec5ca;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .035em;
+}
+.actuation-page .actuation-heading-row {
+  min-height: 64px;
+  align-items: center;
+}
+.actuation-page .actuation-title-wrap h1 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -.025em;
+}
+.actuation-page .actuation-title-wrap svg { color: #737c82; }
+
+.source-faithful-actuation-workspace {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+.source-actuation-card {
+  min-height: 320px;
+  padding: 20px 20px 18px;
+  border-color: rgba(255,255,255,.045);
+  border-radius: 8px;
+  background: rgb(31, 32, 34);
+  box-shadow: none;
+}
+.source-actuation-card:hover:not(.is-unavailable) {
+  border-color: rgba(255,255,255,.065);
+  background: rgb(31, 32, 34);
+}
+.source-actuation-card-head {
+  min-height: 72px;
+}
+.source-actuation-card-head h2 {
+  margin: 0;
+  color: #eceff1;
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1.25;
+  letter-spacing: -.016em;
+}
+.source-actuation-card-head p {
+  max-width: 310px;
+  margin: 11px 0 0;
+  color: #8e969b;
+  font-size: 12px;
+  line-height: 1.48;
+}
+.source-feedback-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.source-feedback-head > div { min-width: 0; }
+.source-feedback-head .toggle { margin-top: 1px; }
+
+.source-actuation-target {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+.source-actuation-target span {
+  color: #9aa1a6;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .035em;
+}
+.source-actuation-target strong {
+  color: #ffd45c;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.source-actuation-control-row {
+  flex: 1;
+  min-height: 164px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 9px 6px 0;
+}
+.source-actuation-switch {
+  width: 130px;
+  height: 130px;
+  display: grid;
+  place-items: center;
+}
+.source-actuation-switch img {
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 16px rgba(0,0,0,.2));
+}
+.source-actuation-switch svg {
+  width: 76px;
+  height: 76px;
+  color: #90999e;
+}
+.source-actuation-switch.is-mixed { opacity: .55; filter: grayscale(.35); }
+.source-actuation-slider .vertical-range-shell,
+.source-actuation-slider .meter-track { height: 112px; }
+.source-actuation-slider .vertical-range-input { width: 112px; }
+.source-actuation-slider .vertical-meter { gap: 10px; }
+.source-actuation-slider .meter-track {
+  width: 4px;
+  background: #61686d;
+}
+.source-actuation-slider .meter-fill { background: #6a7075; }
+.source-actuation-slider .meter-marker {
+  width: 15px;
+  height: 15px;
+  border: 2px solid #8a9298;
+  background: #1d2022;
+  box-shadow: none;
+}
+.source-actuation-slider .meter-value {
+  min-width: 49px;
+  height: 28px;
+  border-radius: 5px;
+  background: #171a1c;
+}
+.source-actuation-slider .meter-value-input input {
+  width: 35px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.source-actuation-slider .value-suffix {
+  color: #8d959a;
+  font-size: 10px;
+}
+
+.source-live-feedback-body {
+  flex: 1;
+  grid-template-columns: 72px minmax(0, 1fr);
+  min-height: 190px;
+  gap: 26px;
+  padding: 12px 6px 2px;
+}
+.source-live-feedback-body .actuation-travel-track {
+  width: 18px;
+  height: 136px;
+  border-color: rgba(255,255,255,.055);
+  background: #151819;
+}
+.source-live-feedback-body .actuation-travel-fill {
+  background: linear-gradient(to bottom, rgba(85, 90, 165, .95), rgba(61, 60, 115, .62));
+}
+.source-live-feedback-body .actuation-threshold-line {
+  background: #ffd45c;
+  box-shadow: none;
+}
+.source-live-feedback-body .actuation-threshold-line::before {
+  border-color: #ffd45c;
+  background: #1c1f21;
+}
+.source-live-feedback-body .actuation-threshold-line span {
+  color: #ccd1d4;
+  font-size: 9px;
+}
+.source-live-feedback-body .actuation-travel-handle {
+  width: 12px;
+  height: 12px;
+  border-color: #b6bec3;
+  background: #1b1e20;
+  box-shadow: none;
+}
+.source-live-feedback-readout {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.source-live-kicker {
+  color: #777f84;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .065em;
+}
+.source-live-key {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #eef1f2;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.source-live-distance {
+  margin-top: 14px;
+  color: #f1f3f4;
+  font-variant-numeric: tabular-nums;
+}
+.source-live-distance > strong {
+  font-size: 29px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -.035em;
+}
+.source-live-distance > small {
+  margin-left: 3px;
+  color: #9ca4a9;
+  font-size: 11px;
+  font-weight: 600;
+}
+.source-live-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 13px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.045);
+  color: #818a90;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .035em;
+}
+.source-live-status.is-actuated span:first-child { color: #ffd45c; }
+.source-live-note {
+  margin: 10px 0 0;
+  color: #70797e;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.source-live-error {
+  margin: 7px 0 0;
+  color: #e68c8c;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+/* Exact visual shape inferred from the supplied Wootility AP DOM/screenshot:
+   one flat keyRender + value at top-left + centered key name. */
+.actuation-page .hero-key.is-actuation-overlay .hero-key-render {
+  background: rgb(61, 60, 115);
+}
+.actuation-page .hero-key.is-actuation-overlay:hover .hero-key-render { filter: brightness(1.06); }
+.actuation-page .hero-key.is-actuation-overlay:active .hero-key-render { filter: brightness(.96); }
+
+@container actuationpage (max-width: 720px) {
+  .source-faithful-actuation-workspace { grid-template-columns: 1fr; }
+  .source-actuation-card { min-height: 300px; }
+}
+
+/* Actuation uses the same entrance animation as the other keyboard pages. */
+
+.actuation-page .actuation-keyboard-stage {
+  min-height: clamp(226px, 28vh, 292px);
+  padding: 10px 0 4px;
+}
+
+.actuation-page .actuation-selection-instruction,
+.actuation-page .actuation-heading-row,
+.actuation-page .actuation-woot-grid {
+  width: min(100%, 1120px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.actuation-page .actuation-woot-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@container actuationpage (max-width: 860px) {
+  .actuation-page .actuation-woot-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* v0.9.46 — numeric typography pass: lighter values across AP/RT/deadzone/Hall controls; AP key value is 0.72em. */
+
+/* v0.9.48 — compact remap labels + custom key tooltip. */
+.hero-key-tooltip {
+  position: fixed;
+  z-index: 10000;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 8px 10px 7px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 7px;
+  background: #181b1c;
+  box-shadow: 0 7px 20px rgba(0,0,0,.34);
+  color: #eef1f2;
+  pointer-events: none;
+  transform: translateX(-50%);
+  font-family: "Nunito Sans", sans-serif;
+  line-height: 1.2;
+}
+.hero-key-tooltip.is-above { transform: translate(-50%, -100%); }
+.hero-key-tooltip.is-below { transform: translateX(-50%); }
+.hero-key-tooltip strong {
+  display: block;
+  max-width: 240px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.hero-key-tooltip span {
+  display: block;
+  margin-top: 3px;
+  color: #929b9f;
+  font-size: 10px;
+  font-weight: 500;
+}
+.hero-key-tooltip code {
+  display: block;
+  margin-top: 5px;
+  color: #d7bd68;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+/* Keep remap keys readable without shrinking the whole keyboard. */
+.remap-page .hero-key-label {
+  padding-inline: .08em;
+  font-size: .96em;
+  font-weight: 500;
+}
+.hero-key-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  background: #181b1c;
+  border: solid rgba(255,255,255,.10);
+  transform: translateX(-50%) rotate(45deg);
+}
+.hero-key-tooltip.is-above::after {
+  bottom: -4px;
+  border-width: 0 1px 1px 0;
+}
+.hero-key-tooltip.is-below::after {
+  top: -4px;
+  border-width: 1px 0 0 1px;
+}

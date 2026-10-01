@@ -1,0 +1,13 @@
+.local-service-guide { position: fixed; z-index: 1000; top: 114px; left: 420px; width: 330px; max-width: calc(100vw - 32px); pointer-events: none; }
+.local-service-guide-arrow { position: absolute; width: 140px; height: 100px; left: -137px; top: -20px; overflow: visible; fill: none; stroke: #ffda55; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 6px #0009); }
+.local-service-guide-card { position: relative; padding: 20px; border: 1px solid #ffda5580; border-radius: 16px; background: #24282a; color: #f3f4f4; box-shadow: 0 12px 40px #0008; pointer-events: auto; }
+.local-service-guide-icon { color: #ffda55; margin-bottom: 10px; }
+.local-service-guide-card strong { display: block; padding-right: 15px; font-size: 16px; line-height: 1.4; }
+.local-service-guide-card p { margin: 9px 0 13px; color: #bbc3c7; font-size: 13px; line-height: 1.6; }
+.local-service-guide-card small { display: block; color: #ffda55; font-size: 11px; line-height: 1.6; }
+.local-service-guide-close { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 7px; color: #bbc3c7; background: transparent; cursor: pointer; }
+.local-service-guide-close:hover { background: #ffffff12; }
+.local-service-guide-retry { border: 0; border-radius: 8px; padding: 9px 12px; background: #ffda55; color: #181b1c; font-weight: 600; cursor: pointer; }
+.local-service-guide button:focus-visible { outline: 2px solid #ffda55; outline-offset: 3px; }
+@media (max-width: 800px) { .local-service-guide { top: 150px; left: auto; right: 16px; } .local-service-guide-arrow { left: 15px; top: -95px; transform: rotate(24deg); } }
+@media (max-height: 500px) { .local-service-guide { top: 80px; } .local-service-guide-card { padding: 14px; } }

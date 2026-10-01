@@ -1,11 +1,18 @@
 # Custom RGB and background service
 
+RGB Settings opens Onboard Effects by default. Switching editor tabs does not
+change keyboard playback. In Custom Effects, an offline service blurs the editor;
+Try demo unlocks a local preview without HID writes or Hall polling. Download app
+opens Settings > Background Service with the download and setup tutorial.
+
 Run `service/dist/Hero68RgbService.exe`, then RGB Settings > Custom Effects >
-Start service RGB. Start transfers this preset to the service and routes
+Apply to keyboard. Apply transfers this preset to the service and routes
 keyboard configuration through the service-owned HID connection, so AP, RT
-and deadzone remain editable while RGB runs. Preset edits coalesce at 40 ms
+and deadzone remain editable while RGB runs. Only edits following a successful
+Apply are sent live. Losing the service or changing profile/session cancels
+queued updates and requires Reapply; drafts remain local. Preset edits coalesce at 40 ms
 intervals with at most one in-flight request. Closing the editor/page leaves
-playback running. Switching to Onboard restores firmware lighting immediately;
+playback running. Use onboard lighting restores firmware lighting immediately;
 the bridge retains the HID handle so AP/RT/Save keep using one transport.
 Close other keyboard configuration applications while rendering.
 
@@ -40,6 +47,22 @@ reconstruction, not Wooting source code. User-provided FX notes guided these
 host behaviors:
 
 - Scan reverses at the edges; Breath oscillates over time.
+- Aurora is a Custom Base option with brightness, ribbon width, speed and palettes.
+  It drifts continuous vertical color curtains across the five-row layout without
+  shimmer. Brightness affects the base independently of FX. Existing Aurora FX
+  presets still render; new layers use Comet and reactive effects instead.
+  Existing Aurora layers offer Move Aurora to Base, retaining palette, color,
+  width and speed and converting opacity to base brightness.
+  Aurora requires the background app and cannot be staged as an onboard mode.
+  Comet sends two staggered stars with fading
+  tails horizontally or vertically. Both offer Aurora, Sunset and Ice palettes
+  or a single color. Palettes are stored in the existing version-1 preset.
+- Pressure Wave emits rings every 500 ms while travel is active. Brightness follows
+  strike velocity estimated from successive Hall positions, not held depth.
+  Hero68 has no force telemetry; velocity is a proxy for strike strength. Faster
+  strikes flash brighter, then settle over 600 ms to a quarter of their peak
+  while held. Wave propagation uses the configured speed. Released rings fade, with at most 64 live
+  rings. The service polls Hall automatically even after closing the browser.
 - Ripple expands from presses; Reaction lights held keys then fades.
 - Trail fades only the pressed key.
 - Jelly's area grows with Hall travel; AOE's fixed area scales in brightness.
@@ -55,6 +78,13 @@ host behaviors:
   Mixing's RGB components and RT Display's status colors retain their semantics.
 - RT Display shows green/red from the reported Hall pressed flag. The flag's
   exact correspondence to the firmware RT output state is not established.
+
+The service reports `supportedEffects` in `/status`. The web editor blocks Apply
+when the service cannot render a preset's effects and opens the setup/update
+tutorial instead. Services without this field support only the legacy effects;
+Demo can still preview the new effects without updating the app.
+Aurora Base additionally requires `supportedBaseEffects: ["aurora"]`; an older
+app supporting Aurora FX must still update before applying the new base format.
 
 Travel normalizes against 3.4 mm, suppresses rest travel <=0.08 mm, and eases
 in from 0.08 to 0.16 mm for analog effects. Mixing uses the deepest arrow's
@@ -87,8 +117,10 @@ to the keyboard, including random FX colors, without running a separate local
 animation clock. This confirms OS write completion; it is not LED readback.
 
 The aggregate CMD08 length is a byte. A 68-key frame with 68 unique groups would
-need 340 bytes. The renderer therefore selects at most 32 colors by farthest
-point palette sampling, maps each key to the nearest color, and submits at most
+need 340 bytes. The renderer therefore merges neighboring colors into at most
+32 groups, averaging their colors and favoring preceding key groups to reduce
+palette flicker. Identical frames reuse their encoding, and fully black keys
+remain black. It submits at most
 196 aggregate bytes / four sequential packets. Frames with <=32 colors retain
 their exact colors. Frames are serialized with Hall reads; there is no unbounded
 queue or overlapping device I/O. Onboard mode submits `08/02 [0,0,0]` but
@@ -112,6 +144,8 @@ if its health check fails. The private signing key stays outside the repository.
 `npm run build:service` bundles the existing engine and builds both native
 executables with MSVC /MT, copying the current Node runtime into the package.
 Set `HERO68_VCVARS` to override the build machine's vcvars64.bat path.
+If a running app locks native outputs, use
+`npm run build:service -- --out-dir .refactor/rgb-service-check` to build separately.
 `npm run build` verifies the editor. Tests cover packet limits/checksums/POS,
 base-engine reuse, composition, analog FX distinctions and preset restoration:
 
@@ -122,3 +156,22 @@ node --test tests/custom-rgb.test.mjs tests/rgb-service.test.mjs
 Normal profile Save still only writes onboard zones and painted key colors.
 Host layers live in the local profile and exported preset; Start service RGB
 stores a separate copy for background playback.
+
+## Hosted web and browser permission
+
+The Windows app accepts the production website `https://open-hero68.pages.dev`
+as well as the existing local development origins. Cloudflare preview domains
+and unrelated sites are not automatically allowed. The app still listens only
+on `127.0.0.1:16868`; users can explicitly add another origin with `--allow-origin`.
+
+On recent Edge/Chrome versions, choose **Allow** when the website asks to access
+apps and services on this device. The web shows a static arrow and explanation
+while that permission is pending, and keeps preview/demo available. If blocked,
+allow access from the site controls beside the address bar, then **Check again**.
+The service timeout starts after granting permission, with a bounded 90-second
+wait for an unanswered prompt. Browsers without the permission API retain the
+ordinary service check. See [Microsoft's LNA guidance](https://learn.microsoft.com/en-us/deployedge/ms-edge-local-network-access).
+
+Core 0.2.3 includes support for the Pages origin. Quit the tray app before
+extracting the complete updated Windows package. A newer bundled core takes
+precedence over an older downloaded core when the updated app starts.

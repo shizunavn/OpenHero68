@@ -1,6 +1,7 @@
 import type { RgbProfile } from './hero68/rgb'
 import { decodeReport } from './hero68/codec'
-export type RgbServiceStatus={apiVersion?:number;mode?:'onboard'|'custom';sessionId?:string;enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number;hallSnapshots:number;timeouts:number;maxGapMs:number;lastError:string|null}
+import { fetchLocalService, LocalServicePermissionError } from './localServiceAccess'
+export type RgbServiceStatus={apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom';sessionId?:string;enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number;hallSnapshots:number;timeouts:number;maxGapMs:number;lastError:string|null}
 export type RgbServiceFrame={enabled:boolean;connected:boolean;keys?:Record<string,string>;sequence?:number;sessionId?:string;shuttingDown?:boolean}
 export type RgbServiceHallRecord={keyId:string;pos:number;distanceUnits:number;adc:number;pressed:boolean}
 const endpoint='http://127.0.0.1:16868'
@@ -9,8 +10,9 @@ let online:boolean|undefined
 function setOnline(value:boolean){if(online===value)return;online=value;availability.forEach(listener=>listener(value))}
 async function request(path:string,value?:unknown):Promise<RgbServiceStatus>{
   let response:Response
-  try{response=await fetch(endpoint+path,{method:value===undefined?'GET':'POST',headers:value===undefined?undefined:{'Content-Type':'application/json'},body:value===undefined?undefined:JSON.stringify(value),signal:AbortSignal.timeout(value===undefined?1000:5000)})}
-  catch(error){if(path==='/status')setOnline(false);throw Error(error instanceof DOMException&&error.name==='TimeoutError'?'RGB service phản hồi quá chậm. Hãy thử lại.':'RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe. Các thay đổi chưa lưu vẫn được giữ trên web.')}
+  try{response=await fetchLocalService(endpoint+path,{method:value===undefined?'GET':'POST',headers:value===undefined?undefined:{'Content-Type':'application/json'},body:value===undefined?undefined:JSON.stringify(value)},value===undefined?1000:5000)}
+  catch(error){if(path==='/status')setOnline(false);if(error instanceof LocalServicePermissionError)throw error;throw Error(error instanceof DOMException&&error.name==='TimeoutError'?'RGB service phản hồi quá chậm. Hãy thử lại.':'RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe. Các thay đổi chưa lưu vẫn được giữ trên web.')}
+  if(response.status===403)throw Error('The background app does not allow this website. Update the app, then check again.')
   const result=await response.json()
   if(!response.ok)throw Error(result.error??'RGB service request failed')
   if(path==='/status')setOnline(true)
@@ -22,8 +24,8 @@ export const rgbService={
   async deviceRequest(packet:Uint8Array,reenumerate=false){
     const hex=Array.from(packet,c=>c.toString(16).padStart(2,'0')).join('')
     let response:Response
-    try{response=await fetch(endpoint+'/device/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hex,reenumerate}),signal:AbortSignal.timeout(reenumerate?10000:5000)})}
-    catch{throw Error('RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe.')}
+    try{response=await fetchLocalService(endpoint+'/device/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hex,reenumerate})},reenumerate?10000:5000)}
+    catch(error){if(error instanceof LocalServicePermissionError)throw error;throw Error('RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe.')}
     const result=await response.json()
     if(!response.ok)throw Error(result.error??'Service configuration request failed')
     if(typeof result.hex!=='string'||!/^[0-9a-f]{128}$/i.test(result.hex))throw Error('Invalid service configuration reply')
@@ -36,8 +38,8 @@ export const rgbService={
     if(!packets.length)return []
     const requests=packets.map(packet=>({hex:Array.from(packet,c=>c.toString(16).padStart(2,'0')).join('')}))
     let response:Response
-    try{response=await fetch(endpoint+'/device/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requests}),signal:AbortSignal.timeout(Math.max(5000,packets.length*900))})}
-    catch{throw Error('RGB service đã tắt hoặc không phản hồi khi lưu cấu hình.')}
+    try{response=await fetchLocalService(endpoint+'/device/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requests})},Math.max(5000,packets.length*900))}
+    catch(error){if(error instanceof LocalServicePermissionError)throw error;throw Error('RGB service đã tắt hoặc không phản hồi khi lưu cấu hình.')}
     const result=await response.json()
     if(!response.ok)throw Error(result.error??'Configuration batch failed')
     if(!Array.isArray(result.hexes)||result.hexes.length!==packets.length)throw Error('Incomplete service batch reply')

@@ -1,0 +1,256 @@
+/* v0.9.50 — dedicated Rapid Trigger page, shaped after the supplied Wootility
+   reference. The third Wootility column is intentionally HERO68 Dead Zone,
+   reusing the same per-key dead-zone state and protocol as Quick Settings. */
+.rapid-page {
+  container-type: inline-size;
+  container-name: rapidpage;
+}
+
+
+.rapid-keyboard-stage {
+  min-height: clamp(226px, 28vh, 292px);
+  padding: 10px 0 4px;
+}
+
+.rapid-page .rapid-selection-instruction,
+.rapid-page .rapid-heading-row,
+.rapid-page .rapid-woot-grid {
+  width: min(100%, 1120px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.rapid-selection-instruction {
+  color: #c3c9cd;
+}
+
+.rapid-heading-row {
+  align-items: center;
+}
+
+.rapid-title-wrap {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.rapid-title-wrap h1 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -.025em;
+}
+
+.rapid-title-wrap svg {
+  color: #7b848a;
+}
+
+.rapid-woot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(10px, 1.1vw, 14px);
+  align-items: stretch;
+}
+
+.rapid-woot-card {
+  min-height: 336px;
+  padding: 20px 20px 18px;
+  border-color: rgba(255,255,255,.045);
+  background: rgb(31, 32, 34);
+  box-shadow: none;
+}
+
+.rapid-woot-card:hover:not(.is-unavailable) {
+  border-color: rgba(255,255,255,.065);
+  background: rgb(31, 32, 34);
+}
+
+.rapid-woot-card.is-unavailable { opacity: 1; }
+
+.rapid-card-head {
+  min-height: 34px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rapid-card-head.with-control {
+  justify-content: space-between;
+}
+
+.rapid-card-head h2 {
+  margin: 0;
+  color: #eef1f2;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.017em;
+}
+
+.rapid-card-head .toggle {
+  transform: scale(.82);
+  transform-origin: right top;
+}
+
+.rapid-card-copy {
+  margin: 11px 0 0;
+  color: #929ba1;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.rapid-enabled-summary {
+  margin-top: auto;
+  padding-top: 18px;
+  color: #858e94;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .035em;
+}
+
+.rapid-enabled-summary strong {
+  color: #ffd451;
+  font-weight: 800;
+}
+
+.rapid-split-row {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  color: #9aa2a7;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rapid-split-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rapid-split-label svg {
+  color: #727c82;
+}
+
+.rapid-split-row .toggle {
+  transform: scale(.78);
+  transform-origin: right center;
+}
+
+.rapid-sensitivity-control {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 176px;
+  padding-top: 18px;
+}
+
+.rapid-control-label {
+  margin-bottom: 9px;
+  color: #7d878d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.rapid-sensitivity-card .range-wrap {
+  gap: 11px;
+}
+
+.rapid-sensitivity-card .range-slider-shell {
+  min-width: 0;
+}
+
+.rapid-sensitivity-card .value-readout {
+  flex: 0 0 auto;
+}
+
+.rapid-range-labels {
+  width: calc(100% - 72px);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 7px;
+  color: #707980;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .025em;
+}
+
+.rapid-split-controls {
+  flex: 1;
+  display: grid;
+  align-content: center;
+  gap: 20px;
+  padding-top: 8px;
+}
+
+.rapid-split-controls > div + div {
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.035);
+}
+
+.rapid-deadzone-copy {
+  min-height: 54px;
+}
+
+.rapid-deadzone-grid {
+  flex: 1;
+  align-content: end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.rapid-deadzone-control-card {
+  padding: 10px 8px 11px;
+  border-color: rgba(255,255,255,.045);
+  background: rgba(255,255,255,.012);
+}
+
+.rapid-deadzone-control-card .deadzone-head {
+  margin-bottom: 7px;
+  font-size: 9px;
+}
+
+.rapid-deadzone-control-card .vertical-meter {
+  min-height: 118px;
+  gap: 7px;
+}
+
+.rapid-deadzone-control-card .vertical-range-shell,
+.rapid-deadzone-control-card .meter-track {
+  height: 92px;
+}
+
+.rapid-deadzone-control-card .vertical-range-input {
+  width: 92px;
+}
+
+.rapid-deadzone-control-card .meter-value {
+  min-width: 46px;
+  height: 26px;
+}
+
+.rapid-deadzone-control-card .meter-value-input input {
+  width: 32px;
+  font-size: 12px;
+}
+
+.rapid-deadzone-control-card .value-suffix {
+  font-size: 10px;
+}
+
+@container rapidpage (max-width: 860px) {
+  .rapid-woot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rapid-woot-card {
+    min-height: 300px;
+  }
+}

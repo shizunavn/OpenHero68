@@ -1,0 +1,106 @@
+/* Wootility UI font — use the exact Nunito Sans variable font assets already
+   present in the original Wootility-Src folder. Keep these files in place. */
+@font-face {
+  font-family: "Nunito Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  font-stretch: 75% 125%;
+  src: url("../../Wootility-Src/fonts/cd31765d.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Nunito Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  font-stretch: 75% 125%;
+  src: url("../../Wootility-Src/fonts/cf96abce.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Nunito Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  font-stretch: 75% 125%;
+  src: url("../../Wootility-Src/fonts/d47ab3c3.woff2") format("woff2-variations");
+  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+}
+@font-face {
+  font-family: "Nunito Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 1000;
+  font-stretch: 75% 125%;
+  src: url("../../Wootility-Src/fonts/5d518300.woff2") format("woff2-variations");
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+
+:root {
+  color-scheme: dark;
+  font-family: "Nunito Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  --bg-0: #151819;
+  --bg-1: #191c1d;
+  --bg-2: #202324;
+  --bg-3: #282c2e;
+  --bg-4: #34393c;
+  --text-1: #f0f2f3;
+  --text-2: #bbc2c7;
+  --text-3: #7e888f;
+  --line: rgba(255, 255, 255, .055);
+  --line-strong: rgba(255, 255, 255, .105);
+  --brand: #ffd45c;
+  --brand-soft: rgba(255, 212, 92, .13);
+  --brand-ink: #171818;
+  --duration-fast: 140ms;
+  --duration: 200ms;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --content-width: 1180px;
+  --page-inline-pad: clamp(14px, 2.1vw, 44px);
+  --profile-control-width: 570px;
+  --rail-width: clamp(64px, 4.1vw, 78px);
+  --sidebar-width: clamp(180px, 16vw, 306px);
+  --sidebar-inline-pad: clamp(10px, .85vw, 16px);
+  --device-thumb-size: clamp(46px, 2.9vw, 56px);
+  --card-pad-x: clamp(16px, 1.25vw, 24px);
+  --switch-preview-key-size: 48px;
+}
+
+
+* { box-sizing: border-box; }
+html {
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+html, body, #root { margin: 0; width: 100%; height: 100%; min-width: 320px; min-height: 100%; background: var(--bg-0); }
+body { min-height: 100vh; overflow: hidden; color: var(--text-1); font-feature-settings: "kern"; }
+button, input, select, textarea { font: inherit; }
+button, input, select, textarea { text-rendering: auto; }
+button { color: inherit; }
+
+/* Replace the browser's black focus ring across interactive controls. */
+:where(button, input, select, textarea, a[href], [tabindex]):focus {
+  outline: none;
+}
+:where(button, input, select, textarea, a[href], [tabindex]):focus-visible {
+  outline: 1px solid rgba(255,212,92,.85);
+  outline-offset: 3px;
+}
+.meter-value-input:has(input:focus-visible),
+.value-pill-input:has(input:focus-visible) {
+  outline: 1px solid rgba(255,212,92,.85);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) var(--sidebar-width) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  background: var(--bg-0);
+}

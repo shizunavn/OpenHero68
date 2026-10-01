@@ -1,0 +1,303 @@
+/* v0.9.53 — the old Actuation card used ::first-letter, which only painted
+   the first digit in "68 KEYS" yellow. Color the complete value instead. */
+.actuation-selection-summary strong { color: var(--brand); }
+.actuation-selection-summary strong::first-letter { color: inherit; }
+
+/* v0.9.52 — actuation page refresh: merged set-actuation card with front switch preview + vertical slider.
+   RT / Split / Dead Zone dependent controls stay disabled until the selected
+   keys have an explicit common ON state. Actuation renders MIXED in-value. */
+
+
+/* v0.9.54 — actuation layout polish + consistent yellow focus states.
+   Fixes:
+   1) no more floating SHALLOW/DEEP labels leaking toward the right card;
+   2) two-card actuation layout rebalanced to resemble Wootility more closely;
+   3) clicked preview keys / switch-board keys / sidebar tabs now use a yellow
+      custom focus treatment instead of Chromium's dark default ring; and
+   4) selected keys no longer show a confusing double border when focused. */
+
+.sidebar-item:focus,
+.secondary-button:focus,
+.ghost-button:focus,
+.apply-button:focus {
+  outline: none;
+}
+
+.sidebar-item:focus-visible,
+.secondary-button:focus-visible,
+.ghost-button:focus-visible,
+.apply-button:focus-visible {
+  outline: 1px solid rgba(255,212,92,.88);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px rgba(255,212,92,.14);
+}
+
+.hero-key:focus-visible,
+.switch-board-key:focus-visible {
+  outline: none;
+}
+
+.hero-key:not(.is-selected):focus-visible {
+  z-index: 6;
+  border-color: rgba(255,212,92,.88);
+  box-shadow: 0 0 0 1px rgba(255,212,92,.28);
+}
+
+.hero-key.is-selected:focus-visible {
+  z-index: 7;
+  border-color: rgba(255,212,92,.96);
+  box-shadow: none;
+}
+
+.actuation-page .hero-key.is-selected.is-actuation-overlay:focus-visible {
+  border-color: rgba(172,184,255,.96);
+  box-shadow: none;
+}
+
+.switch-board-key:not(.is-selected):focus-visible {
+  border-color: rgba(255,212,92,.88);
+  box-shadow: 0 0 0 1px rgba(255,212,92,.24), inset 0 1px rgba(255,255,255,.03);
+}
+
+.switch-board-key.is-selected:focus-visible {
+  box-shadow: 0 0 0 1px rgba(255,212,92,.28) inset, 0 0 0 3px rgba(255,212,92,.12);
+}
+
+/* Actuation: all editor edges follow the measured keyboard case width.
+   Scope these rules to the page so old shared control styles cannot expand it. */
+.actuation-page .actuation-keyboard-stage {
+  height: 280px;
+  min-height: 280px;
+  padding: 8px 0;
+}
+
+.actuation-page .actuation-selection-instruction,
+.actuation-page .actuation-heading-row,
+.actuation-page .actuation-woot-grid {
+  width: min(100%, var(--actuation-preview-width, 790px));
+  margin-inline: auto;
+}
+
+.actuation-page .actuation-selection-instruction {
+  min-height: 36px;
+  padding: 10px 0 6px;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+  color: #adb9c4;
+}
+
+.actuation-page .actuation-heading-row {
+  min-height: 60px;
+  padding: 8px 0 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.actuation-page .actuation-title-wrap h1 { margin: 0; }
+.actuation-page .selection-actions { gap: 8px; flex-wrap: wrap; }
+.actuation-page .selection-actions > button {
+  min-height: 40px;
+  padding: 9px 16px;
+  font-size: 15px;
+}
+
+.actuation-page .actuation-woot-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.actuation-page .actuation-woot-card {
+  grid-column: auto;
+  min-width: 0;
+  min-height: 350px;
+  padding: 22px;
+  background: #202224;
+  border: 1px solid rgba(255,255,255,.045);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.actuation-page .actuation-woot-card:hover { background: #202224; }
+.actuation-page .actuation-woot-card.is-unavailable { opacity: 1; }
+.actuation-page .actuation-editor-woot-head { display: block; }
+.actuation-page .actuation-always-on { display: none; }
+.actuation-page .actuation-editor-woot-head h2,
+.actuation-page .actuation-woot-card-head h2 {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #e0e4e7;
+}
+
+.actuation-page .actuation-editor-woot-head p,
+.actuation-page .actuation-woot-copy {
+  max-width: none;
+  margin: 14px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #9ca5ab;
+}
+
+.actuation-page .actuation-editor-summary-line {
+  margin-top: 22px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .035em;
+  color: #adb4b9;
+}
+
+.actuation-page .actuation-editor-summary-line strong {
+  margin-top: 5px;
+  font-size: 16px;
+  line-height: 1.3;
+  color: #e8c363;
+}
+
+.actuation-page .actuation-editor-woot-body {
+  display: flex;
+  flex: 1;
+  min-height: 150px;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 0 0;
+}
+
+.actuation-page .actuation-editor-woot-body .actuation-switch-preview {
+  flex: 0 1 108px;
+  width: 108px;
+  min-width: 64px;
+  align-items: center;
+}
+
+.actuation-page .actuation-switch-image-wrap,
+.actuation-page .actuation-switch-image-wrap img {
+  width: 100%;
+  max-width: 108px;
+  height: 120px;
+  object-fit: contain;
+}
+
+.actuation-page .actuation-page-slider {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  justify-content: center;
+  gap: 6px;
+}
+
+.actuation-page .actuation-distance-labels {
+  order: -1;
+  flex: 0 0 50px;
+  width: 50px;
+  height: 112px;
+  padding: 0;
+  text-align: right;
+  align-self: center;
+}
+
+.actuation-page .actuation-distance-labels b { font-size: 9px; color: #aeb7bd; }
+.actuation-page .actuation-distance-labels small { font-size: 8px; color: #89949b; }
+.actuation-page .actuation-page-slider .vertical-meter { min-width: 0; gap: 8px; }
+.actuation-page .actuation-page-slider .vertical-meter.is-disabled { opacity: .65; }
+.actuation-page .actuation-page-slider .vertical-range-shell,
+.actuation-page .actuation-page-slider .meter-track { height: 112px; }
+.actuation-page .actuation-page-slider .vertical-range-input { width: 112px; }
+.actuation-page .actuation-page-slider .meter-readout { min-width: 0; gap: 5px; }
+.actuation-page .actuation-page-slider .meter-value {
+  min-width: 54px;
+  height: 32px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: #191c1e;
+}
+.actuation-page .actuation-page-slider .meter-value-input input { width: 42px; font-size: 13px; }
+.actuation-page .actuation-page-slider .value-suffix { font-size: 10px; }
+.actuation-page .actuation-page-slider .meter-marker { width: 15px; height: 15px; }
+.actuation-page .actuation-hall-head { min-height: 44px; }
+.actuation-page .actuation-hall-panel { margin-top: 20px; }
+.actuation-page .actuation-hall-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 10px;
+  white-space: normal;
+  line-height: 1.5;
+  color: #939da4;
+}
+.actuation-page .actuation-hall-note { margin-top: auto; font-size: 11px; color: #9ba6ae; }
+.actuation-page .actuation-hall-panel + .actuation-hall-note { margin-top: auto; }
+
+@container actuationpage (max-width: 700px) {
+  .actuation-page .actuation-woot-grid { grid-template-columns: 1fr; }
+  .actuation-page .actuation-woot-card { min-height: 320px; }
+  .actuation-page .actuation-editor-woot-body { gap: 24px; }
+  .actuation-page .actuation-hall-note { margin-top: 28px; }
+}
+
+@container actuationpage (max-width: 480px) {
+  .actuation-page .actuation-heading-row { flex-wrap: wrap; gap: 12px; }
+  .actuation-page .actuation-woot-card { padding: 18px; }
+  .actuation-page .actuation-editor-woot-body { gap: 8px; }
+  .actuation-page .actuation-distance-labels { display: none; }
+}
+
+/* Mixed is a real label, independent of the browser's numeric placeholder. */
+.value-pill-input,.meter-value-input { position:relative; }
+.mixed-value-label { position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;white-space:nowrap;font-size:12px;font-weight:750;letter-spacing:0;color:#dce2e6; }
+.value-pill-input:focus-within .mixed-value-label,.meter-value-input:focus-within .mixed-value-label { visibility:hidden; }
+.range-wrap.has-mixed-label .value-pill,.vertical-meter.has-mixed-label .meter-value,
+.actuation-page .actuation-page-slider .vertical-meter.has-mixed-label .meter-value { min-width:68px;flex-shrink:0; }
+.range-wrap.has-mixed-label .value-pill-input input,.vertical-meter.has-mixed-label .meter-value-input input,
+.actuation-page .actuation-page-slider .vertical-meter.has-mixed-label .meter-value-input input { width:52px;font-size:13px;letter-spacing:0; }
+.advanced-keys-page .hero-key:focus-visible { outline:none;box-shadow:none; }
+.advanced-keys-page .hero-key:not(.is-selected):focus-visible { border-color:#ffd65a; }
+
+/* Macro actions inside Key Remap */
+.remap-categories button { display: inline-flex; align-items: center; gap: 5px; }
+.remap-macro-section { border-top: 1px solid rgba(255,255,255,.075); padding-top: 16px; }
+.remap-macro-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.remap-macro-heading h3 { margin: 0 0 5px; color: var(--text-2); font-size: 11px; }
+.remap-macro-heading p { margin: 0; color: var(--text-3); font-size: 10px; line-height: 1.55; }
+.remap-macro-heading code { color: #ffd45c; font: inherit; }
+.remap-macro-heading > span { flex-shrink: 0; padding: 4px 7px; border-radius: 4px; background: rgba(255,255,255,.045); color: var(--text-3); font-size: 9px; }
+.remap-macro-controls { display: grid; grid-template-columns: minmax(0,1fr) 150px; gap: 10px; padding: 10px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,.075); border-radius: 7px; background: #1a1d1e; }
+.remap-macro-mode { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; }
+.remap-macro-mode button { min-width: 0; padding: 8px 6px; border: 1px solid rgba(255,255,255,.09); border-radius: 5px; background: #25292b; color: var(--text-2); cursor: pointer; }
+.remap-macro-mode button strong, .remap-macro-mode button small { display: block; }
+.remap-macro-mode button strong { font-size: 10px; font-weight: 650; }
+.remap-macro-mode button small { margin-top: 3px; color: var(--text-3); font-size: 8px; }
+.remap-macro-mode button:hover { border-color: #676e71; }
+.remap-macro-mode button.is-active { border-color: rgba(255,212,92,.55); background: rgba(255,212,92,.07); color: #ffd45c; }
+.remap-macro-mode button.is-active small { color: rgba(255,212,92,.7); }
+.remap-macro-count { display: grid; grid-template-columns: auto 62px; align-items: center; gap: 5px 8px; color: var(--text-2); font-size: 10px; }
+.remap-macro-count > span { font-weight: 600; }
+.remap-macro-count input { width: 62px; height: 30px; padding: 0 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 5px; outline: 0; background: #25292b; color: var(--text-1); font: inherit; }
+.remap-macro-count input:focus { border-color: rgba(255,212,92,.55); }
+.remap-macro-count.is-disabled { opacity: .4; }
+.remap-macro-count.is-disabled input { cursor: not-allowed; }
+.remap-macro-count small { grid-column: 1 / -1; color: var(--text-3); font-size: 8px; line-height: 1.45; }
+.remap-macro-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: 6px; }
+.remap-macro-grid > button { display: flex; align-items: center; min-width: 0; min-height: 54px; gap: 9px; padding: 8px 9px; border: 1px solid rgba(255,255,255,.09); border-radius: 6px; background: #25292b; color: var(--text-2); text-align: left; cursor: pointer; }
+.remap-macro-grid > button:hover:not(:disabled) { border-color: #6d7478; background: #2e3335; }
+.remap-macro-grid > button.is-assigned { border-color: rgba(255,212,92,.3); }
+.remap-macro-grid > button.is-active { border-color: rgba(255,212,92,.62); background: rgba(255,212,92,.07); }
+.remap-macro-grid > button:disabled { opacity: .5; cursor: default; }
+.remap-macro-icon { display: grid; place-items: center; width: 31px; height: 31px; flex: 0 0 31px; border-radius: 5px; background: rgba(255,255,255,.05); color: var(--text-3); }
+.remap-macro-grid > button.is-assigned .remap-macro-icon { color: #ffd45c; background: rgba(255,212,92,.08); }
+.remap-macro-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.remap-macro-copy strong { overflow: hidden; color: var(--text-1); font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.remap-macro-copy small { color: var(--text-3); font-size: 8px; }
+.remap-macro-assign { flex-shrink: 0; color: var(--text-3); font-size: 8px; }
+.remap-macro-grid > button.is-active .remap-macro-assign { color: #ffd45c; }
+@media (max-width: 600px) {
+  .remap-macro-controls { grid-template-columns: 1fr; }
+  .remap-macro-grid { grid-template-columns: 1fr; }
+}

@@ -2,14 +2,15 @@
 
 WebHID keyboard configuration app and Windows tray RGB service for AULA HERO68.
 
-[Open the web app](https://shizuna.ddns.net:5173/) · [Download Windows RGB service](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest)
+[Open the web app](https://open-hero68.pages.dev/) · [Download Windows RGB service](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest)
 
 ## Features
 
 - Keyboard profiles, remapping, actuation point, Rapid Trigger and deadzone settings.
 - Advanced key configuration and macro editing.
 - RGB settings using the existing AULA color engine.
-- Custom RGB base layer and composable FX: Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail and RT Display.
+- Custom RGB with an Aurora base and composable FX, including Comet, Pressure Wave, Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail and RT Display.
+- A layer editor, local Demo without the Windows app, and a Background Service setup tutorial.
 - Portable Windows tray service for RGB playback while the browser is closed.
 
 Gamepad output and Rhythm Sync are unfinished. The RGB service streams main keys; side LEDs retain their onboard effect.
@@ -36,8 +37,14 @@ The production app is generated in `dist/`. Serve it over HTTPS for WebHID.
 
 1. Download the Windows x64 ZIP from Releases and extract it to a permanent folder.
 2. Run `Hero68RgbService.exe`; the H icon appears in the system tray.
-3. In the web app, go to RGB Settings > Custom Effects and select **Start service RGB**.
-4. Closing the browser leaves playback running. Right-click the tray icon for controls.
+3. Open the web app and choose **Allow** if the browser asks to access apps and services on this device.
+4. Go to RGB Settings > Custom Effects, choose your preset, and select **Apply to keyboard**.
+5. Closing the browser leaves playback running. Right-click the tray icon for controls.
+
+The Pages website requires service core 0.2.3 or later. Source updates do not
+automatically publish a Windows release; check the release notes before downloading.
+Without the app, select **Try demo** to edit and preview effects locally. Opening
+RGB defaults to Onboard Effects and does not change the lighting running on the keyboard.
 
 The menu includes Open web app, Open control panel, Start saved RGB, Stop RGB, Check for updates, Open log folder, Auto-start and Quit. Check for updates works directly from the tray: it reports when the installed version is current, downloads and applies compatible signed core updates, or downloads a checksum-verified ZIP when the native launcher must change. A downloaded ZIP must be extracted over the service folder after quitting the old launcher. Auto-start is optional, per Windows account, and disabled by default. Disable it before moving or deleting the service folder.
 

@@ -2,7 +2,9 @@ import { rolldown } from 'rolldown'
 import { mkdir, copyFile, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
-const root=process.cwd(), out=path.join(root,'service','dist')
+const root=process.cwd(), outIndex=process.argv.indexOf('--out-dir')
+if(outIndex>=0&&!process.argv[outIndex+1])throw Error('--out-dir requires a directory')
+const out=outIndex>=0?path.resolve(root,process.argv[outIndex+1]):path.join(root,'service','dist')
 await mkdir(out,{recursive:true})
 const bundle=await rolldown({input:'service/main.ts',external:/^node:/})
 try{await bundle.write({format:'cjs',file:path.join(out,'service.cjs')})}finally{await bundle.close()}
@@ -16,5 +18,5 @@ await copyFile(process.execPath,path.join(out,'runtime.exe'))
 const license=await fetch(`https://raw.githubusercontent.com/nodejs/node/v${process.versions.node}/LICENSE`)
 if(!license.ok)throw Error('Could not retrieve bundled Node runtime license')
 await writeFile(path.join(out,'NODE-LICENSE.txt'),await license.text())
-await writeFile(path.join(out,'README.txt'),'OpenHero68 RGB Service core 0.2.2 / launcher 0.2.1 - Windows x64\r\nExtract the ZIP to a permanent folder, then run Hero68RgbService.exe.\r\nRight-click its tray icon for Start/Stop, updates, logs, Auto-start and Quit.\r\nAuto-start is optional, per Windows user, and disabled by default. Keep the folder at the same path after enabling it. Disable Auto-start before moving/deleting the folder.\r\nUse Custom Effects > Start service RGB in Open-Hero68 to send a preset.\r\nKeep every file in this folder together. No Node/Python installation required.\r\nControl panel: http://127.0.0.1:16868/\r\nPreset and logs: %LOCALAPPDATA%\\OpenHero68\\rgb-service\r\nDownloads: https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest\r\nHall streaming prioritizes up to ten keys at 100 Hz while RGB remains at 40 FPS.\r\nThe tray Check for updates installs signed compatible core updates automatically, or downloads a verified ZIP for launcher updates.\r\n')
+await writeFile(path.join(out,'README.txt'),'OpenHero68 RGB Service core 0.2.3 / launcher 0.2.1 - Windows x64\r\nSupported website: https://open-hero68.pages.dev. Choose Allow when the browser asks to access apps on this device. Extract the ZIP to a permanent folder, then run Hero68RgbService.exe.\r\nRight-click its tray icon for Start/Stop, updates, logs, Auto-start and Quit.\r\nAuto-start is optional, per Windows user, and disabled by default. Keep the folder at the same path after enabling it. Disable Auto-start before moving/deleting the folder.\r\nUse Custom Effects > Apply to keyboard in Open-Hero68 to send a preset.\r\nKeep every file in this folder together. No Node/Python installation required.\r\nControl panel: http://127.0.0.1:16868/\r\nPreset and logs: %LOCALAPPDATA%\\OpenHero68\\rgb-service\r\nDownloads: https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest\r\nHall streaming prioritizes up to ten keys at 100 Hz while RGB remains at 40 FPS.\r\nThe tray Check for updates installs signed compatible core updates automatically, or downloads a verified ZIP for launcher updates.\r\n')
 console.log(`Built ${out}\\Hero68RgbService.exe`)

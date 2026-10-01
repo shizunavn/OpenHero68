@@ -1,0 +1,125 @@
+/* General device settings — Wootility-inspired density, HERO68 protocol-backed. */
+.general-settings-hero { align-items: center; }
+.general-settings-stack {
+  width: min(100%, 840px);
+  display: grid;
+  gap: 12px;
+}
+.wooting-settings-card {
+  padding: 0 20px;
+  max-width: 840px;
+}
+.device-setting-section {
+  display: grid;
+  gap: 14px;
+  padding: 24px 0;
+  border-top: 1px solid rgba(255,255,255,.075);
+}
+.device-setting-section.first { border-top: 0; }
+.device-setting-section.toggle-setting-section {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+}
+.device-setting-copy h2 {
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: -.02em;
+}
+.device-setting-copy p {
+  margin: 7px 0 0;
+  max-width: 650px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.52;
+}
+.device-option-list {
+  display: grid;
+  gap: 7px;
+}
+.polling-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.device-option-row {
+  min-height: 44px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.035);
+  border-radius: 7px;
+  background: #292d2f;
+  color: #f0f2f3;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+.device-option-row:hover:not(:disabled) { background: #33383b; border-color: rgba(255,255,255,.09); }
+.device-option-row.is-selected {
+  background: #555b5f;
+  border-color: rgba(255,212,92,.24);
+}
+.device-option-row:disabled { cursor: default; opacity: .54; }
+.device-option-row small {
+  color: #c7ccd0;
+  font-size: 11px;
+  font-weight: 700;
+}
+.device-radio-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.13);
+  background: #353a3d;
+  position: relative;
+}
+.device-option-row.is-selected .device-radio-dot {
+  border-color: #ffd45c;
+  background: #ffd45c;
+}
+.device-option-row.is-selected .device-radio-dot::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #3b3f42;
+}
+.advanced-device-setting {
+  background: rgba(255,212,92,.025);
+}
+.advanced-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 7px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255,212,92,.15);
+  color: #ffd45c;
+  font-size: 9px;
+  letter-spacing: .05em;
+  vertical-align: middle;
+}
+.device-settings-read-status {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.025);
+  color: var(--text-3);
+  font-size: 12px;
+}
+.device-settings-read-status.is-ready { color: #a9d8ae; border-color: rgba(110,203,126,.15); }
+.device-settings-read-status.is-error { color: #ff9a9a; border-color: rgba(255,100,100,.18); }
+.device-settings-read-status.is-reading,
+.device-settings-read-status.is-saving { color: #f4d984; border-color: rgba(255,212,92,.16); }
+
+@media (max-width: 780px) {
+  .general-settings-hero { align-items: flex-start; }
+  .polling-options { grid-template-columns: 1fr; }
+  .device-setting-section.toggle-setting-section { grid-template-columns: 1fr; align-items: start; }
+}

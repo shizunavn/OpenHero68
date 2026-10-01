@@ -2,6 +2,9 @@ node_modules/
 dist/
 service/dist/
 service/releases/
+.refactor/rgb-ui-fixture/
+.refactor/rgb-service-check/
+.refactor/aurora-base-desktop.jpg
 reports/
 tools/prepare-source-publication.py
 openhero68-baseline/
@@ -20,3 +23,6 @@ Wootility-Src/images/
 *.crt
 .DS_Store
 Thumbs.db
+.refactor/rgb-service-pages/
+.refactor/permission-guide-desktop.png
+.refactor/permission-guide-mobile.png

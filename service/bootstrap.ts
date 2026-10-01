@@ -2,7 +2,7 @@ import {spawn, type ChildProcess} from 'node:child_process'
 import {copyFileSync,existsSync,mkdirSync,readFileSync,writeFileSync,renameSync} from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import {CORE_VERSION,CORE_API_VERSION,validVersion,verifyCore,type CoreManifest} from './updatePackage'
+import {CORE_VERSION,CORE_API_VERSION,validVersion,newer,verifyCore,type CoreManifest} from './updatePackage'
 
 const state=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
 const coreDir=path.join(state,'core')
@@ -16,6 +16,8 @@ function installed(){
   try{
     const record=JSON.parse(readFileSync(activeFile,'utf8')) as {version:string}
     if(!validVersion(record.version))throw Error('Invalid active version')
+    // A newly extracted app must not load an older downloaded core instead.
+    if(newer(CORE_VERSION,record.version))return {file:bundled,version:CORE_VERSION}
     const folder=path.join(coreDir,record.version),file=path.join(folder,'service.cjs')
     const version=verifiedCore(readManifest(path.join(folder,'manifest.json')),file)
     if(version!==record.version)throw Error('Wrong active version')

@@ -1,11 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   ArrowDownToLine,
   ChevronDown,
   CircleHelp,
   Gamepad2,
-  Info,
   Keyboard,
   Lightbulb,
   ListOrdered,
@@ -18,23 +17,21 @@ import {
   ToggleLeft,
   Zap,
 } from 'lucide-react'
-import Hero68Preview from './components/Hero68Preview'
-import FeatureHelp from './components/FeatureHelp'
 import KeyRemapPage from './components/KeyRemapPage'
 import AdvancedKeysPage from './components/AdvancedKeysPage'
 import MacroPage from './components/MacroPage'
 import { advancedEqual, mergeAdvanced, readAdvancedBindings, saveAdvancedBindings, type AdvancedBinding } from './protocol/hero68/advanced'
 import MyProfilePage from './components/MyProfilePage'
 import { mergeRgb, readRgbProfile, restoreStoredRgb, rgbChanges, rgbDirtyCount, saveRgbProfile, type RgbProfile } from './protocol/hero68/rgb'
-import { HERO68_KEY_IDS, HERO68_LAYOUT } from './keyboard/hero68Layout'
+import { HERO68_KEY_IDS } from './keyboard/hero68Layout'
 import { loadOpenHeroState, saveOpenHeroState, type PersistedOpenHeroState, type ProfileDraft } from './state/persistence'
 import { defaultRemapLayers, isMacroRemapValue, readRemapLayers, readOnboardProfileName, saveOnboardProfileName, saveRemapChanges, REMAP_LAYERS, type RemapLayer, type RemapLayers } from './protocol/hero68/remap'
 import { makeKeyDeviceSettings, saveDeviceConfiguration } from './protocol/deviceBridge'
 import { hero68DeviceManager, useHero68Device, type Hero68ConnectionState } from './protocol/hero68/webhid'
 import { syncHero68MacroLibrary } from './protocol/hero68/macroDevice'
 import { loadMacroLibrary } from './state/macros'
-import { hydrateFromDevice, type HydratedKeySettings } from './protocol/hero68/hero68Encoder'
-import { HERO68_SWITCH_PROFILES, isSwitchProfileId, switchProfileLabel, type SwitchProfileId } from './protocol/hero68/switchProfiles'
+import { hydrateFromDevice } from './protocol/hero68/hero68Encoder'
+import { isSwitchProfileId, switchProfileLabel } from './protocol/hero68/switchProfiles'
 import { HERO68_HALL_VISUAL_MAX_MM, hero68HallStream, useHero68HallStream } from './protocol/hero68/hallStream'
 import {
   liveIdle,
@@ -43,492 +40,37 @@ import {
   readAutoCalibration,
   readHallDebounce,
   readOsMode,
-  readPollingRate,
   readWinLock,
   selectProfile,
   writeAutoCalibration,
   writeHallDebounce,
   writeOsMode,
-  writePollingRate,
   writeWinLock,
 } from './protocol/hero68/commands'
 import type { PollingRate, ProfileSlot } from './protocol/hero68/types'
 import logo from './assets/openhero68-logo.png'
 import hero68 from './assets/hero68.png'
-import clearFront from './assets/switches/clear-front.png'
-import clearTop from './assets/switches/clear-top.png'
-import blueFront from './assets/switches/blue-front.png'
-import blueTop from './assets/switches/blue-top.png'
-import blackFront from './assets/switches/black-front.png'
-import blackTop from './assets/switches/black-top.png'
-import whiteFront from './assets/switches/white-front.png'
-import whiteTop from './assets/switches/white-top.png'
-import wingChunTop from './assets/switches/wing-chun-top.png'
-import uranusTop from './assets/switches/uranus-top.png'
-import jadeProTop from './assets/switches/jade-pro-top.png'
-import wingChunFront from './assets/switches/wing-chun-front.png'
-import uranusFront from './assets/switches/uranus-front.png'
-import jadeProFront from './assets/switches/jade-pro-front.png'
+import { FACTORY_REMAP_LAYERS, HERO68_KEY_ID_SET, isWholeKeyboardSelected, mergeHydratedBooleans, mergeHydratedNumbers, mergePerKeyState, normalizeHero68Selection, RAPID_TRIGGER_VALUES, selectionHasMixedValues, snapToAllowedValue, snapToStep } from './app/helpers'
+import { SWITCH_OPTIONS, type SwitchOption, type SwitchTone } from './app/switchAssets'
+import { SwitchSelectorBoard } from './app/components/SwitchSelectorBoard'
+import { RailItem } from './app/components/RailItem'
+import { SidebarItem } from './app/components/SidebarItem'
+import { KeyboardMenuIcon } from './app/components/KeyboardMenuIcon'
+import { SwitchStemMenuIcon } from './app/components/SwitchStemMenuIcon'
+import { KeyRemapMenuIcon } from './app/components/KeyRemapMenuIcon'
+import { AdvancedKeysMenuIcon } from './app/components/AdvancedKeysMenuIcon'
+import { RapidTriggerMenuIcon } from './app/components/RapidTriggerMenuIcon'
+import { Toggle } from './app/components/Toggle'
+import { QuickSettingsPage } from './pages/QuickSettingsPage'
+import { StreamPage } from './pages/StreamPage'
+import { RgbPage } from './pages/RgbPage'
+import BackgroundServicePage from './pages/BackgroundServicePage'
+import LocalServicePermissionGuide from './components/LocalServicePermissionGuide'
+import { ActuationPage } from './pages/ActuationPage'
+import { RapidPage } from './pages/RapidPage'
+import { useDeviceSettings } from './app/hooks/useDeviceSettings'
 
 const RgbSettingsPage = lazy(() => import('./components/RgbSettingsPage'))
-
-type NavItemProps = {
-  icon: React.ReactNode
-  label: string
-  active?: boolean
-  onClick?: () => void
-}
-
-type SwitchTone = SwitchProfileId
-
-type SwitchOption = {
-  id: SwitchTone
-  name: string
-  fullName: string
-  brand: string
-  accent: string
-  note: string
-  front?: string
-  top?: string
-}
-
-const HERO68_KEY_LABEL_BY_ID: Readonly<Record<string, string>> = Object.freeze(
-  Object.fromEntries(HERO68_LAYOUT.flat().map((key) => [key.id, key.label])),
-)
-const FACTORY_REMAP_LAYERS = defaultRemapLayers()
-
-function hallKeyLabel(keyId: string | null): string {
-  if (!keyId) return 'Press a key'
-  return HERO68_KEY_LABEL_BY_ID[keyId] ?? keyId.replace(/^Key/, '').replace(/^Digit/, '')
-}
-
-const SWITCH_IMAGES: Partial<Record<SwitchTone, { front: string; top: string }>> = {
-  white: { front: whiteFront, top: whiteTop },
-  black: { front: blackFront, top: blackTop },
-  blue: { front: blueFront, top: blueTop },
-  clear: { front: clearFront, top: clearTop },
-  'switch-4': { front: wingChunFront, top: wingChunTop },
-  'switch-3': { front: uranusFront, top: uranusTop },
-  'switch-1': { front: jadeProFront, top: jadeProTop },
-  'switch-14': { front: jadeProFront, top: jadeProTop },
-}
-const SWITCH_OPTIONS: SwitchOption[] = HERO68_SWITCH_PROFILES
-  .filter(option => ![5, 22, 24, 27].includes(option.firmwareId))
-  .map(option => ({
-  id: option.id, name: option.name, fullName: `${option.name} Switch`,
-  brand: 'AULA presets', accent: option.color, note: '', ...SWITCH_IMAGES[option.id],
-}))
-
-
-function SwitchSelectorBoard({
-  selectedKeys,
-  onToggleKey,
-  switchImagesByKey,
-}: {
-  selectedKeys: Set<string>
-  onToggleKey: (keyId: string) => void
-  switchImagesByKey: Record<string, string>
-}) {
-  return (
-    <div className="switch-board-wrap">
-      <div className="switch-board-preview">
-        {HERO68_LAYOUT.map((row, rowIndex) => (
-          <div className="switch-board-row" key={rowIndex}>
-            {row.map((key) => (
-              <button
-                key={key.id}
-                type="button"
-                className={`switch-board-key ${selectedKeys.has(key.id) ? 'is-selected' : ''}`}
-                style={{ ['--key-units' as any]: key.width ?? 1 }}
-                onClick={() => onToggleKey(key.id)}
-                aria-label={key.label}
-              >
-                {switchImagesByKey[key.id]
-                  ? <img src={switchImagesByKey[key.id]} alt="" aria-hidden="true" className="switch-board-switch" />
-                  : <span className="switch-board-generic" aria-hidden="true"><SwitchStemMenuIcon /></span>}
-                <span className="switch-board-key-label" aria-hidden="true">{key.label}</span>
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function RailItem({ icon, label, active, onClick }: NavItemProps) {
-  return (
-    <button className={`rail-item ${active ? 'is-active' : ''}`} onClick={onClick} aria-label={label}>
-      <span className="rail-icon">{icon}</span>
-      <span className="rail-label">{label}</span>
-    </button>
-  )
-}
-
-function SidebarItem({ icon, label, active, onClick }: NavItemProps) {
-  return (
-    <button className={`sidebar-item ${active ? 'is-active' : ''}`} aria-label={label} onClick={onClick}>
-      <span className="sidebar-icon">{icon}</span>
-      <span className="sidebar-label">{label}</span>
-    </button>
-  )
-}
-
-function KeyboardMenuIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true" focusable="false" fill="currentColor">
-      <path d="M168-240q-29.7 0-50.85-21.15Q96-282.3 96-312v-336q0-29.7 21.15-50.85Q138.3-720 168-720h624q29.7 0 50.85 21.15Q864-677.7 864-648v336q0 29.7-21.15 50.85Q821.7-240 792-240H168Zm0-72h624v-336H168v336Zm168-24h288v-72H336v72Zm-96-120h72v-72h-72v72Zm102 0h72v-72h-72v72Zm102 0h72v-72h-72v72Zm102 0h72v-72h-72v72Zm102 0h72v-72h-72v72Zm-408-96h72v-72h-72v72Zm102 0h72v-72h-72v72Zm102 0h72v-72h-72v72Zm102 0h72v-72h-72v72Zm102 0h72v-72h-72v72ZM168-312v-336 336Z" />
-    </svg>
-  )
-}
-
-function SwitchStemMenuIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true" focusable="false" fill="currentColor">
-      <path d="M444-288h72v-156h156v-72H516v-156h-72v156H288v72h156v156ZM216-144q-29.7 0-50.85-21.15Q144-186.3 144-216v-528q0-29.7 21.15-50.85Q186.3-816 216-816h528q29.7 0 50.85 21.15Q816-773.7 816-744v528q0 29.7-21.15 50.85Q773.7-144 744-144H216Zm0-72h528v-528H216v528Zm0-528v528-528Z" />
-    </svg>
-  )
-}
-
-function KeyRemapMenuIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true" focusable="false" fill="currentColor">
-      <path d="M168-96q-29.7 0-50.85-21.15Q96-138.3 96-168v-408q0-29.7 21.15-50.85Q138.3-648 168-648h624q29.7 0 50.85 21.15Q864-605.7 864-576v408q0 29.7-21.15 50.85Q821.7-96 792-96H168Zm0-72h624v-408H168v408Zm168-48h288v-72H336v72ZM216-336h72v-72h-72v72Zm114 0h72v-72h-72v72Zm114 0h72v-72h-72v72Zm114 0h72v-72h-72v72Zm114 0h72v-72h-72v72ZM216-456h72v-72h-72v72Zm114 0h72v-72h-72v72Zm114 0h72v-72h-72v72Zm114 0h72v-72h-72v72Zm114 0h72v-72h-72v72ZM168-168v-408 408Zm75-552v-192h72v66q33.68-31.38 76.84-48.69Q435-912 483-912q86.02 0 151.51 53.5T717-720h-74q-16-54-60-87t-100-33q-33.57 0-63.79 12.5Q389-815 366-792h69v72H243Z" />
-    </svg>
-  )
-}
-
-function AdvancedKeysMenuIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true" focusable="false" fill="currentColor">
-      <path d="M288-288h384v-72H288v72Zm51-144 141-141 141 141 51-51-192-192-192 192 51 51ZM216-144q-29.7 0-50.85-21.15Q144-186.3 144-216v-528q0-29.7 21.15-50.85Q186.3-816 216-816h528q29.7 0 50.85 21.15Q816-773.7 816-744v528q0 29.7-21.15 50.85Q773.7-144 744-144H216Zm0-72h528v-528H216v528Zm0-528v528-528Z" />
-    </svg>
-  )
-}
-
-function RapidTriggerMenuIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true" focusable="false" fill="currentColor">
-      <path d="M72-360v-72h144v72H72Zm204-189L158-668l51-51 118 119-51 51Zm12 309v-120h384v120H288Zm156-408v-200h72v200h-72Zm240 99-51-51 119-119 51 51-119 119Zm60 189v-72h144v72H744Z" />
-    </svg>
-  )
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-  disabled = false,
-  mixed = false,
-}: {
-  checked: boolean
-  onChange: (value: boolean) => void
-  label: string
-  disabled?: boolean
-  mixed?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      className={`toggle ${checked && !mixed ? 'is-on' : ''} ${mixed ? 'is-mixed' : ''}`}
-      aria-pressed={mixed ? false : checked}
-      aria-label={mixed ? `${label}, mixed values` : label}
-      disabled={disabled}
-      onClick={() => onChange(mixed ? true : !checked)}
-    >
-      <span className="toggle-knob" />
-    </button>
-  )
-}
-
-function clampNumber(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
-
-function snapToStep(value: number, min: number, max: number, step: number) {
-  const clamped = clampNumber(value, min, max)
-  const decimals = (step.toString().split('.')[1] ?? '').length
-  const snapped = Math.round((clamped - min) / step) * step + min
-  return Number(snapped.toFixed(decimals))
-}
-
-const RAPID_TRIGGER_VALUES = [
-  0.01,
-  ...Array.from({ length: 68 }, (_, index) => Number(((index + 1) * 0.05).toFixed(2))),
-] as const
-
-function snapToAllowedValue(value: number, allowedValues: readonly number[]) {
-  if (!allowedValues.length) return value
-  return allowedValues.reduce((closest, candidate) =>
-    Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest,
-  allowedValues[0])
-}
-
-function selectionHasMixedValues<T>(selectedKeys: Set<string>, values: Record<string, T>) {
-  if (selectedKeys.size <= 1) return false
-  const keys = Array.from(selectedKeys)
-  const first = values[keys[0]]
-  return keys.some((keyId) => values[keyId] !== first)
-}
-
-const HERO68_KEY_ID_SET = new Set(HERO68_KEY_IDS)
-
-function normalizeHero68Selection(keys: Iterable<string>) {
-  return new Set(Array.from(keys).filter((keyId) => HERO68_KEY_ID_SET.has(keyId)))
-}
-
-function isWholeKeyboardSelected(keys: ReadonlySet<string>) {
-  return HERO68_KEY_IDS.every((keyId) => keys.has(keyId))
-}
-
-function mergePerKeyState<T>(saved: Record<string, T> | undefined, fallback: T) {
-  return Object.fromEntries(HERO68_KEY_IDS.map((keyId) => [keyId, saved?.[keyId] ?? fallback])) as Record<string, T>
-}
-
-type HydratedNumberField = 'actuationMm' | 'rapidSensitivityMm' | 'pressSensitivityMm' | 'releaseSensitivityMm' | 'topDeadzoneMm' | 'bottomDeadzoneMm'
-type HydratedBooleanField = 'rapidTriggerEnabled' | 'splitSensitivity' | 'deadzoneEnabled'
-
-function mergeHydratedNumbers(previous: Record<string, number>, hydrated: Map<string, HydratedKeySettings>, field: HydratedNumberField) {
-  const next = { ...previous }
-  for (const [keyId, settings] of hydrated) {
-    const value = settings[field]
-    if (value !== undefined) next[keyId] = value
-  }
-  return next
-}
-
-function mergeHydratedBooleans(previous: Record<string, boolean>, hydrated: Map<string, HydratedKeySettings>, field: HydratedBooleanField) {
-  const next = { ...previous }
-  for (const [keyId, settings] of hydrated) {
-    const value = settings[field]
-    if (value !== undefined) next[keyId] = value
-  }
-  return next
-}
-
-function RangeControl({
-  value,
-  min,
-  max,
-  step,
-  suffix,
-  allowedValues,
-  disabled = false,
-  recommendedValue,
-  mixed = false,
-  mixedPlaceholder = 'Mixed',
-  onChange,
-}: {
-  value: number
-  min: number
-  max: number
-  step: number
-  suffix: string
-  allowedValues?: readonly number[]
-  disabled?: boolean
-  recommendedValue?: number
-  mixed?: boolean
-  mixedPlaceholder?: string
-  onChange: (value: number) => void
-}) {
-  const hasAllowedValues = Boolean(allowedValues?.length)
-  const effectiveValue = hasAllowedValues ? snapToAllowedValue(value, allowedValues!) : value
-  const discreteIndex = hasAllowedValues
-    ? allowedValues!.reduce((bestIndex, candidate, index) =>
-      Math.abs(candidate - effectiveValue) < Math.abs(allowedValues![bestIndex] - effectiveValue) ? index : bestIndex, 0)
-    : 0
-  const pct = hasAllowedValues
-    ? (discreteIndex / Math.max(1, allowedValues!.length - 1)) * 100
-    : ((effectiveValue - min) / (max - min)) * 100
-  const recommendedPct = recommendedValue == null
-    ? null
-    : hasAllowedValues
-      ? (allowedValues!.reduce((bestIndex, candidate, index) =>
-        Math.abs(candidate - recommendedValue) < Math.abs(allowedValues![bestIndex] - recommendedValue) ? index : bestIndex, 0)
-        / Math.max(1, allowedValues!.length - 1)) * 100
-      : ((recommendedValue - min) / (max - min)) * 100
-  const [draftValue, setDraftValue] = useState(() => mixed ? '' : value.toFixed(2))
-
-  useEffect(() => {
-    setDraftValue(mixed ? '' : value.toFixed(2))
-  }, [value, mixed])
-
-  const commitNumberInput = () => {
-    const normalized = draftValue.trim().replace(',', '.')
-    const parsed = Number(normalized)
-    if (!normalized || Number.isNaN(parsed)) {
-      setDraftValue(mixed ? '' : value.toFixed(2))
-      return
-    }
-    const committed = hasAllowedValues
-      ? snapToAllowedValue(clampNumber(parsed, min, max), allowedValues!)
-      : snapToStep(parsed, min, max, step)
-    onChange(committed)
-    setDraftValue(committed.toFixed(2))
-  }
-
-  return (
-    <div className={`range-wrap ${disabled ? 'is-disabled' : ''} ${mixed ? 'is-mixed' : ''} ${mixed && mixedPlaceholder !== '—' ? 'has-mixed-label' : ''}`}>
-      <div className="range-slider-shell">
-        {recommendedPct != null && <span className="recommend-marker" style={{ left: `${recommendedPct}%` }} aria-hidden="true" />}
-        <input
-          type="range"
-          min={hasAllowedValues ? 0 : min}
-          max={hasAllowedValues ? allowedValues!.length - 1 : max}
-          step={hasAllowedValues ? 1 : step}
-          value={hasAllowedValues ? discreteIndex : value}
-          disabled={disabled}
-          style={{ '--range-progress': `${pct}%` } as React.CSSProperties}
-          onChange={(e) => {
-            if (hasAllowedValues) {
-              const index = clampNumber(Math.round(Number(e.target.value)), 0, allowedValues!.length - 1)
-              onChange(allowedValues![index])
-              return
-            }
-            onChange(snapToStep(Number(e.target.value), min, max, step))
-          }}
-        />
-      </div>
-      <div className="value-readout">
-        <label className="value-pill value-pill-input">
-          {mixed && !draftValue && <span className="mixed-value-label">{mixedPlaceholder}</span>}
-          <input
-            type="number"
-            inputMode="decimal"
-            min={min}
-            max={max}
-            step={hasAllowedValues ? 0.01 : step}
-            value={draftValue}
-            aria-label={mixed ? 'Value input, mixed values' : 'Value input'}
-            disabled={disabled}
-            onFocus={(e) => e.currentTarget.select()}
-            onChange={(e) => setDraftValue(e.target.value)}
-            onBlur={commitNumberInput}
-            onKeyDown={(e) => {
-              if (hasAllowedValues && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-                e.preventDefault()
-                const parsed = Number(draftValue.trim().replace(',', '.'))
-                const baseValue = Number.isFinite(parsed) ? snapToAllowedValue(parsed, allowedValues!) : effectiveValue
-                const baseIndex = allowedValues!.reduce((bestIndex, candidate, index) =>
-                  Math.abs(candidate - baseValue) < Math.abs(allowedValues![bestIndex] - baseValue) ? index : bestIndex, 0)
-                const nextIndex = clampNumber(baseIndex + (e.key === 'ArrowUp' ? 1 : -1), 0, allowedValues!.length - 1)
-                const nextValue = allowedValues![nextIndex]
-                setDraftValue(nextValue.toFixed(2))
-                onChange(nextValue)
-              } else if (e.key === 'Enter') {
-                e.preventDefault()
-                commitNumberInput()
-                e.currentTarget.blur()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                setDraftValue(mixed ? '' : value.toFixed(2))
-                e.currentTarget.blur()
-              }
-            }}
-          />
-        </label>
-        <span className="value-suffix">{suffix}</span>
-      </div>
-    </div>
-  )
-}
-
-function VerticalRangeControl({
-  value,
-  min,
-  max,
-  step,
-  suffix,
-  disabled = false,
-  direction = 'bottom',
-  mixed = false,
-  mixedPlaceholder = 'Mixed',
-  onChange,
-}: {
-  value: number
-  min: number
-  max: number
-  step: number
-  suffix: string
-  disabled?: boolean
-  direction?: 'top' | 'bottom'
-  mixed?: boolean
-  mixedPlaceholder?: string
-  onChange: (value: number) => void
-}) {
-  const pct = ((value - min) / (max - min)) * 100
-  const markerStyle = direction === 'bottom' ? { bottom: `${pct}%` } : { top: `${pct}%` }
-  const fillStyle = direction === 'bottom' ? { height: `${pct}%`, bottom: 0, top: 'auto' } : { height: `${pct}%`, top: 0, bottom: 'auto' }
-  const [draftValue, setDraftValue] = useState(() => mixed ? '' : value.toFixed(2))
-
-  useEffect(() => {
-    setDraftValue(mixed ? '' : value.toFixed(2))
-  }, [value, mixed])
-
-  const commitNumberInput = () => {
-    const normalized = draftValue.trim().replace(',', '.')
-    const parsed = Number(normalized)
-    if (!normalized || Number.isNaN(parsed)) {
-      setDraftValue(mixed ? '' : value.toFixed(2))
-      return
-    }
-    const committed = snapToStep(parsed, min, max, step)
-    onChange(committed)
-    setDraftValue(committed.toFixed(2))
-  }
-
-  return (
-    <div className={`vertical-meter ${disabled ? 'is-disabled' : ''} ${mixed ? 'is-mixed' : ''} ${mixed && mixedPlaceholder !== '—' ? 'has-mixed-label' : ''} ${direction === 'top' ? 'is-top-oriented' : ''}`}>
-      <span className="vertical-range-shell">
-        <input
-          className="vertical-range-input"
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          disabled={disabled}
-          aria-label="Vertical value"
-          onChange={(e) => onChange(snapToStep(Number(e.target.value), min, max, step))}
-        />
-        <span className="meter-track" aria-hidden="true">
-          <span className="meter-fill" style={fillStyle as React.CSSProperties} />
-          <span className="meter-marker" style={markerStyle as React.CSSProperties} />
-        </span>
-      </span>
-      <div className="meter-readout compact-meter-readout">
-        <label className="meter-value meter-value-input compact-meter-value">
-          {mixed && !draftValue && <span className="mixed-value-label">{mixedPlaceholder}</span>}
-          <input
-            type="number"
-            inputMode="decimal"
-            min={min}
-            max={max}
-            step={step}
-            value={draftValue}
-            disabled={disabled}
-            aria-label="Vertical value input"
-            onFocus={(e) => e.currentTarget.select()}
-            onChange={(e) => setDraftValue(e.target.value)}
-            onBlur={commitNumberInput}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                commitNumberInput()
-                e.currentTarget.blur()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                setDraftValue(mixed ? '' : value.toFixed(2))
-                e.currentTarget.blur()
-              }
-            }}
-          />
-        </label>
-        <b className="value-suffix">{suffix}</b>
-      </div>
-    </div>
-  )
-}
 
 function App() {
   const persistedState = useMemo(() => loadOpenHeroState(), [])
@@ -538,6 +80,7 @@ function App() {
   const [activeRail, setActiveRail] = useState<'keyboard' | 'settings' | 'help'>(() => persistedState?.activeRail ?? 'keyboard')
   const [activePage, setActivePage] = useState(() => persistedState?.activePage ?? 'quick')
   const [activeSettingsPage, setActiveSettingsPage] = useState(() => persistedState?.activeSettingsPage ?? 'general')
+  const [rgbCustomEntry, setRgbCustomEntry] = useState(false)
   const [actuation, setActuation] = useState(1.6)
   const [rapidTrigger, setRapidTrigger] = useState(false)
   const [splitSensitivity, setSplitSensitivity] = useState(false)
@@ -594,16 +137,39 @@ function App() {
   const [advancedReadError, setAdvancedReadError] = useState<string | null>(null)
   const advancedPending = !advancedEqual(advancedBindings, advancedBaseline)
   const profileBusyRef = useRef(false)
+  const autoConnectStartedRef = useRef(false)
   const profileSwitchAllowedAtRef = useRef(0)
   const remapBaselineRef = useRef<RemapLayers>(persistedState?.profileDrafts?.[persistedState?.profileSlot ?? 1]?.remapBaseline ?? defaultRemapLayers())
-  const [devicePollingRate, setDevicePollingRateState] = useState<PollingRate | null>(() => persistedState?.pollingRate ?? null)
-  const [deviceOsModeMac, setDeviceOsModeMac] = useState(() => persistedState?.osModeMac ?? false)
-  const [deviceWinLock, setDeviceWinLock] = useState(() => persistedState?.winLock ?? false)
-  const [deviceHallDebounce, setDeviceHallDebounce] = useState(() => persistedState?.hallDebounce ?? false)
-  const [deviceAutoCalibration, setDeviceAutoCalibration] = useState(() => persistedState?.autoCalibration ?? false)
-  const [deviceSettingsState, setDeviceSettingsState] = useState<'idle' | 'reading' | 'ready' | 'saving' | 'error'>('idle')
-  const [deviceReadState, setDeviceReadState] = useState<'idle' | 'reading' | 'success' | 'error'>('idle')
-  const [deviceActionError, setDeviceActionError] = useState<string | null>(null)
+  const {
+    devicePollingRate,
+    deviceOsModeMac,
+    setDeviceOsModeMac,
+    deviceWinLock,
+    setDeviceWinLock,
+    deviceHallDebounce,
+    setDeviceHallDebounce,
+    deviceAutoCalibration,
+    setDeviceAutoCalibration,
+    deviceSettingsState,
+    setDeviceSettingsState,
+    deviceReadState,
+    setDeviceReadState,
+    deviceActionError,
+    setDeviceActionError,
+    readDeviceGeneralSettings,
+    handlePollingRateChange,
+    applyBooleanDeviceSetting,
+    handleTachyonChange,
+  } = useDeviceSettings({
+    persistedState,
+    hallStream,
+    rgbStreamActive,
+    setRgbStreamActive,
+    tachyon,
+    setTachyon,
+    tachyonPreviousPollingRate,
+    setTachyonPreviousPollingRate,
+  })
   const [brandMenuOpen, setBrandMenuOpen] = useState(false)
   const brandFilterRef = useRef<HTMLDivElement>(null)
 
@@ -628,6 +194,7 @@ function App() {
 
   const uiSettingsItems = useMemo(() => [
     { id: 'interface', label: 'Interface', icon: <Palette size={18} /> },
+    { id: 'background-service', label: 'Background Service', icon: <Activity size={18} /> },
   ], [])
 
   const selectedSwitch: SwitchOption = SWITCH_OPTIONS.find((option) => option.id === selectedSwitchId) ?? { id: selectedSwitchId, name: switchProfileLabel(selectedSwitchId), fullName: switchProfileLabel(selectedSwitchId), brand: 'AULA presets', accent: '#9ba3a8', note: '' }
@@ -715,6 +282,22 @@ function App() {
       document.removeEventListener('touchstart', closeBrandMenu)
     }
   }, [brandMenuOpen])
+
+  useEffect(() => {
+    // Chrome/Chromium remembers WebHID permission for this origin. On reload,
+    // getDevices() can recover that already-authorized keyboard without a
+    // chooser or user gesture, so F5 should restore the previous connection.
+    if (autoConnectStartedRef.current) return
+    autoConnectStartedRef.current = true
+    void (async () => {
+      try {
+        const restored = await hero68DeviceManager.connect(false)
+        if (restored) await hydrateConnectedDevice()
+      } catch (error) {
+        setDeviceActionError(error instanceof Error ? error.message : String(error))
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     if (!selectedKeys.size) return
@@ -1037,123 +620,11 @@ function App() {
     })
   }
 
-  async function readCurrentPollingRate(): Promise<PollingRate> {
-    const report = await hero68DeviceManager.request(readPollingRate(), 0x84, 0x17, 1000)
-    const level = report.data[0] ?? 3
-    const rate = POLLING_RATES[level]
-    if (!rate) throw new Error(`Unsupported polling level returned by HERO68: ${level}`)
-    return rate
-  }
-
   async function readCurrentProfileSlot(): Promise<ProfileSlot> {
     const report = await hero68DeviceManager.request(readActiveProfile(), 0x90, 0, 1000)
     const slot = report.data[0]
     if (slot !== 0 && slot !== 1 && slot !== 2) throw new Error(`Unsupported active profile returned by HERO68: ${slot}`)
     return slot
-  }
-
-  async function readDeviceGeneralSettings() {
-    if (!hero68DeviceManager.connected) return
-    setDeviceSettingsState('reading')
-    try {
-      const polling = await readCurrentPollingRate()
-      const osMode = await hero68DeviceManager.request(readOsMode(), 0x84, 17, 1000)
-      const winLock = await hero68DeviceManager.request(readWinLock(), 0x84, 21, 1000)
-      const hallDebounce = await hero68DeviceManager.request(readHallDebounce(), 0x84, 24, 1000)
-      const autoCalibration = await hero68DeviceManager.request(readAutoCalibration(), 0x84, 25, 1000)
-      setDevicePollingRateState(polling)
-      setDeviceOsModeMac((osMode.data[0] ?? 0) !== 0)
-      setDeviceWinLock((winLock.data[0] ?? 0) !== 0)
-      setDeviceHallDebounce((hallDebounce.data[0] ?? 0) !== 0)
-      setDeviceAutoCalibration((autoCalibration.data[0] ?? 0) !== 0)
-      setDeviceSettingsState('ready')
-    } catch (error) {
-      setDeviceSettingsState('error')
-      setDeviceActionError(error instanceof Error ? error.message : String(error))
-      throw error
-    }
-  }
-
-  async function setDevicePollingRate(rate: PollingRate) {
-    // Firmware 0323 immediately re-enumerates USB after a polling write; waiting
-    // for a normal 0x04 ACK leaves a stale WebHID handle. Send, reopen the new
-    // interface, then verify the persisted enum with 0x84/0x17.
-    await hero68DeviceManager.sendReenumerating(writePollingRate(rate), 7000)
-    const actual = await readCurrentPollingRate()
-    if (actual !== rate) throw new Error(`Polling-rate verify failed: requested ${rate} Hz, device reports ${actual} Hz`)
-    setDevicePollingRateState(actual)
-  }
-
-  async function handlePollingRateChange(rate: PollingRate) {
-    if (!hero68DeviceManager.connected || deviceSettingsState === 'saving') return
-    setDeviceActionError(null)
-    setDeviceSettingsState('saving')
-    try {
-      if (hallStream.active || hallStream.starting) await hero68HallStream.stop()
-      if (rgbStreamActive) {
-        await hero68DeviceManager.send(liveIdle())
-        setRgbStreamActive(false)
-      }
-      await setDevicePollingRate(rate)
-      if (tachyon && rate !== 8000) {
-        setTachyon(false)
-        setTachyonPreviousPollingRate(null)
-      }
-      setDeviceSettingsState('ready')
-    } catch (error) {
-      setDeviceSettingsState('error')
-      setDeviceActionError(error instanceof Error ? error.message : String(error))
-    }
-  }
-
-  async function applyBooleanDeviceSetting(
-    label: string,
-    value: boolean,
-    zone: 17 | 21 | 24 | 25,
-    writeReport: Uint8Array,
-    readReport: Uint8Array,
-    setter: (next: boolean) => void,
-  ) {
-    if (!hero68DeviceManager.connected || deviceSettingsState === 'saving') return
-    setDeviceActionError(null)
-    setDeviceSettingsState('saving')
-    try {
-      await hero68DeviceManager.request(writeReport, 0x04, zone, 1200)
-      const verify = await hero68DeviceManager.request(readReport, 0x84, zone, 1200)
-      const actual = (verify.data[0] ?? 0) !== 0
-      if (actual !== value) throw new Error(`${label} verify failed: requested ${value ? 'on' : 'off'}, device reports ${actual ? 'on' : 'off'}`)
-      setter(actual)
-      setDeviceSettingsState('ready')
-    } catch (error) {
-      setDeviceSettingsState('error')
-      setDeviceActionError(error instanceof Error ? error.message : String(error))
-    }
-  }
-
-  async function handleTachyonChange(enabled: boolean) {
-    if (!hero68DeviceManager.connected) {
-      setDeviceActionError('Connect HERO68 before changing Tachyon Mode.')
-      return
-    }
-    setDeviceActionError(null)
-    try {
-      if (enabled) {
-        const previous = await readCurrentPollingRate()
-        setTachyonPreviousPollingRate(previous)
-        if (hallStream.active || hallStream.starting) await hero68HallStream.stop()
-        await hero68DeviceManager.send(liveIdle())
-        setRgbStreamActive(false)
-        if (previous !== 8000) await setDevicePollingRate(8000)
-        setTachyon(true)
-      } else {
-        const restoreRate = tachyonPreviousPollingRate ?? 1000
-        await setDevicePollingRate(restoreRate)
-        setTachyon(false)
-        setTachyonPreviousPollingRate(null)
-      }
-    } catch (error) {
-      setDeviceActionError(error instanceof Error ? error.message : String(error))
-    }
   }
 
   function blurActiveControl() {
@@ -1197,6 +668,22 @@ function App() {
     await toggleHallStream(selectedKeys)
   }
 
+  async function hydrateConnectedDevice() {
+    setDeviceActionError(null)
+    setDeviceReadState('idle')
+    setLoadedProfileSlot(null)
+    const activeSlot = await readCurrentProfileSlot().catch(() => profileSlot)
+    setProfileDrafts(previous => ({ ...previous, [profileSlot]: currentProfileDraft() }))
+    const savedDraft = activeSlot === profileSlot ? currentProfileDraft() : profileDrafts[activeSlot]
+    // Preserve explicit remap edits made offline. Performance/switch values
+    // still come from the newly connected keyboard before they can be saved.
+    const draft = savedDraft ? { ...savedDraft, dirtyKeys: [] } : undefined
+    restoreProfileDraft(draft)
+    setProfileSlot(activeSlot)
+    await handleReadFromDevice(activeSlot, draft)
+    await readDeviceGeneralSettings()
+  }
+
   async function handleDeviceConnection() {
     setDeviceActionError(null)
     setDeviceReadState('idle')
@@ -1211,17 +698,7 @@ function App() {
       }
       else {
         await hero68DeviceManager.connect(true)
-        setLoadedProfileSlot(null)
-        const activeSlot = await readCurrentProfileSlot().catch(() => profileSlot)
-        setProfileDrafts(previous => ({ ...previous, [profileSlot]: currentProfileDraft() }))
-        const savedDraft = activeSlot === profileSlot ? currentProfileDraft() : profileDrafts[activeSlot]
-        // Preserve explicit remap edits made offline. Performance/switch values
-        // still come from the newly connected keyboard before they can be saved.
-        const draft = savedDraft ? { ...savedDraft, dirtyKeys: [] } : undefined
-        restoreProfileDraft(draft)
-        setProfileSlot(activeSlot)
-        await handleReadFromDevice(activeSlot, draft)
-        await readDeviceGeneralSettings()
+        await hydrateConnectedDevice()
       }
     } catch (error) {
       setDeviceActionError(error instanceof Error ? error.message : String(error))
@@ -1397,8 +874,19 @@ function App() {
         const near=(actual:number|undefined,wanted:number)=>actual!==undefined&&Math.abs(actual-wanted)<=0.011
         for(const expected of snapshot.keys){
           const actual=readback.get(expected.keyId)
+          // Verify the values that were actually encoded on the wire. When
+          // split sensitivity is off the firmware receives rapidSensitivityMm
+          // for BOTH press/release; when RT is off it receives 0 for both.
+          // Comparing readback against the hidden per-direction draft values
+          // caused a false mismatch on the first dirty key (commonly KeyW).
+          const expectedRelease=expected.rapidTriggerEnabled
+            ? (expected.splitSensitivity?expected.releaseSensitivityMm:expected.rapidSensitivityMm)
+            : 0
+          const expectedPress=expected.rapidTriggerEnabled
+            ? (expected.splitSensitivity?expected.pressSensitivityMm:expected.rapidSensitivityMm)
+            : 0
           if(!actual||!near(actual.actuationMm,expected.actuationMm)||actual.rapidTriggerEnabled!==expected.rapidTriggerEnabled||
-            !near(actual.pressSensitivityMm,expected.pressSensitivityMm)||!near(actual.releaseSensitivityMm,expected.releaseSensitivityMm)||
+            !near(actual.pressSensitivityMm,expectedPress)||!near(actual.releaseSensitivityMm,expectedRelease)||
             actual.deadzoneEnabled!==expected.deadzoneEnabled||!near(actual.topDeadzoneMm,expected.topDeadzoneMm)||
             !near(actual.bottomDeadzoneMm,expected.bottomDeadzoneMm)||actual.switchProfile!==expected.switchProfile){
             throw Error(`Key setting readback mismatch: ${expected.keyId}`)
@@ -1509,6 +997,7 @@ function App() {
     <div
       className={`app-shell ${compactSidebar ? 'is-sidebar-compact' : ''}`}
     >
+      <LocalServicePermissionGuide />
       <aside className="rail">
         <div className="brand-mark"><img src={logo} alt="OpenHero68" /></div>
         <div className="rail-stack">
@@ -1629,594 +1118,154 @@ function App() {
               <AdvancedKeysPage key={profileSlot} bindings={advancedBindings} busy={profileBusy} pending={advancedPending} connected={deviceConnected && loadedProfileSlot === profileSlot} onChange={next => { if (!profileBusyRef.current) { setAdvancedBindings(next); setSaveState('idle') } }} />
             </>
           ) : activePage === 'actuation' ? (
-            <div className="page quick-page actuation-page page-enter" style={{ '--actuation-preview-width': actuationPreviewWidth ? `${actuationPreviewWidth}px` : undefined } as React.CSSProperties}>
-              <section className={`keyboard-stage actuation-keyboard-stage ${hallStream.active ? 'is-streaming' : ''}`}>
-                <Hero68Preview
-                  advancedBindings={advancedBindings}
-                  selectedKeys={selectedKeys}
-                  onToggleKey={toggleKey}
-                  overlayMode="actuation"
-                  actuationValues={actuationByKey}
-                  streamPreviewValues={hallStreamPreviewByKey}
-                  onWidthChange={setActuationPreviewWidth}
-                />
-              </section>
-
-              <div className="selection-instruction actuation-selection-instruction">
-                {hasSelection
-                  ? `Adjusting Actuation Point for ${selectedKeys.size} selected key${selectedKeys.size === 1 ? '' : 's'}.`
-                  : 'To adjust Actuation Point, select one or more keys first.'}
-              </div>
-
-              <div className="quick-heading-row actuation-heading-row">
-                <div className="actuation-title-wrap">
-                  <h1>Actuation Point</h1>
-                  <FeatureHelp title="Actuation Point" paragraphs={[
-                    'The actuation point is the distance a key must travel before it registers a keypress. A lower value activates the key with a lighter press; a higher value requires a deeper press.',
-                    'Select one or more keys to adjust their actuation point. Use a shallow setting for fast inputs, or a deeper setting to help avoid accidental keypresses when typing.',
-                  ]} />
-                </div>
-                <div className="selection-actions">
-                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>Select all keys</button>
-                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>Discard selection</button>
-                </div>
-              </div>
-
-              <section className="actuation-woot-grid">
-                <article className={`setting-card actuation-woot-card actuation-editor-woot-card ${!hasSelection ? 'is-unavailable' : ''}`}>
-                  <div className="actuation-editor-head actuation-editor-woot-head">
-                    <div>
-                      <h2>Set Actuation Point</h2>
-                      <p>Customize the actuation point by setting the exact distance a key must be pressed before it registers a keypress.</p>
-                    </div>
-                    <span className="actuation-always-on"><i />Always on</span>
-                  </div>
-
-                  <div className="actuation-editor-summary-line">
-                    <span>Changing Actuation Point for</span>
-                    <strong>{hasSelection ? `${selectedKeys.size} key${selectedKeys.size === 1 ? '' : 's'}` : '0 keys'}</strong>
-                  </div>
-
-                  <div className="actuation-editor-body actuation-editor-woot-body">
-                    <div className={`actuation-switch-preview ${switchProfileMixed ? 'is-mixed' : ''}`}>
-                      <div
-                        className="actuation-switch-image-wrap"
-                      >
-                        {selectedSwitch.front ? <img src={selectedSwitch.front} alt={`${selectedSwitch.name} switch`} /> : <SwitchStemMenuIcon />}
-                      </div>
-                    </div>
-
-                    <div className="actuation-distance-control source-actuation-slider actuation-page-slider">
-                      <VerticalRangeControl
-                        value={actuation}
-                        min={0.1}
-                        max={3.4}
-                        step={0.05}
-                        suffix="mm"
-                        direction="top"
-                        disabled={!hasSelection}
-                        mixed={actuationMixed}
-                        mixedPlaceholder="MIXED"
-                        onChange={setActuationForSelection}
-                      />
-                      <div className="actuation-distance-labels">
-                        <span><b>0.10 mm</b><small>Shallow</small></span>
-                        <span><b>3.40 mm</b><small>Deep</small></span>
-                      </div>
-                    </div>
-                  </div>
-
-                </article>
-
-                <article className={`setting-card actuation-woot-card actuation-hall-card ${(!hasSelection || !deviceConnected) && !hallStream.active ? 'is-unavailable' : ''}`}>
-                  <div className="actuation-woot-card-head actuation-hall-head">
-                    <div>
-                      <h2>Visual Feedback</h2>
-                      <span className={`actuation-live-state ${hallStream.active ? 'is-live' : ''}`}><i />{hallStream.starting ? 'STARTING' : hallStream.active ? 'LIVE' : 'IDLE'}</span>
-                    </div>
-                    <Toggle
-                      checked={hallStream.active}
-                      onChange={() => void handleActuationHallStreamToggle()}
-                      label="Visual Feedback"
-                      disabled={!deviceConnected || !hasSelection || hallStream.starting}
-                    />
-                  </div>
-                  <p className="actuation-woot-copy">
-                    Read the selected keys' real Hall travel and compare it with their Actuation Point while you press them.
-                  </p>
-
-                  <div className={`actuation-hall-panel ${actuationHallTriggered ? 'is-actuated' : ''}`}>
-                    <div className="actuation-hall-row">
-                      <div>
-                        <span className="actuation-hall-kicker">{selectedKeys.size > 1 ? 'ACTIVE SELECTED KEY' : 'SELECTED KEY'}</span>
-                        <strong>{actuationHallFocusKeyId ? hallKeyLabel(actuationHallFocusKeyId) : hasSelection ? 'Press a selected key' : 'Select a key'}</strong>
-                      </div>
-                      <div className="actuation-hall-value">
-                        <strong>{hallStream.active ? actuationHallTravelMm.toFixed(2) : '0.00'}</strong><small> mm</small>
-                      </div>
-                    </div>
-
-                    <div className="actuation-hall-track" aria-hidden="true">
-                      <span className="actuation-hall-fill" style={{ width: `${hallStream.active ? actuationHallTravelPercent : 0}%` }} />
-                      {hasSelection && (!actuationMixed || Boolean(actuationHallFocusKeyId)) && (
-                        <span className="actuation-hall-threshold" style={{ left: `${actuationHallThresholdPercent}%` }} />
-                      )}
-                    </div>
-
-                    <div className="actuation-hall-meta">
-                      <span>{actuationHallTriggered && hallStream.active ? 'ACTUATED' : hallStream.active ? 'READY' : 'STREAM OFF'}</span>
-                      <span>{actuationHallFocusKeyId ? `AP ${actuationHallThresholdMm.toFixed(2)} mm` : actuationMixed ? 'Mixed AP values' : `AP ${actuation.toFixed(2)} mm`}</span>
-                      <span>{hallStream.active && hallStream.telemetryHz ? `~${hallStream.telemetryHz.toFixed(1)} Hz` : 'Selected-key Hall poll'}</span>
-                    </div>
-                  </div>
-
-                  <div className="actuation-hall-note">
-                    <Info size={15} aria-hidden="true" />
-                    <span>{!deviceConnected
-                      ? 'Connect HERO68 to use Visual Feedback.'
-                      : !hasSelection
-                        ? 'Select one or more keys above, then enable Visual Feedback.'
-                        : hallStream.active
-                          ? 'Press any selected key. The most recently moving selected key is shown here.'
-                          : 'Enable Visual Feedback to start reading the selected keys.'}</span>
-                  </div>
-                  {hallStream.error && <p className="actuation-hall-error">{hallStream.error}</p>}
-                </article>
-              </section>
-            </div>
+            <ActuationPage
+              actuationPreviewWidth={actuationPreviewWidth}
+              advancedBindings={advancedBindings}
+              selectedKeys={selectedKeys}
+              toggleKey={toggleKey}
+              actuationByKey={actuationByKey}
+              hallStreamPreviewByKey={hallStreamPreviewByKey}
+              setActuationPreviewWidth={setActuationPreviewWidth}
+              hasSelection={hasSelection}
+              allSelected={allSelected}
+              selectAll={selectAll}
+              discardSelection={discardSelection}
+              switchProfileMixed={switchProfileMixed}
+              selectedSwitch={selectedSwitch}
+              actuation={actuation}
+              actuationMixed={actuationMixed}
+              setActuationForSelection={setActuationForSelection}
+              hallStream={hallStream}
+              deviceConnected={deviceConnected}
+              handleActuationHallStreamToggle={handleActuationHallStreamToggle}
+              actuationHallTriggered={actuationHallTriggered}
+              actuationHallFocusKeyId={actuationHallFocusKeyId}
+              actuationHallTravelMm={actuationHallTravelMm}
+              actuationHallTravelPercent={actuationHallTravelPercent}
+              actuationHallThresholdPercent={actuationHallThresholdPercent}
+              actuationHallThresholdMm={actuationHallThresholdMm}
+            />
           ) : activePage === 'rapid' ? (
-            <div className="page quick-page rapid-page page-enter">
-              <section className="keyboard-stage rapid-keyboard-stage">
-                <Hero68Preview
-                  advancedBindings={advancedBindings}
-                  selectedKeys={selectedKeys}
-                  onToggleKey={toggleKey}
-                  overlayMode={quickPreviewMode === 'deadzone' ? 'deadzone' : 'rapid'}
-                  rapidPreviewValues={rapidPreviewByKey}
-                  deadzonePreviewValues={deadzonePreviewByKey}
-                />
-              </section>
-
-              <div className="selection-instruction rapid-selection-instruction">
-                {hasSelection
-                  ? `Adjusting Rapid Trigger for ${selectedKeys.size} selected key${selectedKeys.size === 1 ? '' : 's'}.`
-                  : 'To adjust Rapid Trigger, please select one or more keys first.'}
-              </div>
-
-              <div className="quick-heading-row rapid-heading-row">
-                <div className="rapid-title-wrap">
-                  <h1>Rapid Trigger</h1>
-                  <FeatureHelp title="Rapid Trigger" paragraphs={[
-                    'Rapid Trigger dynamically adjusts the actuation and deactivation points. After the key reaches its actuation point, pressing it down activates it and releasing it resets it according to the sensitivity you set.',
-                    "This can make repeated inputs faster in competitive games: you don't have to fully release a key before pressing it again. A lower sensitivity value requires less movement, while a higher value helps avoid unintended inputs.",
-                  ]} />
-                </div>
-                <div className="selection-actions">
-                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>Select all keys</button>
-                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>Discard selection</button>
-                </div>
-              </div>
-
-              <section className="rapid-woot-grid">
-                <article
-                  className={`setting-card rapid-woot-card rapid-enable-card ${!hasSelection ? 'is-unavailable' : ''}`}
-                  onMouseEnter={() => setQuickPreviewMode('rapid')}
-                >
-                  <div className="rapid-card-head with-control">
-                    <h2>Enable Rapid Trigger</h2>
-                    <Toggle checked={rapidTrigger} mixed={rapidTriggerMixed} onChange={setRapidTriggerForSelection} label="Rapid Trigger" disabled={!hasSelection} />
-                  </div>
-                  <p className="rapid-card-copy">
-                    Rapid Trigger dynamically actuates and resets your key based on your intention to press or release the key. Rapid Trigger starts and ends after the actuation point.
-                  </p>
-                  <div className="rapid-enabled-summary">
-                    <span>ENABLED ON <strong>{HERO68_KEY_IDS.filter((keyId) => rapidTriggerByKey[keyId]).length}</strong> KEYS</span>
-                  </div>
-                </article>
-
-                <article
-                  className={`setting-card rapid-woot-card rapid-sensitivity-card ${!rapidTriggerControlsEnabled ? 'is-unavailable' : ''}`}
-                  onMouseEnter={() => setQuickPreviewMode('rapid')}
-                >
-                  <div className="rapid-card-head">
-                    <h2>Rapid Trigger Sensitivity</h2>
-                  </div>
-
-                  <div className="rapid-split-row">
-                    <span className="rapid-split-label">Split sensitivity <FeatureHelp title="Split sensitivity" paragraphs={[
-                      'Set separate Rapid Trigger sensitivities for pressing and releasing a key. Press sensitivity controls how far the key moves down to reactivate; release sensitivity controls how far it moves up to reset.',
-                      'Use a smaller release value for a quicker reset, or a larger press value to reduce accidental reactivation. With split sensitivity off, the same value applies in both directions.',
-                    ]} /></span>
-                    <Toggle
-                      checked={splitSensitivity}
-                      mixed={splitSensitivityMixed}
-                      onChange={setSplitSensitivityForSelection}
-                      label="Split sensitivity"
-                      disabled={!rapidTriggerControlsEnabled}
-                    />
-                  </div>
-
-                  {!splitSensitivity && !splitSensitivityMixed ? (
-                    <div className="rapid-sensitivity-control">
-                      <div className="rapid-control-label">SENSITIVITY</div>
-                      <RangeControl
-                        value={rapidSensitivity}
-                        min={0.01}
-                        max={3.4}
-                        step={0.05}
-                        allowedValues={RAPID_TRIGGER_VALUES}
-                        suffix="mm"
-                        recommendedValue={0.65}
-                        mixed={rapidSensitivityMixed}
-                        disabled={!splitSensitivityControlsEnabled}
-                        onChange={setRapidSensitivityForSelection}
-                      />
-                      <div className="rapid-range-labels"><span>HIGH</span><span>LOW</span></div>
-                    </div>
-                  ) : (
-                    <div className="rapid-split-controls">
-                      <div>
-                        <div className="rapid-control-label">PRESS</div>
-                        <RangeControl
-                          value={pressSensitivity}
-                          min={0.01}
-                          max={3.4}
-                          step={0.05}
-                          allowedValues={RAPID_TRIGGER_VALUES}
-                          suffix="mm"
-                          recommendedValue={0.5}
-                          mixed={pressSensitivityMixed || splitSensitivityMixed}
-                          disabled={!splitSensitivityControlsEnabled}
-                          onChange={setPressSensitivityForSelection}
-                        />
-                      </div>
-                      <div>
-                        <div className="rapid-control-label">RELEASE</div>
-                        <RangeControl
-                          value={releaseSensitivity}
-                          min={0.01}
-                          max={3.4}
-                          step={0.05}
-                          allowedValues={RAPID_TRIGGER_VALUES}
-                          suffix="mm"
-                          recommendedValue={0.55}
-                          mixed={releaseSensitivityMixed || splitSensitivityMixed}
-                          disabled={!splitSensitivityControlsEnabled}
-                          onChange={setReleaseSensitivityForSelection}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </article>
-
-                <article
-                  className={`setting-card rapid-woot-card rapid-deadzone-card ${!hasSelection ? 'is-unavailable' : ''}`}
-                  onMouseEnter={() => setQuickPreviewMode('deadzone')}
-                  onMouseLeave={() => setQuickPreviewMode('rapid')}
-                >
-                  <div className="rapid-card-head with-control">
-                    <h2>Dead Zone</h2>
-                    <Toggle checked={deadzoneEnabled} mixed={deadzoneEnabledMixed} onChange={setDeadzoneEnabledForSelection} label="Dead Zone" disabled={!hasSelection} />
-                  </div>
-                  <p className="rapid-card-copy rapid-deadzone-copy">
-                    The top dead zone reduces false touches, while the bottom dead zone helps prevent unintended release near full travel.
-                  </p>
-
-                  <div className="deadzone-grid rapid-deadzone-grid">
-                    <div className="deadzone-card rapid-deadzone-control-card">
-                      <div className="deadzone-head">Top dead zone</div>
-                      <VerticalRangeControl
-                        value={topDeadzone}
-                        min={0}
-                        max={0.5}
-                        step={0.01}
-                        suffix="mm"
-                        disabled={!deadzoneControlsEnabled}
-                        mixed={topDeadzoneMixed}
-                        direction="top"
-                        onChange={setTopDeadzoneForSelection}
-                      />
-                    </div>
-                    <div className="deadzone-card rapid-deadzone-control-card">
-                      <div className="deadzone-head">Bottom dead zone</div>
-                      <VerticalRangeControl
-                        value={bottomDeadzone}
-                        min={0}
-                        max={0.5}
-                        step={0.01}
-                        suffix="mm"
-                        disabled={!deadzoneControlsEnabled}
-                        mixed={bottomDeadzoneMixed}
-                        direction="bottom"
-                        onChange={setBottomDeadzoneForSelection}
-                      />
-                    </div>
-                  </div>
-                </article>
-              </section>
-            </div>
+            <RapidPage
+              advancedBindings={advancedBindings}
+              selectedKeys={selectedKeys}
+              toggleKey={toggleKey}
+              quickPreviewMode={quickPreviewMode}
+              rapidPreviewByKey={rapidPreviewByKey}
+              deadzonePreviewByKey={deadzonePreviewByKey}
+              hasSelection={hasSelection}
+              allSelected={allSelected}
+              selectAll={selectAll}
+              discardSelection={discardSelection}
+              rapidTrigger={rapidTrigger}
+              rapidTriggerMixed={rapidTriggerMixed}
+              setRapidTriggerForSelection={setRapidTriggerForSelection}
+              rapidTriggerControlsEnabled={rapidTriggerControlsEnabled}
+              splitSensitivity={splitSensitivity}
+              splitSensitivityMixed={splitSensitivityMixed}
+              setSplitSensitivityForSelection={setSplitSensitivityForSelection}
+              splitSensitivityControlsEnabled={splitSensitivityControlsEnabled}
+              rapidSensitivity={rapidSensitivity}
+              rapidSensitivityMixed={rapidSensitivityMixed}
+              setRapidSensitivityForSelection={setRapidSensitivityForSelection}
+              pressSensitivity={pressSensitivity}
+              pressSensitivityMixed={pressSensitivityMixed}
+              setPressSensitivityForSelection={setPressSensitivityForSelection}
+              releaseSensitivity={releaseSensitivity}
+              releaseSensitivityMixed={releaseSensitivityMixed}
+              setReleaseSensitivityForSelection={setReleaseSensitivityForSelection}
+              deadzoneEnabled={deadzoneEnabled}
+              deadzoneEnabledMixed={deadzoneEnabledMixed}
+              setDeadzoneEnabledForSelection={setDeadzoneEnabledForSelection}
+              deadzoneControlsEnabled={deadzoneControlsEnabled}
+              topDeadzone={topDeadzone}
+              topDeadzoneMixed={topDeadzoneMixed}
+              setTopDeadzoneForSelection={setTopDeadzoneForSelection}
+              bottomDeadzone={bottomDeadzone}
+              bottomDeadzoneMixed={bottomDeadzoneMixed}
+              setBottomDeadzoneForSelection={setBottomDeadzoneForSelection}
+              setQuickPreviewMode={setQuickPreviewMode}
+              rapidTriggerByKey={rapidTriggerByKey}
+            />
           ) : activePage === 'quick' ? (
-            <div className="page quick-page page-enter">
-              <section className="keyboard-stage">
-                <Hero68Preview
-                  advancedBindings={advancedBindings}
-                  selectedKeys={selectedKeys}
-                  onToggleKey={toggleKey}
-                  overlayMode={quickPreviewMode}
-                  actuationValues={actuationByKey}
-                  rapidPreviewValues={rapidPreviewByKey}
-                  deadzonePreviewValues={deadzonePreviewByKey}
-                />
-              </section>
-
-              <div className="selection-instruction">
-                {hasSelection
-                  ? `${selectedKeys.size} key${selectedKeys.size === 1 ? '' : 's'} selected.`
-                  : 'To adjust Actuation Point, Rapid Trigger, or Dead Zone, select one or more keys first.'}
-              </div>
-
-              <div className="quick-heading-row">
-                <h1>Quick Settings</h1>
-                <div className="selection-actions">
-                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>Select all keys</button>
-                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>Discard selection</button>
-                </div>
-              </div>
-
-              <section className="quick-grid">
-                <article
-                  className={`setting-card ${!hasSelection ? 'is-unavailable' : ''}`}
-                  onMouseEnter={() => setQuickPreviewMode('actuation')}
-                  onMouseLeave={() => setQuickPreviewMode('none')}
-                >
-                  <div className="card-head compact-head">
-                    <h2>Actuation Point</h2>
-                    <p>Set the point at which a key activates when pressed for all selected keys.</p>
-                  </div>
-                  <div className="actuation-visual with-switch-preview">
-                    <div className={`selected-switch-preview ${switchProfileMixed ? 'is-mixed' : ''}`} aria-hidden="true">
-                      {selectedSwitch.front ? <img src={selectedSwitch.front} alt="" /> : <SwitchStemMenuIcon />}
-                      <span>{switchProfileMixed ? 'Mixed switch profiles' : selectedSwitch.name}</span>
-                    </div>
-                    <VerticalRangeControl
-                      value={actuation}
-                      min={0.1}
-                      max={3.4}
-                      step={0.05}
-                      suffix="mm"
-                      disabled={!hasSelection}
-                      direction="top"
-                      mixed={actuationMixed}
-                      mixedPlaceholder="MIXED"
-                      onChange={setActuationForSelection}
-                    />
-                  </div>
-                </article>
-
-                <article
-                  className={`setting-card ${!hasSelection ? 'is-unavailable' : ''}`}
-                  onMouseEnter={() => setQuickPreviewMode('rapid')}
-                  onMouseLeave={() => setQuickPreviewMode('none')}
-                >
-                  <div className="card-head with-toggle compact-head">
-                    <div>
-                      <h2>Rapid Trigger</h2>
-                      <p>When enabled, selected keys dynamically activate and reset based on press and release movement.</p>
-                    </div>
-                    <Toggle checked={rapidTrigger} mixed={rapidTriggerMixed} onChange={setRapidTriggerForSelection} label="Rapid Trigger" disabled={!hasSelection} />
-                  </div>
-
-                  <div className="split-row">
-                    <span>Separate press/release sensitivity</span>
-                    <Toggle checked={splitSensitivity} mixed={splitSensitivityMixed} onChange={setSplitSensitivityForSelection} label="Separate press/release sensitivity" disabled={!rapidTriggerControlsEnabled} />
-                  </div>
-
-                  {!splitSensitivity && !splitSensitivityMixed ? (
-                    <>
-                      <div className="setting-subtitle">Sensitivity</div>
-                      <div className="range-stack">
-                        <RangeControl
-                          value={rapidSensitivity}
-                          min={0.01}
-                          max={3.4}
-                          step={0.05}
-                          allowedValues={RAPID_TRIGGER_VALUES}
-                          suffix="mm"
-                          recommendedValue={0.65}
-                          mixed={rapidSensitivityMixed}
-                          disabled={!splitSensitivityControlsEnabled}
-                          onChange={setRapidSensitivityForSelection}
-                        />
-                        <div className="range-labels"><span>High</span><span>Low</span></div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="separate-sensitivity-grid">
-                      <div className="separate-sensitivity-item">
-                        <div className="setting-subtitle">Press</div>
-                        <div className="range-stack">
-                          <RangeControl
-                            value={pressSensitivity}
-                            min={0.01}
-                            max={3.4}
-                            step={0.05}
-                            allowedValues={RAPID_TRIGGER_VALUES}
-                            suffix="mm"
-                            recommendedValue={0.5}
-                            mixed={pressSensitivityMixed || splitSensitivityMixed}
-                            disabled={!splitSensitivityControlsEnabled}
-                            onChange={setPressSensitivityForSelection}
-                          />
-                          <div className="range-labels"><span>High</span><span>Low</span></div>
-                        </div>
-                      </div>
-                      <div className="separate-sensitivity-item">
-                        <div className="setting-subtitle">Release</div>
-                        <div className="range-stack">
-                          <RangeControl
-                            value={releaseSensitivity}
-                            min={0.01}
-                            max={3.4}
-                            step={0.05}
-                            allowedValues={RAPID_TRIGGER_VALUES}
-                            suffix="mm"
-                            recommendedValue={0.55}
-                            mixed={releaseSensitivityMixed || splitSensitivityMixed}
-                            disabled={!splitSensitivityControlsEnabled}
-                            onChange={setReleaseSensitivityForSelection}
-                          />
-                          <div className="range-labels"><span>High</span><span>Low</span></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </article>
-
-                <article
-                  className={`setting-card deadzone-setting-card ${!hasSelection ? 'is-unavailable' : ''}`}
-                  onMouseEnter={() => setQuickPreviewMode('deadzone')}
-                  onMouseLeave={() => setQuickPreviewMode('none')}
-                >
-                  <div className="card-head with-toggle compact-head deadzone-title-row">
-                    <div>
-                      <h2>Dead zone setting</h2>
-                      <p>The top dead zone reduces false touches, while the bottom dead zone reduces disconnection.</p>
-                    </div>
-                    <Toggle checked={deadzoneEnabled} mixed={deadzoneEnabledMixed} onChange={setDeadzoneEnabledForSelection} label="Dead zone setting" disabled={!hasSelection} />
-                  </div>
-                  <div className="deadzone-grid standalone-deadzone-grid">
-                    <div className="deadzone-card">
-                      <div className="deadzone-head">Top dead zone</div>
-                      <VerticalRangeControl
-                        value={topDeadzone}
-                        min={0}
-                        max={0.5}
-                        step={0.01}
-                        suffix="mm"
-                        disabled={!deadzoneControlsEnabled}
-                        mixed={topDeadzoneMixed}
-                        direction="top"
-                        onChange={setTopDeadzoneForSelection}
-                      />
-                    </div>
-                    <div className="deadzone-card">
-                      <div className="deadzone-head">Bottom dead zone</div>
-                      <VerticalRangeControl
-                        value={bottomDeadzone}
-                        min={0}
-                        max={0.5}
-                        step={0.01}
-                        suffix="mm"
-                        disabled={!deadzoneControlsEnabled}
-                        mixed={bottomDeadzoneMixed}
-                        direction="bottom"
-                        onChange={setBottomDeadzoneForSelection}
-                      />
-                    </div>
-                  </div>
-                </article>
-
-                <article className="setting-card tachyon-card">
-                  <div className="tachyon-card-inner">
-                    <div>
-                      <div className="card-head with-toggle compact-head tachyon-head-inline">
-                        <h2>Tachyon Mode</h2>
-                        <Toggle checked={tachyon} onChange={handleTachyonChange} label="Tachyon Mode" disabled={!deviceConnected} />
-                      </div>
-                      <p className="tachyon-copy">
-                        Tachyon Mode forces 8000 Hz polling and keeps diagnostic streams out of the fast path. Starting Hall Stream turns the host-side Tachyon mode off without changing polling, so the keyboard does not USB re-enumerate just to open telemetry.
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              </section>
-            </div>
+            <QuickSettingsPage
+              advancedBindings={advancedBindings}
+              selectedKeys={selectedKeys}
+              toggleKey={toggleKey}
+              quickPreviewMode={quickPreviewMode}
+              actuationByKey={actuationByKey}
+              rapidPreviewByKey={rapidPreviewByKey}
+              deadzonePreviewByKey={deadzonePreviewByKey}
+              hasSelection={hasSelection}
+              allSelected={allSelected}
+              selectAll={selectAll}
+              discardSelection={discardSelection}
+              selectedSwitch={selectedSwitch}
+              switchProfileMixed={switchProfileMixed}
+              actuation={actuation}
+              actuationMixed={actuationMixed}
+              setActuationForSelection={setActuationForSelection}
+              rapidTrigger={rapidTrigger}
+              rapidTriggerMixed={rapidTriggerMixed}
+              setRapidTriggerForSelection={setRapidTriggerForSelection}
+              rapidTriggerControlsEnabled={rapidTriggerControlsEnabled}
+              splitSensitivity={splitSensitivity}
+              splitSensitivityMixed={splitSensitivityMixed}
+              setSplitSensitivityForSelection={setSplitSensitivityForSelection}
+              splitSensitivityControlsEnabled={splitSensitivityControlsEnabled}
+              rapidSensitivity={rapidSensitivity}
+              rapidSensitivityMixed={rapidSensitivityMixed}
+              setRapidSensitivityForSelection={setRapidSensitivityForSelection}
+              pressSensitivity={pressSensitivity}
+              pressSensitivityMixed={pressSensitivityMixed}
+              setPressSensitivityForSelection={setPressSensitivityForSelection}
+              releaseSensitivity={releaseSensitivity}
+              releaseSensitivityMixed={releaseSensitivityMixed}
+              setReleaseSensitivityForSelection={setReleaseSensitivityForSelection}
+              deadzoneEnabled={deadzoneEnabled}
+              deadzoneEnabledMixed={deadzoneEnabledMixed}
+              setDeadzoneEnabledForSelection={setDeadzoneEnabledForSelection}
+              deadzoneControlsEnabled={deadzoneControlsEnabled}
+              topDeadzone={topDeadzone}
+              topDeadzoneMixed={topDeadzoneMixed}
+              setTopDeadzoneForSelection={setTopDeadzoneForSelection}
+              bottomDeadzone={bottomDeadzone}
+              bottomDeadzoneMixed={bottomDeadzoneMixed}
+              setBottomDeadzoneForSelection={setBottomDeadzoneForSelection}
+              tachyon={tachyon}
+              handleTachyonChange={handleTachyonChange}
+              deviceConnected={deviceConnected}
+              setQuickPreviewMode={setQuickPreviewMode}
+            />
           ) : activePage === 'stream' ? (
-            <div className="page quick-page stream-page page-enter">
-              <div className="stream-toolbar">
-                <div>
-                  <h1>Hall Stream</h1>
-                  <p>Monitor every key's Hall travel in real time. Click a key on the preview to pin it as the focused key.</p>
-                </div>
-                <div className="stream-toolbar-actions">
-                  <span className={`stream-live-pill ${hallStream.active ? 'is-live' : ''}`}>
-                    <i />{hallStream.active ? 'LIVE' : hallStream.starting ? 'STARTING' : 'IDLE'}
-                  </span>
-                  <button type="button" className={`apply-button ${hallStream.active ? 'is-danger' : ''}`} onClick={handleHallStreamToggle} disabled={!deviceConnected || hallStream.starting}>
-                    {hallStream.starting ? 'Starting…' : hallStream.active ? 'Stop stream' : 'Start stream'}
-                  </button>
-                </div>
-              </div>
-
-              <section className="keyboard-stage stream-keyboard-stage">
-                <Hero68Preview
-                  advancedBindings={advancedBindings}
-                  selectedKeys={hallStreamPreviewSelection}
-                  onToggleKey={toggleHallStreamPin}
-                  overlayMode="stream"
-                  streamPreviewValues={hallStreamPreviewByKey}
-                />
-              </section>
-
-              <section className="stream-dashboard">
-                <article className="setting-card stream-travel-card">
-                  <div className="stream-travel-head">
-                    <div>
-                      <span className="stream-eyebrow">{hallStreamPinnedKeyId ? 'FOCUSED KEY · PINNED' : 'FOCUSED KEY'}</span>
-                      <h2>{hallKeyLabel(hallStreamFocusKeyId)}</h2>
-                    </div>
-                    <span className={`stream-pressed-badge ${hallStreamFocusSample?.pressed ? 'is-pressed' : ''} ${hallStreamFocusSample?.releaseInferred ? 'is-inferred' : ''}`}>
-                      {hallStreamFocusSample?.pressed ? 'PRESSED' : hallStreamFocusSample?.releaseInferred ? 'RELEASED · HID' : 'RELEASED'}
-                    </span>
-                  </div>
-                  <div className="stream-travel-visual">
-                    <div className="stream-travel-scale" aria-hidden="true">
-                      <span>0.0</span><span>1.0</span><span>2.0</span><span>3.0</span><span>{HERO68_HALL_VISUAL_MAX_MM.toFixed(1)}</span>
-                    </div>
-                    <div className="stream-travel-track">
-                      <div className="stream-travel-fill" style={{ height: `${hallStreamFocusPercent}%` }} />
-                      <div className="stream-travel-marker" style={{ top: `${hallStreamFocusPercent}%` }} />
-                    </div>
-                    <div className="stream-travel-readout">
-                      <strong>{hallStreamFocusSample ? hallStreamFocusSample.visualDistanceMm.toFixed(2) : '0.00'}<small> mm</small></strong>
-                      <span>{hallStreamFocusPercent.toFixed(0)}% travel</span>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="setting-card stream-observed-card">
-                  <div className="card-head compact-head">
-                    <h2>Live keys</h2>
-                    <span>{hallStreamActiveSamples.length} active</span>
-                  </div>
-                  <div className="stream-selected-list">
-                    {hallStreamListKeyIds.map((keyId) => {
-                      const sample = hallStream.samples[keyId]
-                      const pct = sample ? Math.max(0, Math.min(100, (sample.visualDistanceMm / HERO68_HALL_VISUAL_MAX_MM) * 100)) : 0
-                      return (
-                        <div className="stream-selected-row" key={keyId}>
-                          <strong>{hallKeyLabel(keyId)}</strong>
-                          <span className="stream-row-bar"><i style={{ width: `${pct}%` }} /></span>
-                          <span className="stream-row-value">
-                            <b>{sample ? (sample.releaseInferred ? '0.00 mm' : `${sample.visualDistanceMm.toFixed(2)} mm`) : '—'}</b>
-                            <small>{sample && hallStream.keyTelemetryHz[keyId] ? `${hallStream.keyTelemetryHz[keyId].toFixed(1)} Hz` : '—'}</small>
-                          </span>
-                        </div>
-                      )
-                    })}
-                    {hallStreamListKeyIds.length === 0 && <p className="stream-empty-copy">Start the stream, then press a key. Its travel will appear here and directly on the keyboard.</p>}
-                  </div>
-                </article>
-              </section>
-
-              <div className="stream-footline">
-                <span>68-key Hall monitoring</span>
-                <span>{hallStream.telemetryHz ? `~${hallStream.telemetryHz.toFixed(1)} Hz refresh` : hallStream.active ? 'Measuring refresh rate…' : 'Ready'}</span>
-              </div>
-              {hallStream.error && <p className="stream-error stream-error-banner">{hallStream.error}</p>}
-            </div>
+            <StreamPage
+              hallStream={hallStream}
+              deviceConnected={deviceConnected}
+              handleHallStreamToggle={handleHallStreamToggle}
+              advancedBindings={advancedBindings}
+              hallStreamPreviewSelection={hallStreamPreviewSelection}
+              toggleHallStreamPin={toggleHallStreamPin}
+              hallStreamPreviewByKey={hallStreamPreviewByKey}
+              hallStreamPinnedKeyId={hallStreamPinnedKeyId}
+              hallStreamFocusKeyId={hallStreamFocusKeyId}
+              hallStreamFocusSample={hallStreamFocusSample}
+              hallStreamFocusPercent={hallStreamFocusPercent}
+              hallStreamActiveSamples={hallStreamActiveSamples}
+              hallStreamListKeyIds={hallStreamListKeyIds}
+            />
           ) : activePage === 'rgb' ? (
-            <Suspense fallback={<div className="page settings-page">Loading RGB preview…</div>}><RgbSettingsPage advancedBindings={advancedBindings} key={profileSlot} value={rgb} busy={profileBusy} onChange={next => { setRgb(next); setSaveState('idle') }} /></Suspense>
+            <RgbPage
+              onSetup={() => { setActiveSettingsPage('background-service'); setActiveRail('settings') }}
+              initialCustom={rgbCustomEntry}
+              onEntered={() => setRgbCustomEntry(false)}
+              advancedBindings={advancedBindings}
+              profileSlot={profileSlot}
+              rgb={rgb}
+              profileBusy={profileBusy}
+              setRgb={setRgb}
+              setSaveState={setSaveState}
+              RgbSettingsPage={RgbSettingsPage}
+            />
           ) : (
             <div className="placeholder-page page-enter">
               <div className="placeholder-icon"><SlidersHorizontal size={28} /></div>
@@ -2468,6 +1517,8 @@ function App() {
                 </article>
               </section>
             </div>
+          ) : activeSettingsPage === 'background-service' ? (
+            <BackgroundServicePage onOpenCustom={() => { setRgbCustomEntry(true); setActivePage('rgb'); setActiveRail('keyboard') }} />
           ) : activeSettingsPage === 'interface' ? (
             <div className="page settings-page page-enter">
               <div className="settings-hero">

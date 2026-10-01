@@ -11,6 +11,83 @@ function profile(effect='reaction') {
   p.custom=custom.defaultCustomRgb(p);p.custom.enabled=true;p.custom.layers=[custom.createRgbLayer(effect,'one')]
   return p
 }
+const energy=hex=>[1,3,5].reduce((sum,i)=>sum+parseInt(hex.slice(i,i+2),16),0)
+test('Aurora base restores, dims monotonically to off and keeps FX independent of base brightness',()=>{
+  const p=profile();p.custom.layers=[];p.custom.baseEffect={effect:'aurora',palette:'sunset',width:2.5,speed:.5};p.custom.base.mix=true
+  assert.deepEqual(custom.restoreCustomRgb(JSON.parse(JSON.stringify(p.custom)),p),p.custom)
+  const e=new custom.CustomRgbEngine(p);e.advance(600)
+  let previous=e.frame().keys
+  for(let brightness=19;brightness>=0;brightness--){
+    p.custom.base.brightness=brightness;e.configure(p)
+    const frame=e.frame().keys
+    for(const id of Object.keys(frame))assert.ok(energy(frame[id])<=energy(previous[id]))
+    previous=frame
+  }
+  assert.ok(Object.values(previous).every(c=>c==='#000000'));assert.equal(e.milliseconds,600)
+  p.custom.layers=[custom.createRgbLayer('reaction','fx')];e.configure(p);e.event('KeyW',true)
+  assert.equal(e.frame().keys.KeyW,'#ffd95a');assert.equal(e.frame().keys.KeyA,'#000000')
+  const malformed=structuredClone(p.custom);malformed.baseEffect.palette='bad';malformed.baseEffect.width=Infinity
+  assert.equal(custom.restoreCustomRgb(malformed,p).baseEffect.palette,'aurora');assert.equal(custom.restoreCustomRgb(malformed,p).baseEffect.width,2.5)
+})
+test('Aurora and Comet animate deterministically with palettes, direction and a fading tail',()=>{
+  for(const effect of ['aurora','comet']){
+    const p=profile(effect),a=new custom.CustomRgbEngine(p),b=new custom.CustomRgbEngine(p)
+    a.advance(600);b.advance(600);const first=a.frame().keys
+    assert.deepEqual(first,b.frame().keys)
+    assert.ok(Object.values(first).filter(color=>energy(color)>0).length>1)
+    a.advance(1300);assert.notDeepEqual(a.frame().keys,first)
+    const layer=p.custom.layers[0];layer.keys=['KeyW'];layer.opacity=100
+    a.configure(p);const scoped=a.frame().keys
+    for(const [id,color] of Object.entries(scoped))if(id!=='KeyW')assert.equal(color,'#000000')
+    layer.enabled=false;a.configure(p);assert.ok(Object.values(a.frame().keys).every(color=>color==='#000000'))
+    layer.enabled=true;layer.opacity=0;a.configure(p);assert.ok(Object.values(a.frame().keys).every(color=>color==='#000000'))
+  }
+  const horizontal=profile('comet'),vertical=structuredClone(horizontal);vertical.custom.layers[0].direction='vertical'
+  const a=new custom.CustomRgbEngine(horizontal),b=new custom.CustomRgbEngine(vertical);a.advance(600);b.advance(600)
+  assert.notDeepEqual(a.frame().keys,b.frame().keys)
+  const active=Object.values(a.frame().keys).map(energy).filter(v=>v>0)
+  assert.ok(new Set(active).size>1,'head and tail have different brightness')
+})
+test('Pressure Wave uses strike speed rather than depth, settles while held and fades after release',()=>{
+  const p=profile('pressure-wave'),slow=new custom.CustomRgbEngine(p),fast=new custom.CustomRgbEngine(p)
+  for(const e of [slow,fast]){e.advance(110);e.setTravel({KeyW:.08});assert.equal(e.frame().keys.KeyW,'#000000');assert.equal(e.activeWaveCount,0)}
+  fast.advance(130);fast.setTravel({KeyW:1.2})
+  slow.advance(190);slow.setTravel({KeyW:1.2})
+  const peak=energy(fast.frame().keys.KeyW)
+  assert.ok(peak>energy(slow.frame().keys.KeyW),'same held depth, faster stroke is brighter')
+  fast.advance(430);slow.advance(490)
+  assert.ok(energy(fast.frame().keys.KeyR)>energy(slow.frame().keys.KeyR),'same wave age, faster stroke is brighter')
+  fast.advance(630);fast.frame();assert.equal(fast.activeWaveCount,2)
+  const settled=energy(fast.frame().keys.KeyW);assert.ok(settled<peak)
+  fast.setTravel({});fast.advance(700);assert.ok(Object.values(fast.frame().keys).some(color=>energy(color)>0))
+  fast.advance(2100);assert.ok(Object.values(fast.frame().keys).every(color=>color==='#000000'));assert.equal(fast.activeWaveCount,0)
+})
+test('Pressure Wave does not brighten just because a held key slowly travels deeper',()=>{
+  const p=profile('pressure-wave'),e=new custom.CustomRgbEngine(p)
+  e.advance(110);e.setTravel({KeyW:0});e.advance(130);e.setTravel({KeyW:1.5});const peak=energy(e.frame().keys.KeyW)
+  for(let t=230;t<=1230;t+=100){e.advance(t);e.setTravel({KeyW:Math.min(3.4,1.5+(t-130)*.001)});e.frame()}
+  assert.ok(energy(e.frame().keys.KeyW)<peak)
+  e.setTravel({KeyW:0});e.frame();e.advance(1250);e.setTravel({KeyW:1.5});assert.ok(energy(e.frame().keys.KeyW)>peak*.7,'a fresh fast strike brightens again')
+})
+test('Pressure Wave bounds live state and clears it when changing or disabling the layer',()=>{
+  const p=profile('pressure-wave'),e=new custom.CustomRgbEngine(p)
+  e.setTravel(Object.fromEntries(Object.keys(p.colors).map(id=>[id,3.4])))
+  for(let t=110;t<2200;t+=500){e.advance(t);e.frame();assert.ok(e.activeWaveCount<=64)}
+  assert.equal(e.activeWaveCount,64)
+  p.custom.layers[0].effect='aurora';e.configure(p);assert.equal(e.activeWaveCount,0)
+  p.custom.layers[0].effect='pressure-wave';e.configure(p);e.frame();assert.equal(e.activeWaveCount,64)
+  p.custom.layers[0].enabled=false;e.configure(p);assert.equal(e.activeWaveCount,0)
+})
+test('new effects and palette survive preset restoration while malformed palettes use defaults',()=>{
+  for(const effect of ['aurora','comet','pressure-wave']){
+    const p=profile(effect);assert.deepEqual(custom.restoreCustomRgb(JSON.parse(JSON.stringify(p.custom)),p),p.custom)
+  }
+  const p=profile('comet');p.custom.layers[0].palette='unknown'
+  assert.equal(custom.restoreCustomRgb(p.custom,p).layers[0].palette,'ice')
+  assert.equal(custom.needsRgbAnalogHall(profile('pressure-wave').custom),true)
+  assert.equal(custom.needsRgbAnalogHall(profile('aurora').custom),false)
+  const disabled=profile('pressure-wave');disabled.custom.layers[0].enabled=false;assert.equal(custom.needsRgbAnalogHall(disabled.custom),false)
+})
 test('custom base without FX matches existing firmware color engine for all 68 keys',()=>{
   const p=profile();p.custom.layers=[];p.custom.base.mode=3
   const a=new custom.CustomRgbEngine(p),b=new FirmwareRgbPreview({...p,keys:p.custom.base})

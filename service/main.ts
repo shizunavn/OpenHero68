@@ -5,14 +5,15 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync } fr
 import {createHash,randomUUID} from 'node:crypto'
 import path from 'node:path'
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
-import { CustomRgbEngine, restoreCustomRgb } from '../src/keyboard/customRgb'
+import { CustomRgbEngine, restoreCustomRgb, CUSTOM_RGB_EFFECTS, needsRgbAnalogHall } from '../src/keyboard/customRgb'
 import { defaultRgb, type RgbProfile } from '../src/protocol/hero68/rgb'
 import { buildReport, decodeReport } from '../src/protocol/hero68/codec'
 import { HERO68_KEY_IDS } from '../src/keyboard/hero68Layout'
 import { HERO68_KEY_POSITIONS } from '../src/protocol/hero68/keyPositions'
-import { prepareFrame } from './frame'
+import { RgbFrameEncoder } from './frame'
 import { validateDeviceRequest } from './deviceRequests'
 import { decodeHero68Input } from './keyInput'
+import { serviceOrigins, isAllowedServiceRequest } from './origins'
 import {LAUNCHER_VERSION,CORE_VERSION,CORE_API_VERSION,newer,inspectManifest,verifyManifest,verifyCore,type CoreManifest} from './updatePackage'
 
 const port=16868
@@ -20,7 +21,7 @@ const stateDir=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','r
 const coreVersion=process.env.OPENHERO68_CORE_VERSION??CORE_VERSION
 mkdirSync(stateDir,{recursive:true})
 const log=(message:string)=>appendFileSync(path.join(stateDir,'service.log'),`${new Date().toISOString()} ${message}\n`)
-const origins=new Set(['https://shizuna.ddns.net:5173','http://localhost:5173','https://localhost:5173','http://127.0.0.1:5173','https://127.0.0.1:5173',`http://127.0.0.1:${port}`,`http://localhost:${port}`])
+const origins=serviceOrigins(port)
 for(let i=2;i<process.argv.length;i++)if(process.argv[i]==='--allow-origin'&&process.argv[i+1])origins.add(new URL(process.argv[++i]).origin)
 
 export function normalizeProfile(input:unknown):RgbProfile {
@@ -49,6 +50,7 @@ function persist(){
   }catch{/* No previous valid preset. */}
   writeFileSync(file+'.tmp',JSON.stringify({version:2,mode,enabled:mode==='custom',profile}));renameSync(file+'.tmp',file)
 }
+const frameEncoder=new RgbFrameEncoder()
 let engine=profile?new CustomRgbEngine(profile):null, epoch=performance.now(), reconnectAt=0
 let lastError:string|null=null, frames=0, packets=0, hallSnapshots=0, timeouts=0, lastFrameAt=0, maxGapMs=0, frameMs=0
 const eventLoopDelay=monitorEventLoopDelay({resolution:5});eventLoopDelay.enable()
@@ -66,7 +68,7 @@ const hallClients=new Map<ServerResponse,HallClient>()
 const hallSamples=new Map<string,HallRecord>()
 let nextPriorityAt=0,nextSecondaryAt=0,secondaryIndex=0,hallPolls=0,priorityCount=0,secondaryCount=0
 const priorityHallIntervalMs=10
-function needsAnalogHall(){return mode==='custom'&&!!profile?.custom?.layers.some(l=>l.enabled&&['jelly','aoe','touch','mixing'].includes(l.effect))}
+function needsAnalogHall(){return mode==='custom'&&needsRgbAnalogHall(profile?.custom)}
 function publishHall(records:HallRecord[]){
   const now=performance.now()
   for(const [client,subscription] of hallClients){
@@ -164,7 +166,7 @@ const bridge=new Bridge()
 async function connect(){
   const identity=await bridge.request(buildReport({command:0x82,zone:1}))
   if(![0x11,0,0,0,0,3].every((v,i)=>identity.data[i]===v))throw Error('Device is not the supported HERO68')
-  connected=true;lastError=null;hallSamples.clear();engine=profile?new CustomRgbEngine(profile):null;epoch=performance.now();lastFrameAt=0
+  connected=true;lastError=null;hallSamples.clear();frameEncoder.reset();engine=profile?new CustomRgbEngine(profile):null;epoch=performance.now();lastFrameAt=0
   log('HERO68 connected')
 }
 async function stop(){
@@ -180,7 +182,7 @@ async function tick(){
   const started=performance.now()
   engine!.advance(started-epoch+110)
   if(needsAnalogHall())engine!.setTravel(Object.fromEntries([...hallSamples].map(([id,s])=>[id,s.distanceUnits/100])))
-  const frame=prepareFrame(engine!.frame().keys)
+  const frame=frameEncoder.prepare(engine!.frame().keys)
   for(const packet of frame.packets)await bridge.request(packet)
   const now=performance.now();while(pendingInputs.length&&pendingInputs[0]<=started){inputLatencies.push(now-pendingInputs.shift()!);if(inputLatencies.length>256)inputLatencies.shift()}
   if(lastFrameAt){
@@ -224,7 +226,7 @@ async function hallLoop(){
   if(delay>0.5)await exclusive(()=>bridge.wait(delay)).catch(()=>{})
   if(!closing)setImmediate(()=>void hallLoop())
 }
-function status(){const values=[...inputLatencies].sort((a,b)=>a-b),gaps=[...frameGaps].sort((a,b)=>a-b);return {service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,enabled:mode==='custom',connected,preset:!!profile,sessionId,fps,frameMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,frameGapP95Ms:gaps.length?gaps[Math.ceil(gaps.length*.95)-1]:null,frameGapP99Ms:gaps.length?gaps[Math.ceil(gaps.length*.99)-1]:null,gapsOver100,lastLongGapAt,eventLoopDelayP99Ms:eventLoopDelay.percentile(99)/1e6,eventLoopDelayMaxMs:eventLoopDelay.max/1e6,lastError,rawInputReady,inputTransitions,inputToLedP95Ms:values.length?values[Math.ceil(values.length*.95)-1]:null,targetFps:40,paletteColors:32,sideOutput:false}}
+function status(){const values=[...inputLatencies].sort((a,b)=>a-b),gaps=[...frameGaps].sort((a,b)=>a-b);return {service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,supportedEffects:CUSTOM_RGB_EFFECTS.map(effect=>effect.id),supportedBaseEffects:["aurora"],pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,enabled:mode==='custom',connected,preset:!!profile,sessionId,fps,frameMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,frameGapP95Ms:gaps.length?gaps[Math.ceil(gaps.length*.95)-1]:null,frameGapP99Ms:gaps.length?gaps[Math.ceil(gaps.length*.99)-1]:null,gapsOver100,lastLongGapAt,eventLoopDelayP99Ms:eventLoopDelay.percentile(99)/1e6,eventLoopDelayMaxMs:eventLoopDelay.max/1e6,lastError,rawInputReady,inputTransitions,inputToLedP95Ms:values.length?values[Math.ceil(values.length*.95)-1]:null,targetFps:40,paletteColors:32,sideOutput:false}}
 const releaseApi='https://api.github.com/repos/shizunavn/OpenHero68-RGB-Service/releases/latest'
 const assetPrefix='https://github.com/shizunavn/OpenHero68-RGB-Service/releases/download/'
 type ReleaseAsset={name:string;browser_download_url:string;size:number;digest?:string}
@@ -288,7 +290,7 @@ const panel=`<!doctype html><meta charset="utf-8"><title>Hero68 RGB Service</tit
 const server=createServer(async(req,res)=>{
   const origin=req.headers.origin
   res.setHeader('Cache-Control','no-store');res.setHeader('Vary','Origin')
-  if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(req.headers.host??'')||(origin&&!origins.has(origin))){res.writeHead(403).end();return}
+  if(!isAllowedServiceRequest(req.headers.host,origin,origins,port)){res.writeHead(403).end();return}
   if(origin)res.setHeader('Access-Control-Allow-Origin',origin)
   res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type');res.setHeader('Access-Control-Allow-Private-Network','true')
   if(req.method==='OPTIONS'){res.writeHead(204).end();return}
@@ -367,7 +369,7 @@ const server=createServer(async(req,res)=>{
       if(req.url==='/mode'&&input.mode!=='custom')throw Error('Expected onboard or custom mode')
       if(req.url==='/preset'&&input.sessionId!==sessionId)throw Error('Stale RGB editor session; preset was not applied')
       if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);if(engine)engine.configure(profile);else{engine=new CustomRgbEngine(profile);epoch=performance.now()}persist()}
-      if(req.url==='/start'||req.url==='/mode'){if(!profile)throw Error('Send a preset first');mode='custom';sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
+      if(req.url==='/start'||req.url==='/mode'){if(!profile)throw Error('Send a preset first');mode='custom';frameEncoder.reset();sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
     })
     json(200,status())
     if(req.url==='/shutdown')void shutdown()

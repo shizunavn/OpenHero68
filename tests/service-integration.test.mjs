@@ -30,7 +30,16 @@ test('live preset edits coalesce while keeping one in-flight request and publish
   assert.deepEqual(sent,[1]);releases.shift()();await wait(0)
   assert.deepEqual(sent,[1,3]);assert.equal(maximum,1)
   queue.stage(4);queue.close();queue.stage(5);releases.shift()();await wait(0)
-  assert.deepEqual(sent,[1,3,4]);releases.shift()();await wait(0)
+  assert.deepEqual(sent,[1,3])
+})
+
+test('closed preset queue drops scheduled sends and suppresses stale failures',async()=>{
+  const sent=[],errors=[];let reject
+  const queue=latestUpdates(async value=>{sent.push(value);await new Promise((_,fail)=>{reject=fail})},e=>errors.push(e),40)
+  queue.stage(1);await wait(0);queue.stage(2);queue.close();reject(Error('stale session'));await wait(60)
+  assert.deepEqual(sent,[1]);assert.deepEqual(errors,[])
+  const never=latestUpdates(async value=>sent.push(value),e=>errors.push(e),0)
+  never.stage(3);never.close();await wait(0);assert.deepEqual(sent,[1])
 })
 
 test('configuration manager stays connected through service and verifies reply command, zone and predicate',async()=>{

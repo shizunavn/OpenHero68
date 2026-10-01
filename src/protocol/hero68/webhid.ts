@@ -159,22 +159,30 @@ export class Hero68DeviceManager implements Hero68Transport {
     this.#subscribers.forEach((listener) => listener())
   }
 
-  async connect(requestPermission = true): Promise<void> {
-    if(this.connected)return
+  async connect(requestPermission = true): Promise<boolean> {
+    if(this.connected)return true
     if(typeof location!=='undefined'&&location.protocol.startsWith('http')){
       const service=await rgbService.status().catch(()=>null)
-      if(service&&((service.apiVersion??0)>=3||(service.enabled&&(service.apiVersion??0)>=2))){await this.connectViaService();return}
+      if(service&&((service.apiVersion??0)>=3||(service.enabled&&(service.apiVersion??0)>=2))){await this.connectViaService();return true}
     }
     const hid = getHid()
     if (!hid) {
       this.#setSnapshot({ state: 'unsupported', error: 'WebHID is not available in this browser.' })
       throw new Error('WebHID is not available in this browser')
     }
-    if (this.connected) return
+    if (this.connected) return true
 
     this.#setSnapshot({ state: 'connecting', error: null })
     try {
       let devices = (await hid.getDevices()).filter(isHero68ControlDevice)
+      if (devices.length === 0 && !requestPermission) {
+        // getDevices() is intentionally safe to call during page startup: it
+        // only returns devices this origin has already been granted. Do not
+        // fall through to requestDevice() here because that API requires a
+        // fresh user gesture and would make F5 show an unnecessary error.
+        this.#setSnapshot({ state: 'disconnected', error: null })
+        return false
+      }
       if (devices.length === 0 && requestPermission) {
         const requested = await hid.requestDevice({
           // Official AULA HUB asks by VID/PID only. Do the same so Chromium
@@ -206,6 +214,7 @@ export class Hero68DeviceManager implements Hero68Transport {
         deviceName: device.productName || 'AULA Hero68',
         error: null,
       })
+      return true
     } catch (error) {
       this.#device = undefined
       this.#setSnapshot({ state: 'error', error: errorMessage(error) })

@@ -32,6 +32,7 @@ export type Hero68PreviewProps = {
   advancedBindings?: AdvancedBinding[]
   keyTooltips?: Record<string, { title: string; detail?: string; raw?: string }>
   lightingFrame?: LightingFrame
+  lightingSource?: 'auto' | 'local'
   selectionEnabled?: boolean
   overlayMode?: 'none' | 'actuation' | 'rapid' | 'deadzone' | 'stream'
   actuationValues?: Record<string, number>
@@ -51,6 +52,7 @@ export default function Hero68Preview({
   advancedBindings = [],
   keyTooltips = {},
   lightingFrame,
+  lightingSource = 'auto',
   selectionEnabled = true,
   overlayMode = 'none',
   actuationValues = {},
@@ -61,8 +63,8 @@ export default function Hero68Preview({
   onWidthChange,
 }: Hero68PreviewProps) {
   const demoFrame = useMemo(() => makeDemoLighting(), [])
-  const serviceLighting = useServiceLighting()
-  const displayedLighting = serviceLighting ?? lightingFrame
+  const serviceLighting = useServiceLighting(lightingSource !== 'local')
+  const displayedLighting = lightingSource === 'local' ? lightingFrame : serviceLighting ?? lightingFrame
   const advancedByKey = useMemo(() => new Map(advancedBindings.flatMap(binding => binding.keys.map(key => [key, binding] as const))), [advancedBindings])
   const previewTooltips = useMemo(() => {
     const result = { ...keyTooltips }
