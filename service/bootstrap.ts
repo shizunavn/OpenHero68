@@ -5,7 +5,9 @@ import path from 'node:path'
 import {CORE_VERSION,CORE_API_VERSION,LAUNCHER_VERSION,validVersion,newer,verifyCore,type CoreManifest} from './updatePackage'
 import {superviseCore} from './coreSupervisor'
 
-const state=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
+const stateIndex=process.argv.indexOf('--state-dir')
+if(stateIndex>=0&&!process.argv[stateIndex+1])throw Error('Missing --state-dir value')
+const state=stateIndex>=0?path.resolve(process.argv[stateIndex+1]):path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
 const coreDir=path.join(state,'core')
 const activeFile=path.join(coreDir,'active.json'),pendingFile=path.join(coreDir,'pending.json')
 const bundled=path.join(__dirname,'service.cjs'),runtime=path.join(__dirname,'runtime.exe')

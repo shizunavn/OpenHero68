@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from 'react'
-import { rgbService, type RgbServiceStatus } from './rgbService'
+import { rgbService, confirmRgbServiceAvailable, isRgbServiceAvailable, type RgbServiceStatus } from './rgbService'
 import { LEGACY_RGB_EFFECTS, type CustomRgbConfiguration } from '../keyboard/customRgbModel'
 
 export const RGB_SERVICE_DOWNLOAD = 'https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip'
-type ServiceState = { checking: boolean; status: RgbServiceStatus | null }
-let state: ServiceState = { checking: true, status: null }
+type ServiceState = { checking: boolean; status: RgbServiceStatus | null; reconnecting: boolean }
+let state: ServiceState = { checking: true, status: null, reconnecting: false }
 const listeners = new Set<()=>void>()
 let timer: ReturnType<typeof setInterval> | undefined
 let pending: Promise<RgbServiceStatus | null> | undefined
@@ -12,7 +12,8 @@ let revision = 0
 export const getRgbServiceState = () => state
 export function publishRgbServiceStatus(status: RgbServiceStatus | null) {
   revision++
-  state = { checking: false, status }
+  if(status)confirmRgbServiceAvailable()
+  state = { checking: false, status, reconnecting: false }
   listeners.forEach(listener=>listener())
 }
 export function refreshRgbService(): Promise<RgbServiceStatus | null> {
@@ -22,7 +23,11 @@ export function refreshRgbService(): Promise<RgbServiceStatus | null> {
     if(current===revision)publishRgbServiceStatus(status)
     return status
   }).catch(()=>{
-    if(current===revision)publishRgbServiceStatus(null)
+    if(current===revision){
+      if(state.status&&isRgbServiceAvailable()){
+        state={...state,reconnecting:true};listeners.forEach(listener=>listener())
+      }else publishRgbServiceStatus(null)
+    }
     return null
   }).finally(()=>{pending=undefined})
   return pending

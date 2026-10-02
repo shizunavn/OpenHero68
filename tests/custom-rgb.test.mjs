@@ -12,6 +12,14 @@ function profile(effect='reaction') {
   return p
 }
 const energy=hex=>[1,3,5].reduce((sum,i)=>sum+parseInt(hex.slice(i,i+2),16),0)
+test('Follow Shadow retains a quick preview press after release when processed before the next RAF',()=>{
+  const p=profile();p.custom.layers=[];p.custom.base.mode=12
+  const e=new custom.CustomRgbEngine(p);e.advance(110);e.event('KeyW',true)
+  e.advance(111);assert.ok(energy(e.frame().keys.KeyW)>0)
+  e.event('KeyW',false);e.advance(140)
+  assert.ok(energy(e.frame().keys.KeyW)>0,'the release must fade the press rather than lose it')
+  e.advance(1000);assert.equal(energy(e.frame().keys.KeyW),0)
+})
 test('Aurora base restores, dims monotonically to off and keeps FX independent of base brightness',()=>{
   const p=profile();p.custom.layers=[];p.custom.baseEffect={effect:'aurora',palette:'sunset',width:2.5,speed:.5};p.custom.base.mix=true
   assert.deepEqual(custom.restoreCustomRgb(JSON.parse(JSON.stringify(p.custom)),p),p.custom)

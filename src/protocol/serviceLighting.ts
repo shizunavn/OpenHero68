@@ -18,13 +18,14 @@ function subscribe(listener:()=>void){
         if(current!==generation)return
         if(status?.enabled&&(status.apiVersion??0)>=2){
           if(!closeFrames)closeFrames=rgbService.frames(next=>{
+            if(current!==generation||next.sessionId!==getRgbServiceState().status?.sessionId)return
             if(next.sessionId){
               if(next.sessionId!==lastSession){lastSession=next.sessionId;lastSequence=-1}
               if(typeof next.sequence==='number'&&next.sequence<=lastSequence)return
               if(typeof next.sequence==='number')lastSequence=next.sequence
             }
             publish(next.enabled&&next.connected&&next.keys?next.keys:null)
-          },()=>publish(null))
+          })
         }else{closeFrames?.();closeFrames=undefined;publish(null)}
     }
     closeStatus=subscribeRgbService(refresh);refresh()

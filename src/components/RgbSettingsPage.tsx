@@ -7,6 +7,8 @@ import RgbColorPicker from './RgbColorPicker'
 import { FirmwareRgbPreview } from "../keyboard/rgbPreview"
 import { useCustomRgbPlayback } from './useCustomRgbPlayback'
 import { HERO68_KEY_IDS } from '../keyboard/hero68Layout'
+import { acceptsRgbPreviewKey } from '../keyboard/rgbPreviewInput'
+import { rgbPreviewDarkReason } from '../keyboard/rgbPreviewDefaults'
 import { KEY_RGB_MODES, SIDE_RGB_MODES } from '../keyboard/rgbCatalog'
 import type { LightingFrame } from '../keyboard/lightingPreviewBus'
 import type { RgbColor, RgbProfile, RgbZone } from '../protocol/hero68/rgb'
@@ -15,6 +17,8 @@ import './RgbSettingsPage.css'
 
 const colorHex=(color:RgbColor)=>'#'+color.map(v=>v.toString(16).padStart(2,'0')).join('')
 const hexColor=(hex:string):RgbColor=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)) as RgbColor
+type RgbTab='onboard'|'custom'|'rhythm'
+function previousRgbTab():RgbTab{try{const tab=sessionStorage.getItem('openhero68:rgb-tab');return tab==='custom'||tab==='rhythm'?tab:'onboard'}catch{return 'onboard'}}
 export default function RgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,initialCustom=false,onEntered}: {value:RgbProfile;onChange:(value:RgbProfile)=>void;busy:boolean;advancedBindings:AdvancedBinding[];onSetup:()=>void;initialCustom?:boolean;onEntered?:()=>void}) {
   useEffect(()=>{onEntered?.()},[])
   const [zone,setZone]=useState<'keys'|'side'>('keys')
@@ -23,8 +27,9 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
   const [replay,setReplay]=useState(0)
   const [frame,setFrame]=useState<{keys:LightingFrame;side:string[]}>({keys:{},side:Array(18).fill('#35393b')})
   const [error,setError]=useState<string|null>(null)
-  const [customMode,setCustomMode]=useState(initialCustom)
-  const [rhythmMode,setRhythmMode]=useState(false)
+  const [tab,setTab]=useState<RgbTab>(()=>initialCustom?'custom':previousRgbTab())
+  const customMode=tab==='custom',rhythmMode=tab==='rhythm'
+  useEffect(()=>{try{sessionStorage.setItem('openhero68:rgb-tab',tab)}catch{}},[tab])
   const playback=useCustomRgbPlayback(value,onChange,onSetup)
   const engineRef=useRef<FirmwareRgbPreview|null>(null)
   const replayRef=useRef(replay)
@@ -33,10 +38,11 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
   const capability=effects.find(mode=>mode.id===config.mode)
   const perKey=zone==='keys'&&config.mode===19
   const brightnessMax=zone==='side'?4:20
+  const darkReason=rgbPreviewDarkReason(config,zone==='side')
   function change(patch:Partial<RgbZone>) {onChange({...value,[zone]:{...config,...patch,...(patch.mix!==undefined||patch.rgb!==undefined?{mixValue:undefined}:{})}})}
   useEffect(()=>{
     if(customMode||rhythmMode) return
-    let handle=0, elapsed=0, previous=0, eventIndex=0, disposed=false
+    let handle=0, elapsed=0, previous=0, eventIndex=0, disposed=false, sampleOffset=0
     const reduced=window.matchMedia("(prefers-reduced-motion: reduce)")
     const events=HERO68_KEY_IDS.slice(17,22).flatMap((id,i)=>[{at:150+i*140,id,pressed:true},{at:350+i*140,id,pressed:false}]).sort((a,b)=>a.at-b.at)
     setError(null)
@@ -44,23 +50,38 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
     try {
       const reused=engineRef.current instanceof FirmwareRgbPreview&&replayRef.current===replay
       const engine=reused?engineRef.current!:new FirmwareRgbPreview(value)
+      const held=new Set<string>()
       engine.configure(value);engineRef.current=engine;replayRef.current=replay
       // A paused/reduced-motion preview still needs a newly generated frame,
       // rather than displaying the previous Single-color frame after MIX changes.
       elapsed=engine.ticks*0.5+(!reused||document.hidden||reduced.matches?110:0.5);engine.advance(elapsed);setFrame(engine.frame())
       for(const event of events) event.at+=elapsed
+      const cycleStart=elapsed,repeatSamples=KEY_RGB_MODES[value.keys.mode]?.reactive
+      if(reduced.matches){
+        for(const event of events){engine.advance(event.at);engine.event(event.id,event.pressed)}
+        elapsed=events.at(-1)!.at+25;engine.advance(elapsed);setFrame(engine.frame());eventIndex=events.length
+      }
       function render(now:number) {
         if(disposed||document.hidden||reduced.matches) {previous=0;return}
         elapsed+=previous?Math.min(now-previous,100):0;previous=now
         try {
-          while(eventIndex<events.length&&events[eventIndex].at<=elapsed) {const event=events[eventIndex++];engine.advance(event.at);engine.event(event.id,event.pressed)}
+          if(repeatSamples&&eventIndex===events.length&&elapsed>=cycleStart+sampleOffset+3000){sampleOffset+=3000;eventIndex=0}
+          while(eventIndex<events.length&&events[eventIndex].at+sampleOffset<=elapsed) {const event=events[eventIndex++];engine.advance(event.at+sampleOffset);engine.event(event.id,event.pressed)}
           while(releases.current.length&&releases.current[0].at<=elapsed) {const event=releases.current.shift()!;engine.advance(event.at);engine.event(event.id,false)}
           engine.advance(elapsed);setFrame(engine.frame());handle=requestAnimationFrame(render)
         } catch(e) {setError(e instanceof Error?e.message:String(e))}
       }
-      const resume=()=>{cancelAnimationFrame(handle);previous=0;if(!document.hidden&&!reduced.matches)handle=requestAnimationFrame(render)}
+      const keydown=(event:KeyboardEvent)=>{
+        if(!acceptsRgbPreviewKey(event)||document.hidden)return
+        held.add(event.code);engine.event(event.code,true)
+        elapsed=Math.max(elapsed,engine.ticks*.5+(reduced.matches?25:1));engine.advance(elapsed);setFrame(engine.frame())
+      }
+      const keyup=(event:KeyboardEvent)=>{if(held.delete(event.code))engine.event(event.code,false)}
+      const blur=()=>{for(const id of held)engine.event(id,false);held.clear()}
+      const resume=()=>{cancelAnimationFrame(handle);previous=0;if(document.hidden)blur();else if(!reduced.matches)handle=requestAnimationFrame(render)}
+      window.addEventListener('keydown',keydown);window.addEventListener('keyup',keyup);window.addEventListener('blur',blur)
       document.addEventListener("visibilitychange",resume);reduced.addEventListener("change",resume);resume()
-      return ()=>{disposed=true;cancelAnimationFrame(handle);document.removeEventListener("visibilitychange",resume);reduced.removeEventListener("change",resume)}
+      return ()=>{disposed=true;cancelAnimationFrame(handle);blur();for(const event of releases.current)engine.event(event.id,false);window.removeEventListener('keydown',keydown);window.removeEventListener('keyup',keyup);window.removeEventListener('blur',blur);document.removeEventListener("visibilitychange",resume);reduced.removeEventListener("change",resume)}
     } catch(e) {setError(e instanceof Error?e.message:String(e))}
   },[value,replay,customMode,rhythmMode])
   function toggle(id:string) {
@@ -73,7 +94,7 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
   }
   return <div className="page settings-page rgb-settings-page page-enter">
     <div className="settings-hero"><div><h1>RGB Settings</h1><p>{rhythmMode?'System audio · Live rhythm lighting.':customMode?'Build a base and blend your own RGB effects.':'Onboard lighting · Changes are applied with Save.'}</p></div><span className="rgb-basic-badge">{rhythmMode?'Rhythm':customMode?'Custom':'Onboard'}</span></div>
-    <div className="rgb-zone-tabs" role="group" aria-label="RGB mode">{[false,true].map(custom=><button key={String(custom)} disabled={busy||playback.busy} aria-pressed={!rhythmMode&&customMode===custom} onClick={()=>{setRhythmMode(false);setCustomMode(custom)}}>{custom?'Custom Effects':'Onboard Effects'}</button>)}<button disabled={busy||playback.busy} aria-pressed={rhythmMode} onClick={()=>{setCustomMode(false);setRhythmMode(true)}}>Rhythm Sync</button></div>
+    <div className="rgb-zone-tabs" role="group" aria-label="RGB mode">{[false,true].map(custom=><button key={String(custom)} disabled={busy||playback.busy} aria-pressed={!rhythmMode&&customMode===custom} onClick={()=>setTab(custom?'custom':'onboard')}>{custom?'Custom Effects':'Onboard Effects'}</button>)}<button disabled={busy||playback.busy} aria-pressed={rhythmMode} onClick={()=>setTab('rhythm')}>Rhythm Sync</button></div>
     {rhythmMode&&<RhythmSyncEditor onSetup={onSetup}/>}
     <CustomRgbEditor value={value} onChange={onChange} busy={busy} advancedBindings={advancedBindings} visible={customMode} onSetup={onSetup} playback={playback}/>
     {!customMode&&!rhythmMode&&<>
@@ -86,13 +107,14 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
       <div className="rgb-section-heading"><div><h2>{zone==='keys'?'Key lighting':'Side lighting'}</h2><p>{effects.length} effects stored on your keyboard</p></div><button className="secondary-button" onClick={()=>setReplay(x=>x+1)}><RotateCcw size={15}/> Replay preview</button></div>
       <div className="rgb-mode-grid">{effects.map((mode,i)=>{const Icon=[Lightbulb,Waves,Sparkles,Palette][i%4];return <button key={mode.id} disabled={busy} className={config.mode===mode.id?'active':''} aria-pressed={config.mode===mode.id} onClick={()=>change({mode:mode.id})}><Icon size={19}/><span>{mode.name}</span></button>})}</div>
       {!capability&&<p className="rgb-inline-note">Unrecognized onboard mode {config.mode}. It is preserved until you select another effect.</p>}
+      {darkReason&&<div className="rgb-dark-preview-note" role="status"><span>Lighting is dark · {darkReason}</span><button type="button" className="secondary-button" disabled={busy} onClick={()=>change({mix:true,brightness:config.brightness||brightnessMax})}>Use Multicolor</button></div>}
       <div className="rgb-parameters">
         <label>Brightness <strong>{config.brightness<=brightnessMax?`${config.brightness*(zone==='side'?25:5)}%`:`Unknown (${config.brightness})`}</strong><input aria-label="RGB brightness" type="range" min="0" max={brightnessMax} value={Math.min(config.brightness,brightnessMax)} disabled={busy||!capability||config.mode===0} onChange={e=>change({brightness:Number(e.target.value)})}/></label>
         <label>Speed <strong>{config.speed+1} / 5</strong><input aria-label="RGB speed" type="range" min="0" max="4" value={config.speed} disabled={busy||!capability?.speed} onChange={e=>change({speed:Number(e.target.value)})}/></label>
         {capability?.color&&<div className="rgb-color-controls"><div className="rgb-active-color">{config.mix?<><span className="rgb-rainbow-swatch" aria-label="Multicolor palette"/><span>Multicolor</span></>:<><label>Color<RgbColorPicker label="Effect color" value={colorHex(config.rgb)} disabled={busy} onChange={hex=>change({rgb:hexColor(hex)})}/></label><span>{colorHex(config.rgb).toUpperCase()}</span></>}</div><label className="rgb-mix"><input type="checkbox" checked={config.mix} disabled={busy} onChange={e=>change({mix:e.target.checked})}/> Multicolor</label></div>}
       </div>
       {perKey&&<div className="rgb-per-key"><div><h3>Paint your keys</h3><p>Select keys above, choose a color, then apply it. Black turns LEDs off.</p></div><div className="rgb-paint-actions"><span>{selected.size} keys selected</span><button className="secondary-button" onClick={()=>setSelected(new Set(HERO68_KEY_IDS))}>Select all</button><button className="secondary-button" onClick={()=>setSelected(new Set())}>Deselect</button><RgbColorPicker label="Per-key color" value={paint} disabled={busy} onChange={setPaint}/><button className="apply-button" disabled={busy||!selected.size} onClick={()=>{const colors={...value.colors};for(const id of selected)colors[id]=hexColor(paint);onChange({...value,colors})}}>Apply color</button></div></div>}
-      {capability?.reactive&&<p className="rgb-inline-note">Replay uses sample key presses. You can also click a key to trigger the preview.</p>}
+      {capability?.reactive&&<p className="rgb-inline-note">Preview only · sample key presses repeat automatically. Click or type to try your own keys.</p>}
       {config.brightness>brightnessMax&&<p className="rgb-inline-note">This draft has an unrecognized brightness value. Choose a supported level before saving this zone.</p>}
       {error&&<p className="stream-error">Preview unavailable: {error}</p>}
       <p className="rgb-preview-note">Preview uses firmware V3.20 RGB calculations. Screen colors may differ from the LEDs.</p>

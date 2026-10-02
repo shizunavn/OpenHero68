@@ -5,6 +5,8 @@ import RgbColorPicker from './RgbColorPicker'
 import { CUSTOM_RGB_EFFECTS, CustomRgbEngine, MAX_RGB_LAYERS, RGB_EFFECT_METADATA, RGB_GRADIENT_PALETTES, createRgbLayer, restoreCustomRgb, type CustomRgbConfiguration, type CustomRgbEffect, type CustomRgbLayer, type RgbGradientPalette } from '../keyboard/customRgb'
 import { HERO68_KEY_IDS } from '../keyboard/hero68Layout'
 import { KEY_RGB_MODES } from '../keyboard/rgbCatalog'
+import { acceptsRgbPreviewKey } from '../keyboard/rgbPreviewInput'
+import { rgbPreviewDarkReason } from '../keyboard/rgbPreviewDefaults'
 import type { LightingFrame } from '../keyboard/lightingPreviewBus'
 import type { RgbColor, RgbProfile } from '../protocol/hero68/rgb'
 import type { AdvancedBinding } from '../protocol/hero68/advanced'
@@ -41,6 +43,8 @@ export default function CustomRgbEditor({value,onChange,busy,advancedBindings,vi
   const metadata=layer?RGB_EFFECT_METADATA[layer.effect]:undefined
   const mode=KEY_RGB_MODES.find(m=>m.id===config.base.mode)!
   const auroraBase=config.baseEffect?.effect==='aurora'
+  const samplePreview=!auroraBase&&mode.reactive||config.layers.some(layer=>layer.enabled&&['pressure-wave','jelly','ripple','touch','reaction','aoe','mixing','trail','rt'].includes(layer.effect))
+  const darkReason=auroraBase?(config.base.brightness===0?'Brightness is 0%.':!config.base.mix&&config.base.rgb.every(c=>c===0)?'Single color is black (#000000).':null):rgbPreviewDarkReason(config.base)
   function animation(patch:Partial<NonNullable<CustomRgbConfiguration['baseEffect']>>){if(config.baseEffect)change({...config,baseEffect:{...config.baseEffect,...patch}})}
   function change(next:CustomRgbConfiguration){onChange({...value,custom:next})}
   function patchLayer(patch:Partial<CustomRgbLayer>){change({...config,layers:config.layers.map(l=>l.id===active?{...l,...patch}:l)})}
@@ -59,6 +63,8 @@ export default function CustomRgbEditor({value,onChange,busy,advancedBindings,vi
   function exportPreset(){const blob=new Blob([JSON.stringify({...value,custom:config},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='hero68-custom-rgb.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
   useEffect(()=>{engineRef.current?.configure(value);if(engineRef.current&&!live&&!paused)setFrame(engineRef.current.frame())},[value,live,paused])
   useEffect(()=>{if(active!=='base'&&!config.layers.some(l=>l.id===active))setActive('base')},[active,config.layers])
+  const sampleSignature=JSON.stringify({base:auroraBase?'aurora':mode.id,layers:config.layers.filter(layer=>layer.enabled).map(layer=>[layer.effect,layer.keys])})
+  useEffect(()=>{if(visible&&!live&&samplePreview)setReplay(n=>n+1)},[visible,live,sampleSignature])
   useEffect(()=>{
     setSynced(false)
     if(!live||!visible)return
@@ -75,21 +81,27 @@ export default function CustomRgbEditor({value,onChange,busy,advancedBindings,vi
     if(paused||live)return
     const engine=replayRef.current===replay&&engineRef.current?engineRef.current:new CustomRgbEngine(value)
     replayRef.current=replay;engineRef.current=engine;engine.configure(value)
-    let handle=0,previous=0,elapsed=Math.max(110,engine.milliseconds),disposed=false,sampleIndex=0
+    let handle=0,previous=0,elapsed=Math.max(110,engine.milliseconds),disposed=false,sampleIndex=0,sampleOffset=0
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)')
     const held=new Set<string>(), releases:{id:string;at:number}[]=[]
-    const samples=replay>0?HERO68_KEY_IDS.slice(17,22).flatMap((id,i)=>[{id,at:elapsed+150+i*140,pressed:true},{id,at:elapsed+350+i*140,pressed:false}]).sort((a,b)=>a.at-b.at):[]
+    const sampleKeys=[...new Set([...HERO68_KEY_IDS.slice(17,22),...config.layers.filter(layer=>layer.enabled).flatMap(layer=>layer.effect==='mixing'?layer.keys.filter(id=>['ArrowLeft','ArrowDown','ArrowRight'].includes(id)):layer.keys.slice(0,1))])].slice(0,13)
+    const samples=replay>0?sampleKeys.flatMap((id,i)=>[{id,at:elapsed+150+i*140,pressed:true},{id,at:elapsed+350+i*140,pressed:false}]).sort((a,b)=>a.at-b.at):[]
+    const cycleStart=elapsed,repeatSamples=samplePreview
     const render=()=>{try{engine.advance(elapsed);setFrame(engine.frame())}catch(reason){setPreviewError(String(reason))}}
     const tick=(now:number)=>{
       if(disposed||document.hidden||reduced.matches)return
       elapsed+=previous?Math.min(now-previous,100):0;previous=now
-      while(sampleIndex<samples.length&&samples[sampleIndex].at<=elapsed){const event=samples[sampleIndex++];engine.advance(event.at);engine.event(event.id,event.pressed)}
+      if(repeatSamples&&samples.length&&sampleIndex===samples.length&&elapsed>=cycleStart+sampleOffset+3000){sampleOffset+=3000;sampleIndex=0}
+      while(sampleIndex<samples.length&&samples[sampleIndex].at+sampleOffset<=elapsed){const event=samples[sampleIndex++];engine.advance(event.at+sampleOffset);engine.event(event.id,event.pressed)}
       while(releases.length&&releases[0].at<=elapsed){const event=releases.shift()!;engine.event(event.id,false)}
       render();handle=requestAnimationFrame(tick)
     }
     const keydown=(event:KeyboardEvent)=>{
-      if(event.repeat||!HERO68_KEY_IDS.includes(event.code)||(event.target as HTMLElement)?.closest('input,textarea,select,button,a,[contenteditable=true]'))return
-      held.add(event.code);engine.event(event.code,true);if(reduced.matches)render()
+      if(!acceptsRgbPreviewKey(event))return
+      held.add(event.code);engine.event(event.code,true)
+      // A quick down/up can fit between RAF callbacks. Run the firmware while
+      // the key is still held so reactive bases do not lose that press.
+      elapsed=Math.max(elapsed,engine.milliseconds+(reduced.matches?25:1));render()
     }
     const keyup=(event:KeyboardEvent)=>{if(held.delete(event.code)){engine.event(event.code,false);if(reduced.matches)render()}}
     const blur=()=>{held.clear();engine.releaseAll();render()}
@@ -105,9 +117,10 @@ export default function CustomRgbEditor({value,onChange,busy,advancedBindings,vi
   const state=playback.busy?'Applying':updateRequired?'Update required':!status?'Offline':live?(status.connected?'Live':'Waiting for keyboard'):status.connected?'Ready':'Waiting for keyboard'
   return <div className="custom-rgb-gate" hidden={!visible}>
     <div className={`custom-rgb-content ${locked?'is-locked':''}`} inert={locked}>
-      <div className="rgb-preview-stage"><div className="custom-preview-label">{demo?'Demo · Preview only':live?(synced?'Live keyboard':'Waiting for live frames'):'Local preview'}</div><Hero68Preview advancedBindings={advancedBindings} selectedKeys={selected} onToggleKey={toggle} lightingFrame={frame.keys} lightingSource="local" selectionEnabled/>{frame.side.length>0&&<div className="rgb-side-preview" aria-label="18 side light positions">{frame.side.map((color,i)=><span key={i} style={{background:color,color}}/>)}</div>}</div>
+      <div className="rgb-preview-stage"><div className="custom-preview-label">{demo?'Demo · Preview only':live?(synced?'Live keyboard':'Waiting for live frames'):samplePreview?'Local preview · sample key presses':'Local preview'}</div><Hero68Preview advancedBindings={advancedBindings} selectedKeys={selected} onToggleKey={toggle} lightingFrame={frame.keys} lightingSource="local" selectionEnabled/>{frame.side.length>0&&<div className="rgb-side-preview" aria-label="18 side light positions">{frame.side.map((color,i)=><span key={i} style={{background:color,color}}/>)}</div>}</div>
       <section className="settings-card rgb-custom-editor">
         <div className="rgb-section-heading"><div><h2><Layers size={20}/> Custom Effects</h2><p>{config.layers.length}/{MAX_RGB_LAYERS} FX layers · Changes stay in this profile</p></div><div className="custom-rgb-actions"><button className="secondary-button" disabled={disabled} onClick={exportPreset}><Download size={15}/> Export</button><button className="secondary-button" disabled={disabled||live} onClick={()=>setReplay(n=>n+1)}><RotateCcw size={15}/> Replay</button></div></div>
+        {darkReason&&<div className="rgb-dark-preview-note" role="status"><span>Base lighting is dark · {darkReason}</span><button type="button" className="secondary-button" disabled={disabled} onClick={()=>{base({mix:true,brightness:config.base.brightness||20});setReplay(n=>n+1)}}>Use Multicolor</button></div>}
         <div className="custom-service-bar"><span className={`service-state-pill ${live?'is-ready':''}`} role="status">{demo?'Demo · Preview only':state}</span><span className="custom-service-hint">{!status?'App required to apply to your keyboard':live?'Runs after closing this page':updateRequired?'Update the app to use this preset':'Preview first, then apply'}</span><button className="apply-button" disabled={disabled} onClick={()=>void playback.apply().then(ok=>{if(ok)setDemo(false)})}>{playback.busy?'Applying…':updateRequired?'Update app':applied?'Reapply preset':'Apply to keyboard'}</button>{status?.enabled&&<button className="secondary-button" disabled={disabled} onClick={()=>void playback.onboard()}>Use onboard lighting</button>}</div>
         <details className="service-details"><summary>Service details</summary><div><p>{status?`${status.fps.toFixed(1)} FPS · ${status.connected?'Keyboard connected':'Waiting for keyboard'} · ${synced?'Preview synced':'Local preview or waiting for frames'}`:'The background service is not responding.'}</p>{status?.lastError&&<p>{status.lastError}</p>}<div className="custom-rgb-actions"><button className="secondary-button" onClick={onSetup}>Setup / Update</button>{status&&<a className="secondary-button" href="http://127.0.0.1:16868/" target="_blank" rel="noreferrer">Service panel</a>}<button className="secondary-button" onClick={()=>void refreshRgbService()}>Check again</button></div></div></details>
         {(playback.error||previewError)&&<p className="stream-error" role="alert">{playback.error||previewError}</p>}

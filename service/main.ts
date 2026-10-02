@@ -1,11 +1,11 @@
 import { createServer, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync, existsSync } from 'node:fs'
 import {randomUUID} from 'node:crypto'
 import path from 'node:path'
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
-import { CustomRgbEngine, restoreCustomRgb, CUSTOM_RGB_EFFECTS, needsRgbAnalogHall } from '../src/keyboard/customRgb'
+import { restoreCustomRgb, CUSTOM_RGB_EFFECTS, needsRgbAnalogHall } from '../src/keyboard/customRgb'
 import { defaultRgb, type RgbProfile } from '../src/protocol/hero68/rgb'
 import { buildReport, decodeReport } from '../src/protocol/hero68/codec'
 import { HERO68_KEY_IDS } from '../src/keyboard/hero68Layout'
@@ -19,6 +19,7 @@ import {createServiceUpdater} from './updater'
 import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SIDE_VERIFIED,type RhythmConfiguration} from './rhythm'
 import {latestSse} from './latestSse'
 import {profileRequest} from './profileSelection'
+import {CustomPlayback} from './customPlayback'
 
 function option(name:string){const index=process.argv.indexOf(name);if(index>=0&&!process.argv[index+1])throw Error(`Missing ${name} value`);return index>=0?process.argv[index+1]:undefined}
 const port=Number(option('--port')??16868)
@@ -60,7 +61,8 @@ function persist(){
   writeFileSync(file+'.tmp',JSON.stringify({version:3,mode,savedMode,enabled:mode!=='onboard',profile}));renameSync(file+'.tmp',file)
 }
 const frameEncoder=new RgbFrameEncoder()
-let engine=profile?new CustomRgbEngine(profile):null, epoch=performance.now(), reconnectAt=0
+const playback=new CustomPlayback(profile)
+let engine=playback.engine, reconnectAt=0
 let lastError:string|null=null, frames=0, packets=0, hallSnapshots=0, timeouts=0, lastFrameAt=0, maxGapMs=0, frameMs=0
 const eventLoopDelay=monitorEventLoopDelay({resolution:5});eventLoopDelay.enable()
 const frameGaps:number[]=[]
@@ -170,7 +172,9 @@ let pendingRequests=0
 function exclusive<T>(work:()=>Promise<T>):Promise<T>{if(pendingRequests>=32)return Promise.reject(Error('Device request queue is busy; try again'));pendingRequests++;const next=tail.then(work).finally(()=>{pendingRequests--});tail=next.catch(()=>{});return next}
 
 class Bridge {
-  private process=spawn(path.join(__dirname,'hid-bridge.exe'),[],{stdio:['pipe','pipe','pipe'],windowsHide:true})
+  // Downloaded cores live in the state folder; the supervisor retains the
+  // installed app folder as cwd, where its compatible native helper resides.
+  private process=spawn(existsSync(path.join(__dirname,'hid-bridge.exe'))?path.join(__dirname,'hid-bridge.exe'):path.join(process.cwd(),'hid-bridge.exe'),[],{stdio:['pipe','pipe','pipe'],windowsHide:true})
   private pending:{resolve:(v:string)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>}|null=null
   private gone=false
   constructor(){
@@ -186,7 +190,7 @@ class Bridge {
         if(input&&mode==='custom'&&engine){
           if(input.pressed?outputHeld.has(input.id):!outputHeld.has(input.id))return
           if(input.pressed)outputHeld.add(input.id);else outputHeld.delete(input.id)
-          const at=performance.now();pendingInputs.push(at);engine.advance(at-epoch+110);engine.event(input.id,input.pressed);inputTransitions++
+          const at=performance.now();pendingInputs.push(at);playback.advance();engine.event(input.id,input.pressed);inputTransitions++
         }
         return
       }
@@ -230,7 +234,7 @@ const bridge=new Bridge()
 async function connect(){
   const identity=await bridge.request(buildReport({command:0x82,zone:1}))
   if(![0x11,0,0,0,0,3].every((v,i)=>identity.data[i]===v))throw Error('Device is not the supported HERO68')
-  connected=true;lastError=null;hallSamples.clear();frameEncoder.reset();engine=profile?new CustomRgbEngine(profile):null;epoch=performance.now();lastFrameAt=0
+  connected=true;lastError=null;hallSamples.clear();frameEncoder.reset();engine=playback.start(profile);outputHeld.clear();pendingInputs.length=0;lastFrameAt=0
   log('HERO68 connected')
 }
 async function stop(){
@@ -248,7 +252,7 @@ async function tick(){
   if(mode!=='custom'||!profile||!engine||closing)return
   if(!connected){if(performance.now()<reconnectAt)return;await connect()}
   const started=performance.now()
-  engine!.advance(started-epoch+110)
+  playback.advance()
   if(needsAnalogHall())engine!.setTravel(Object.fromEntries([...hallSamples].map(([id,s])=>[id,s.distanceUnits/100])))
   const renderedAt=performance.now()
   const frame=frameEncoder.prepare(engine!.frame().keys)
@@ -398,8 +402,8 @@ const server=createServer(async(req,res)=>{
       if(req.url==='/stop'||req.url==='/shutdown'||(req.url==='/mode'&&input.mode==='onboard')){await stop();return}
       if(req.url==='/mode'&&input.mode!=='custom')throw Error('Expected onboard or custom mode')
       if(req.url==='/preset'&&input.sessionId!==sessionId)throw Error('Stale RGB editor session; preset was not applied')
-      if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);if(engine)engine.configure(profile);else{engine=new CustomRgbEngine(profile);epoch=performance.now()}persist()}
-      if(req.url==='/start'||req.url==='/mode'){if(mode==='rhythm')await bridge.stopRhythm();if(!profile)throw Error('Send a preset first');mode='custom';savedMode='custom';customFrames.clear();reusedFrames=windowRendered=renderFps=0;await bridge.startCustom();frameEncoder.reset();sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
+      if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);if(engine)engine.configure(profile);else engine=playback.start(profile);persist()}
+      if(req.url==='/start'||req.url==='/mode'){if(mode==='rhythm')await bridge.stopRhythm();if(!profile)throw Error('Send a preset first');if(mode!=='custom'){engine=playback.start(profile);outputHeld.clear();pendingInputs.length=0}mode='custom';savedMode='custom';customFrames.clear();reusedFrames=windowRendered=renderFps=0;await bridge.startCustom();frameEncoder.reset();sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
     })
     json(200,status())
     if(req.url==='/shutdown')void shutdown()

@@ -10,6 +10,10 @@ import '../../src/styles/index.css'
 
 const initial=defaultRgb();initial.custom=defaultCustomRgb(initial);initial.custom.base.mode=0
 initial.custom.enabled=true;initial.custom.layers=[createRgbLayer('aurora','fixture-aurora')]
+if(new URL(location.href).searchParams.has('black-base')){
+  initial.custom.base={...initial.custom.base,mode:7,rgb:[0,0,0],mix:false,brightness:12,speed:1};initial.custom.layers=[]
+}
+if(new URL(location.href).searchParams.has('new-base')){initial.keys.rgb=[0,0,0];delete initial.custom}
 if(new URL(location.href).searchParams.has('reduced')){
   const original=window.matchMedia.bind(window)
   window.matchMedia=query=>query.includes('prefers-reduced-motion')?{...original(query),matches:true,media:query,addEventListener(){},removeEventListener(){},addListener(){},removeListener(){},dispatchEvent(){return true},onchange:null}:original(query)

@@ -53,7 +53,9 @@ export function createRgbLayer(effect: CustomRgbEffect = 'ripple', id: string = 
     width: 1.5, speed: 6, duration: 900, direction: 'horizontal', keys: [...HERO68_KEY_IDS], ...RGB_EFFECT_METADATA[effect].defaults }
 }
 export function defaultCustomRgb(profile: RgbProfile): CustomRgbConfiguration {
-  return { version: 1, enabled: false, base: { ...profile.keys, mode: 19, mix: false }, layers: [] }
+  const base: RgbZone = { ...profile.keys, mode: 19, mix: true, rgb: profile.keys.rgb.some(channel=>channel>0)?[...profile.keys.rgb]:[255,255,255] }
+  delete base.mixValue
+  return { version: 1, enabled: false, base, layers: [] }
 }
 export function restoreCustomRgb(value: unknown, profile: RgbProfile): CustomRgbConfiguration {
   const fallback = defaultCustomRgb(profile)
@@ -63,7 +65,7 @@ export function restoreCustomRgb(value: unknown, profile: RgbProfile): CustomRgb
   if (v.version !== 1 || !base || !Array.isArray(v.layers)) return fallback
   const ids = new Set<string>()
   return { version: 1, enabled: v.enabled === true, base: {
-    mode: Math.round(finite(base.mode, 19, 0, 19)), mix: base.mix === true,
+    mode: Math.round(finite(base.mode, 19, 0, 19)), mix: typeof base.mix==='boolean'?base.mix:fallback.base.mix,
     rgb: [0, 1, 2].map(i => Math.round(finite(base.rgb?.[i], 255, 0, 255))) as RgbColor,
     brightness: Math.round(finite(base.brightness, 20, 0, 20)), speed: Math.round(finite(base.speed, 2, 0, 4)),
   }, ...(v.baseEffect?.effect === 'aurora' ? { baseEffect: {

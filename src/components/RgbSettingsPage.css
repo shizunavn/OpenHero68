@@ -128,3 +128,5 @@ button.custom-rgb-layer:focus-visible {outline:none;border-color:#ffd95a}
 @media(prefers-reduced-motion:reduce) {.custom-rgb-content {transition:none}}
 .custom-rgb-base-migration { padding: 12px; margin: 12px 0; background: #ffffff05; border: 1px solid #ffffff12; border-radius: 10px; }
 .custom-rgb-base-migration p { margin: 0 0 10px; font-size: 12px; line-height: 1.6; color: #a5a5a5; }
+
+.rgb-dark-preview-note {display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;border:1px solid #665c32;background:#322d20;color:#ffe090;border-radius:8px;padding:12px 14px;margin:14px 0;font-size:13px}

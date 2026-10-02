@@ -2,6 +2,7 @@ import type { RgbProfile } from './hero68/rgb'
 import { decodeReport } from './hero68/codec'
 import { fetchLocalService, LocalServicePermissionError } from './localServiceAccess'
 import type { RhythmConfiguration } from '../keyboard/rhythm'
+import { serviceHealth } from './serviceHealth'
 export type RgbServiceStatus={
   apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom'|'rhythm';sessionId?:string
   enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number
@@ -18,15 +19,18 @@ export type RgbServiceHallRecord={keyId:string;pos:number;distanceUnits:number;a
 const endpoint='http://127.0.0.1:16868'
 const availability=new Set<(online:boolean)=>void>()
 let online:boolean|undefined
+const health=serviceHealth()
+export const isRgbServiceAvailable=()=>health.online
+export function confirmRgbServiceAvailable(){setOnline(health.success())}
 function setOnline(value:boolean){if(online===value)return;online=value;availability.forEach(listener=>listener(value))}
 async function request(path:string,value?:unknown):Promise<RgbServiceStatus>{
   let response:Response
   try{response=await fetchLocalService(endpoint+path,{method:value===undefined?'GET':'POST',headers:value===undefined?undefined:{'Content-Type':'application/json'},body:value===undefined?undefined:JSON.stringify(value)},value===undefined?1000:5000)}
-  catch(error){if(path==='/status')setOnline(false);if(error instanceof LocalServicePermissionError)throw error;throw Error(error instanceof DOMException&&error.name==='TimeoutError'?'RGB service phản hồi quá chậm. Hãy thử lại.':'RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe. Các thay đổi chưa lưu vẫn được giữ trên web.')}
-  if(response.status===403)throw Error('The background app does not allow this website. Update the app, then check again.')
+  catch(error){if(path==='/status')setOnline(health.failure(error instanceof LocalServicePermissionError));if(error instanceof LocalServicePermissionError)throw error;throw Error(error instanceof DOMException&&error.name==='TimeoutError'?'RGB service phản hồi quá chậm. Hãy thử lại.':'RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe. Các thay đổi chưa lưu vẫn được giữ trên web.')}
+  if(response.status===403){if(path==='/status')setOnline(health.failure(true));throw Error('The background app does not allow this website. Update the app, then check again.')}
   const result=await response.json()
-  if(!response.ok)throw Error(result.error??'RGB service request failed')
-  if(path==='/status')setOnline(true)
+  if(!response.ok){if(path==='/status')setOnline(health.failure());throw Error(result.error??'RGB service request failed')}
+  if(path==='/status')confirmRgbServiceAvailable()
   return result
 }
 export const rgbService={
