@@ -16,9 +16,14 @@ import { decodeHero68Input } from './keyInput'
 import { serviceOrigins, isAllowedServiceRequest } from './origins'
 import {LAUNCHER_VERSION,CORE_VERSION,CORE_API_VERSION} from './updatePackage'
 import {createServiceUpdater} from './updater'
+import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SIDE_VERIFIED,type RhythmConfiguration} from './rhythm'
+import {latestSse} from './latestSse'
+import {profileRequest} from './profileSelection'
 
-const port=16868
-const stateDir=path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
+function option(name:string){const index=process.argv.indexOf(name);if(index>=0&&!process.argv[index+1])throw Error(`Missing ${name} value`);return index>=0?process.argv[index+1]:undefined}
+const port=Number(option('--port')??16868)
+if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid local service port')
+const stateDir=option('--state-dir')?path.resolve(option('--state-dir')!):path.join(process.env.LOCALAPPDATA??process.cwd(),'OpenHero68','rgb-service')
 const coreVersion=process.env.OPENHERO68_CORE_VERSION??CORE_VERSION
 mkdirSync(stateDir,{recursive:true})
 const log=(message:string)=>appendFileSync(path.join(stateDir,'service.log'),`${new Date().toISOString()} ${message}\n`)
@@ -39,8 +44,11 @@ export function normalizeProfile(input:unknown):RgbProfile {
   profile.side.mode=0
   return profile
 }
-let profile:RgbProfile|null=null, mode:'onboard'|'custom'='onboard', connected=false, closing=false, updating=false
-try{const saved=JSON.parse(readFileSync(path.join(stateDir,'preset.json'),'utf8'));profile=normalizeProfile(saved.profile);mode=saved.mode==='custom'||(saved.mode===undefined&&saved.enabled===true)?'custom':'onboard'}catch{}
+let profile:RgbProfile|null=null, mode:'onboard'|'custom'|'rhythm'='onboard', connected=false, closing=false, updating=false
+let rhythmConfig:RhythmConfiguration=defaultRhythm(),savedMode:'onboard'|'custom'|'rhythm'='onboard',configurationBusy=false
+try{rhythmConfig=validateRhythm(JSON.parse(readFileSync(path.join(stateDir,'rhythm-preset.json'),'utf8')))}catch{}
+function persistRhythm(){const file=path.join(stateDir,'rhythm-preset.json');writeFileSync(file+'.tmp',JSON.stringify(rhythmConfig));renameSync(file+'.tmp',file)}
+try{const saved=JSON.parse(readFileSync(path.join(stateDir,'preset.json'),'utf8'));if(saved.profile)profile=normalizeProfile(saved.profile);savedMode=saved.savedMode??saved.mode??(saved.enabled?'custom':'onboard');mode=saved.mode==='rhythm'?'rhythm':saved.mode==='custom'||(saved.mode===undefined&&saved.enabled===true)?'custom':'onboard'}catch{}
 function persist(){
   const file=path.join(stateDir,'preset.json')
   try{
@@ -49,7 +57,7 @@ function persist(){
     const current=profile?.custom?.layers?.map(layer=>`${layer.id}:${layer.effect}`).join('|')
     if(previous!==current)writeFileSync(path.join(stateDir,`preset-layer-backup-${Date.now()}.json`),JSON.stringify(old))
   }catch{/* No previous valid preset. */}
-  writeFileSync(file+'.tmp',JSON.stringify({version:2,mode,enabled:mode==='custom',profile}));renameSync(file+'.tmp',file)
+  writeFileSync(file+'.tmp',JSON.stringify({version:3,mode,savedMode,enabled:mode!=='onboard',profile}));renameSync(file+'.tmp',file)
 }
 const frameEncoder=new RgbFrameEncoder()
 let engine=profile?new CustomRgbEngine(profile):null, epoch=performance.now(), reconnectAt=0
@@ -62,7 +70,42 @@ let rawInputReady=false, inputTransitions=0
 const outputHeld=new Set<string>(),inputLatencies:number[]=[]
 const pendingInputs:number[]=[]
 let windowStart=performance.now(), windowFrames=0, fps=0
+let customSubmission=0,lastCustomSubmission=0,reusedFrames=0,windowRendered=0,renderFps=0,customJob=false,customTickPending=false
+const customFrames=new Map<number,{keys:Record<string,string>;started:number;renderMs:number;encodeMs:number}>()
+function onCustomTick(){
+  if(mode!=='custom'||closing)return
+  if(customJob){customTickPending=true;return}
+  customJob=true
+  void exclusive(tick).catch(e=>{connected=false;lastError=String(e);reconnectAt=performance.now()+1000;publishFrame({enabled:mode!=='onboard',connected:false,sessionId})}).finally(()=>{customJob=false;if(customTickPending){customTickPending=false;onCustomTick()}})
+}
+function onCustomFrame(value:{submission:number;packets:number;frameMs:number;gapMs:number;droppedFrames:number;reusedFrames:number}){
+  if(mode!=='custom')return
+  const frame=customFrames.get(value.submission),now=performance.now()
+  audioState='stopped';audioError='';audioLevel=0
+  connected=true;lastError=null;frames++;windowFrames++;packets+=value.packets;frameMs=value.frameMs;droppedFrames=value.droppedFrames;reusedFrames=value.reusedFrames
+  if(value.submission!==lastCustomSubmission){windowRendered++;lastCustomSubmission=value.submission}
+  if(frame){renderMs=frame.renderMs;encodeMs=frame.encodeMs;writeMs=value.frameMs}
+  if(value.gapMs>0){maxGapMs=Math.max(maxGapMs,value.gapMs);frameGaps.push(value.gapMs);if(frameGaps.length>512)frameGaps.shift();if(value.gapMs>100)gapsOver100++}
+  if(frame){while(pendingInputs.length&&pendingInputs[0]<=frame.started){inputLatencies.push(now-pendingInputs.shift()!);if(inputLatencies.length>256)inputLatencies.shift()}if(frameClients.size)publishFrame({enabled:true,connected:true,mode:'custom',keys:frame.keys,sequence:++frameSequence,sessionId})}
+  if(!frameClients.size)frameSequence++
+}
+let audioState='stopped',audioError='',audioLevel=0,audioEndpoint='',sampleRate=0,droppedFrames=0,audioTimestampInvalid=0,renderMs=0,encodeMs=0,writeMs=0
+const audioLatencies:number[]=[],captureLatencies:number[]=[]
+function onNativeFrame(value:{colors:string[];packets:number;frameMs:number;gapMs:number;droppedFrames:number;audioLevel:number;audioState:string;audioError:string;audioEndpoint:string;sampleRate:number;audioToWriteMs:number;captureToWriteMs:number;audioTimestampInvalid:boolean;renderMs:number;encodeMs:number;writeMs:number}){
+  if(mode!=='rhythm'||value.colors?.length!==68)return
+  connected=true;lastError=null;frames++;windowFrames++;packets+=value.packets;frameMs=value.frameMs;droppedFrames=value.droppedFrames
+  audioState=value.audioState;audioError=value.audioError;audioLevel=value.audioLevel;audioEndpoint=value.audioEndpoint;sampleRate=value.sampleRate
+  if(value.gapMs>0){maxGapMs=Math.max(maxGapMs,value.gapMs);frameGaps.push(value.gapMs);if(frameGaps.length>512)frameGaps.shift();if(value.gapMs>100)gapsOver100++}
+  if(value.audioToWriteMs>=0){audioLatencies.push(value.audioToWriteMs);if(audioLatencies.length>512)audioLatencies.shift()}
+  if(value.captureToWriteMs>=0){captureLatencies.push(value.captureToWriteMs);if(captureLatencies.length>512)captureLatencies.shift()}
+  if(value.audioTimestampInvalid)audioTimestampInvalid++
+  renderMs=value.renderMs;encodeMs=value.encodeMs;writeMs=value.writeMs
+  const now=performance.now();if(now-windowStart>=1000){fps=windowFrames*1000/(now-windowStart);windowFrames=0;windowStart=now}
+  if(frameClients.size)publishFrame({enabled:true,connected:true,mode:'rhythm',keys:Object.fromEntries(HERO68_KEY_IDS.map((id,i)=>[id,value.colors[i]])),audioLevel,sequence:++frameSequence,sessionId,sideOutput:false})
+  else frameSequence++
+}
 const frameClients=new Set<ServerResponse>()
+const frameWriters=new WeakMap<ServerResponse,ReturnType<typeof latestSse>>()
 type HallRecord={keyId:string;pos:number;distanceUnits:number;adc:number;pressed:boolean}
 type HallClient={keys:Set<string>;pending:Map<string,HallRecord>;lastSent:number}
 const hallClients=new Map<ServerResponse,HallClient>()
@@ -92,7 +135,11 @@ async function pollHall(){
   const now=performance.now()
   let ids:string[]=[]
   if(priority.length&&now>=nextPriorityAt){ids=priority;nextPriorityAt=now+priorityHallIntervalMs}
-  else if(secondary.length&&now>=nextSecondaryAt){ids=secondary.slice(secondaryIndex,secondaryIndex+9);secondaryIndex=(secondaryIndex+ids.length)%secondary.length;nextSecondaryAt=now+(priority.length?8:5)}
+  else if(secondary.length&&now>=nextSecondaryAt){
+    ids=secondary.slice(secondaryIndex,secondaryIndex+9);secondaryIndex=(secondaryIndex+ids.length)%secondary.length
+    const shortOnBudget=mode!=='onboard'&&(frameMs>4||frameGaps.slice(-16).some(gap=>gap>20))
+    nextSecondaryAt=now+(shortOnBudget?20:priority.length?8:5)
+  }
   if(!ids.length)return
   const records:HallRecord[]=[]
   for(let i=0;i<ids.length;i+=9){
@@ -115,11 +162,12 @@ function publishFrame(value:unknown){
   const text=`data: ${JSON.stringify(value)}\n\n`
   for(const client of frameClients){
     if(client.destroyed||client.writableLength>65536){client.destroy();frameClients.delete(client)}
-    else client.write(text)
+    else frameWriters.get(client)?.(text)
   }
 }
 let tail:Promise<unknown>=Promise.resolve()
-function exclusive<T>(work:()=>Promise<T>):Promise<T>{const next=tail.then(work);tail=next.catch(()=>{});return next}
+let pendingRequests=0
+function exclusive<T>(work:()=>Promise<T>):Promise<T>{if(pendingRequests>=32)return Promise.reject(Error('Device request queue is busy; try again'));pendingRequests++;const next=tail.then(work).finally(()=>{pendingRequests--});tail=next.catch(()=>{});return next}
 
 class Bridge {
   private process=spawn(path.join(__dirname,'hid-bridge.exe'),[],{stdio:['pipe','pipe','pipe'],windowsHide:true})
@@ -127,6 +175,11 @@ class Bridge {
   private gone=false
   constructor(){
     createInterface({input:this.process.stdout}).on('line',line=>{
+      if(line==='custom-tick:'){onCustomTick();return}
+      if(line.startsWith('custom-frame:')){try{onCustomFrame(JSON.parse(line.slice(13)))}catch{}return}
+      if(line.startsWith('custom-error:')){if(mode==='custom'){connected=false;lastError=line.slice(13);timeouts++;publishFrame({enabled:true,connected:false,sessionId})}return}
+      if(line.startsWith('rhythm-frame:')){try{onNativeFrame(JSON.parse(line.slice(13)))}catch{}return}
+      if(line.startsWith('rhythm-error:')){if(mode==='rhythm'){connected=false;lastError=line.slice(13);timeouts++;publishFrame({enabled:true,connected:false,sessionId})}return}
       if(line==='raw:ready'||line==='raw:unavailable'){rawInputReady=line==='raw:ready';return}
       if(line.startsWith('key:')){
         const input=decodeHero68Input(line)
@@ -152,13 +205,23 @@ class Bridge {
     })
   }
   async request(packet:Uint8Array,sendOnly=false){
+    return profileRequest(packet,packet=>this.requestOnce(packet,sendOnly))
+  }
+  private async requestOnce(packet:Uint8Array,sendOnly=false){
     const result=await this.line((sendOnly?'send:':'')+Buffer.from(packet).toString('hex'))
     if(result.startsWith('error:'))throw Error(result.slice(6))
     if(!/^[0-9a-f]{128}$/.test(result))throw Error('Invalid bridge response')
     const reply=decodeReport(Uint8Array.from(Buffer.from(result,'hex')))
-    if(reply.command!==packet[1]||reply.zone!==packet[2])throw Error('Unexpected HID response')
+    if(!reply.checksumValid||reply.command!==packet[1]||reply.zone!==packet[2])throw Error('Unexpected HID response')
     packets++;return reply
   }
+  async startCustom(){const result=await this.line('custom-start');if(result!=='custom-ready')throw Error('Native custom scheduler did not start')}
+  async stopCustom(){const result=await this.line('custom-stop');if(result!=='custom-stopped')throw Error('Native custom scheduler did not stop')}
+  async queueFrame(id:number,values:Uint8Array[]){const result=await this.line('frame:'+id+':'+values.map(p=>Buffer.from(p).toString('hex')).join(','));if(result!=='frame-queued')throw Error(result.startsWith('error:')?result.slice(6):'Invalid frame queue acknowledgement')}
+  async batch(values:Uint8Array[]){const result=await this.line('batch:'+values.map(p=>Buffer.from(p).toString('hex')).join(','));if(result!=='batch-written')throw Error(result.startsWith('error:')?result.slice(6):'Invalid RGB batch acknowledgement');packets+=values.length}
+  async configureRhythm(value:RhythmConfiguration){const result=await this.line(nativeRhythmCommand(value));if(result!=='rhythm-ready')throw Error(result.startsWith('error:')?result.slice(6):'Native rhythm did not start')}
+  async stopRhythm(){const result=await this.line('rhythm-stop');if(result!=='rhythm-stopped')throw Error('Native rhythm did not stop')}
+  async audioDevices(){const result=await this.line('audio-devices');if(!result.startsWith('audio-devices:'))throw Error('Audio enumeration failed');return JSON.parse(result.slice(14))}
   async close(){await this.line('close')}
   async wait(ms:number){await this.line(`wait:${Math.max(0,Math.min(25,ms))}`)}
   end(){this.process.stdin.end()}
@@ -171,11 +234,15 @@ async function connect(){
   log('HERO68 connected')
 }
 async function stop(){
-  mode='onboard'
+  const previousMode=mode;mode='onboard'
+  if(previousMode==='rhythm')await bridge.stopRhythm()
+  if(previousMode==='custom')await bridge.stopCustom()
+  customFrames.clear()
+  audioState='stopped';audioLevel=0;fps=0
   sessionId=randomUUID();frameSequence=0
   if(connected){try{await bridge.request(buildReport({command:8,zone:2,data:[0,0,0]}))}catch(e){lastError=String(e)}}
   engine?.releaseAll();outputHeld.clear();pendingInputs.length=0;persist();log('Onboard RGB restored')
-  publishFrame({enabled:false,connected:false})
+  publishFrame({enabled:false,connected:false,sessionId})
 }
 async function tick(){
   if(mode!=='custom'||!profile||!engine||closing)return
@@ -183,35 +250,21 @@ async function tick(){
   const started=performance.now()
   engine!.advance(started-epoch+110)
   if(needsAnalogHall())engine!.setTravel(Object.fromEntries([...hallSamples].map(([id,s])=>[id,s.distanceUnits/100])))
+  const renderedAt=performance.now()
   const frame=frameEncoder.prepare(engine!.frame().keys)
-  for(const packet of frame.packets)await bridge.request(packet)
-  const now=performance.now();while(pendingInputs.length&&pendingInputs[0]<=started){inputLatencies.push(now-pendingInputs.shift()!);if(inputLatencies.length>256)inputLatencies.shift()}
-  if(lastFrameAt){
-    const gap=now-lastFrameAt
-    maxGapMs=Math.max(maxGapMs,gap);frameGaps.push(gap);if(frameGaps.length>512)frameGaps.shift()
-    if(gap>100){gapsOver100++;lastLongGapAt=new Date().toISOString();log(`RGB frame gap ${gap.toFixed(1)}ms`)}
-  }
-  lastFrameAt=now;frameMs=now-started;frames++;windowFrames++
-  if(frameClients.size)publishFrame({enabled:true,connected:true,keys:frame.keys,sequence:++frameSequence,sessionId})
-  else frameSequence++
+  const encodedAt=performance.now()
+  const submission=++customSubmission
+  customFrames.set(submission,{keys:frame.keys,started,renderMs:renderedAt-started,encodeMs:encodedAt-renderedAt})
+  while(customFrames.size>8)customFrames.delete(customFrames.keys().next().value!)
+  await bridge.queueFrame(submission,frame.packets)
 }
 let timer:ReturnType<typeof setTimeout>
-let nextFrame=performance.now()
 async function loop(){
-  const start=performance.now()
-  try{await exclusive(tick)}catch(e){connected=false;publishFrame({enabled:mode==='custom',connected:false});engine?.releaseAll();outputHeld.clear();lastError=e instanceof Error?e.message:String(e);timeouts++;reconnectAt=performance.now()+1000;log(`HID error: ${lastError}`);await exclusive(()=>bridge.close()).catch(()=>{})}
-  const now=performance.now();if(now-windowStart>=1000){fps=windowFrames*1000/(now-windowStart);windowFrames=0;windowStart=now}
-  if(!closing){
-    if(mode==='custom'){
-      nextFrame=Math.max(nextFrame+25,start+25)
-      if(!hallClients.size&&!needsAnalogHall()){
-        await exclusive(()=>bridge.wait(nextFrame-performance.now())).catch(()=>{})
-        if(!closing)setImmediate(()=>void loop())
-      }else timer=setTimeout(loop,Math.max(0,nextFrame-performance.now()))
-    }
-    else {nextFrame=performance.now();timer=setTimeout(loop,250)}
-  }
+  const now=performance.now()
+  if(now-windowStart>=1000){fps=windowFrames*1000/(now-windowStart);renderFps=windowRendered*1000/(now-windowStart);windowFrames=windowRendered=0;windowStart=now}
+  if(!closing)timer=setTimeout(loop,250)
 }
+
 let hallTimer:ReturnType<typeof setTimeout>
 async function hallLoop(){
   try{await exclusive(pollHall)}catch(e){
@@ -224,10 +277,27 @@ async function hallLoop(){
   const now=performance.now()
   const due=Math.min(priorityCount?nextPriorityAt:Infinity,secondaryCount?nextSecondaryAt:Infinity)
   const delay=Math.max(0,Math.min(5,due-now))
+  if(mode!=='onboard'){hallTimer=setTimeout(hallLoop,Math.max(1,delay));return}
   if(delay>0.5)await exclusive(()=>bridge.wait(delay)).catch(()=>{})
   if(!closing)setImmediate(()=>void hallLoop())
 }
-function status(){const values=[...inputLatencies].sort((a,b)=>a-b),gaps=[...frameGaps].sort((a,b)=>a-b);return {service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,supportedEffects:CUSTOM_RGB_EFFECTS.map(effect=>effect.id),supportedBaseEffects:["aurora"],pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,enabled:mode==='custom',connected,preset:!!profile,sessionId,fps,frameMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,frameGapP95Ms:gaps.length?gaps[Math.ceil(gaps.length*.95)-1]:null,frameGapP99Ms:gaps.length?gaps[Math.ceil(gaps.length*.99)-1]:null,gapsOver100,lastLongGapAt,eventLoopDelayP99Ms:eventLoopDelay.percentile(99)/1e6,eventLoopDelayMaxMs:eventLoopDelay.max/1e6,lastError,rawInputReady,inputTransitions,inputToLedP95Ms:values.length?values[Math.ceil(values.length*.95)-1]:null,targetFps:40,paletteColors:32,sideOutput:false}}
+function percentile(values:readonly number[],fraction=.95){if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.ceil(sorted.length*fraction)-1]}
+function status(){return {
+  service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,
+  supportedEffects:CUSTOM_RGB_EFFECTS.map(effect=>effect.id),supportedBaseEffects:['aurora'],
+  pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,enabled:mode!=='onboard',connected,
+  preset:!!profile||savedMode==='rhythm',savedMode,configurationBusy,pendingRequests,sessionId,
+  fps,frameMs,renderMs,encodeMs,writeMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,
+  frameGapP95Ms:percentile(frameGaps),frameGapP99Ms:percentile(frameGaps,.99),gapsOver100,lastLongGapAt,
+  eventLoopDelayP99Ms:eventLoopDelay.percentile(99)/1e6,eventLoopDelayMaxMs:eventLoopDelay.max/1e6,
+  lastError,rawInputReady,inputTransitions,inputToLedP95Ms:percentile(inputLatencies),targetFps:60,
+  renderFps:mode==='rhythm'?fps:renderFps,reusedFrames,paletteColors:32,sideOutput:RHYTHM_SIDE_VERIFIED,
+  supportedModes:['onboard','custom','rhythm'],supportedRhythmModes:RHYTHM_MODES.map(m=>m.id),
+  supportedRhythmSideModes:RHYTHM_SIDE_VERIFIED?[500,501,502,503]:[500],rhythmConfiguration:rhythmConfig,
+  audioState,audioError,audioLevel,audioEndpoint,sampleRate,droppedFrames,
+  audioToWriteP95Ms:percentile(audioLatencies),audioTimestampInvalid,
+  audioLatencySamples:audioLatencies.length,captureToWriteP95Ms:percentile(captureLatencies)
+}}
 const {latestCore,downloadFullPackage,stageCoreUpdate}=createServiceUpdater({coreVersion,launcherVersion:LAUNCHER_VERSION,stateDir})
 const panel=`<!doctype html><meta charset="utf-8"><title>Hero68 RGB Service</title><style>body{font:16px system-ui;background:#171a1b;color:#eee;max-width:740px;margin:60px auto;padding:20px}button,input{padding:12px;margin:8px}pre{white-space:pre-wrap}button{cursor:pointer}</style><h1>Hero68 RGB Service</h1><p>Custom RGB continues while the web editor is closed. Import a preset, or use Start service RGB in Open-Hero68.</p><input id="file" type="file" accept=".json"><button onclick="start()">Start saved preset</button><button onclick="post('/mode',{mode:'onboard'})">Use onboard RGB</button><button onclick="checkUpdate()">Check for updates</button><button onclick="post('/shutdown')">Exit service</button><pre id="update"></pre><pre id="status"></pre><script>async function post(url,data={}){try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)alert(result.error);return result}catch(e){alert(e.message)}}async function start(){const f=document.getElementById('file').files[0];if(f){const p=JSON.parse(await f.text());await post('/start',p.profile||p)}else await post('/start')}async function checkUpdate(){try{const r=await fetch('/updates');const v=await r.json();document.getElementById('update').textContent=JSON.stringify(v,null,2);if(v.available&&!v.requiresFullPackage&&confirm('Install signed core update '+v.version+'?'))await post('/updates/apply')}catch(e){document.getElementById('update').textContent=e.message}}setInterval(async()=>{try{document.getElementById('status').textContent=JSON.stringify(await(await fetch('/status')).json(),null,2)}catch{document.getElementById('status').textContent='Service stopped'}},1000)</script>`
 const server=createServer(async(req,res)=>{
@@ -242,12 +312,14 @@ const server=createServer(async(req,res)=>{
   try{
     if(req.method==='GET'&&req.url==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(panel);return}
     if(req.method==='GET'&&req.url==='/status'){json(200,status());return}
+    if(req.method==='GET'&&req.url==='/audio/devices'){json(200,{devices:await exclusive(()=>bridge.audioDevices())});return}
     if(req.method==='GET'&&req.url==='/updates'){const latest=await latestCore();json(200,{coreVersion,...latest});return}
     if(req.method==='GET'&&req.url==='/frames'){
       res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no'})
       res.write(': connected\n\n');frameClients.add(res)
-      if(lastPublishedFrame)res.write(`data: ${JSON.stringify(lastPublishedFrame)}\n\n`)
-      const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);heartbeat.unref()
+      const send=latestSse(res);frameWriters.set(res,send)
+      if(lastPublishedFrame)send(`data: ${JSON.stringify(lastPublishedFrame)}\n\n`)
+      const heartbeat=setInterval(()=>{if(!res.writableLength)res.write(': keepalive\n\n')},15000);heartbeat.unref()
       req.on('close',()=>{clearInterval(heartbeat);frameClients.delete(res)});return
     }
     if(req.method==='GET'&&req.url?.startsWith('/hall/stream?')){
@@ -261,7 +333,7 @@ const server=createServer(async(req,res)=>{
       const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);heartbeat.unref()
       req.on('close',()=>{clearInterval(heartbeat);hallClients.delete(res)});return
     }
-    if(req.method!=='POST'||!['/start','/stop','/mode','/preset','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
+    if(req.method!=='POST'||!['/start','/stop','/mode','/preset','/rhythm/start','/rhythm/config','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
     if(req.headers['content-type']?.split(';')[0]!=='application/json'){json(415,{error:'Expected application/json'});return}
     let body='',size=0
     for await(const chunk of req){size+=chunk.length;if(size>65536)throw Error('Preset too large');body+=chunk}
@@ -280,11 +352,25 @@ const server=createServer(async(req,res)=>{
       try{await exclusive(async()=>{});const version=await stageCoreUpdate();json(200,{staged:true,version});setImmediate(()=>void restartForUpdate());return}
       catch(e){updating=false;throw e}
     }
+    if(req.url==='/rhythm/start'||req.url==='/rhythm/config'||(req.url==='/start'&&!Object.keys(input).length&&savedMode==='rhythm')){
+      await exclusive(async()=>{
+        const editing=req.url==='/rhythm/config'
+        if(editing&&(mode!=='rhythm'||input.sessionId!==sessionId))throw Error('Stale rhythm editor session; configuration was not applied')
+        const config=validateRhythm(input.configuration??(req.url==='/start'?rhythmConfig:input))
+        nativeRhythmCommand(config)
+        if(!connected){try{await connect()}catch(e){lastError=String(e);connected=false}}
+        await bridge.configureRhythm(config);rhythmConfig=config;mode='rhythm';savedMode='rhythm'
+        if(!editing){engine?.releaseAll();outputHeld.clear();sessionId=randomUUID();frameSequence=0;frames=packets=timeouts=maxGapMs=droppedFrames=audioTimestampInvalid=0;frameGaps.length=audioLatencies.length=captureLatencies.length=0;windowFrames=0;windowStart=performance.now();fps=0;audioState='connecting';audioError=''}
+        persistRhythm();persist();publishFrame({enabled:true,connected,mode:'rhythm',sessionId,sequence:frameSequence})
+      });json(200,status());return
+    }
     if(req.url==='/device/request'||req.url==='/device/batch'){
       const batch=req.url==='/device/batch'
       const requests:ReturnType<typeof validateDeviceRequest>[]=batch?(Array.isArray(input.requests)&&input.requests.length>0&&input.requests.length<=128?input.requests.map(validateDeviceRequest):(()=>{throw Error('Expected 1-128 device requests')})()):[validateDeviceRequest(input)]
       if(batch&&requests.some(({reenumerate})=>reenumerate))throw Error('Re-enumeration requires a standalone request')
       const replies=await exclusive(async()=>{
+        configurationBusy=true;const resume=mode!=='onboard';if(resume)await bridge.line('rhythm-pause')
+        try{
         if(!connected)await connect()
         const replies:string[]=[]
         for(const {packet,reenumerate} of requests){
@@ -304,6 +390,7 @@ const server=createServer(async(req,res)=>{
           }
         }
         return replies
+        }finally{configurationBusy=false;if(resume)await bridge.line('rhythm-resume')}
       })
       json(200,batch?{hexes:replies}:{hex:replies[0]});return
     }
@@ -312,7 +399,7 @@ const server=createServer(async(req,res)=>{
       if(req.url==='/mode'&&input.mode!=='custom')throw Error('Expected onboard or custom mode')
       if(req.url==='/preset'&&input.sessionId!==sessionId)throw Error('Stale RGB editor session; preset was not applied')
       if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);if(engine)engine.configure(profile);else{engine=new CustomRgbEngine(profile);epoch=performance.now()}persist()}
-      if(req.url==='/start'||req.url==='/mode'){if(!profile)throw Error('Send a preset first');mode='custom';frameEncoder.reset();sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
+      if(req.url==='/start'||req.url==='/mode'){if(mode==='rhythm')await bridge.stopRhythm();if(!profile)throw Error('Send a preset first');mode='custom';savedMode='custom';customFrames.clear();reusedFrames=windowRendered=renderFps=0;await bridge.startCustom();frameEncoder.reset();sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
     })
     json(200,status())
     if(req.url==='/shutdown')void shutdown()
@@ -323,4 +410,4 @@ async function restartForUpdate(){if(closing)return;closing=true;clearTimeout(ti
 process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown())
 process.on('uncaughtException',e=>{log(e.stack??e.message);void shutdown()})
 server.on('error',e=>{log(`Server error: ${e.message}`);bridge.end();process.exitCode=1})
-server.listen(port,'127.0.0.1',()=>{log(`Service listening on 127.0.0.1:${port}`);void loop();void hallLoop()})
+server.listen(port,'127.0.0.1',()=>{log(`Service listening on 127.0.0.1:${port}`);if(mode==='custom')void exclusive(()=>bridge.startCustom()).catch(e=>{lastError=String(e);mode='onboard'});if(mode==='rhythm')void exclusive(()=>bridge.configureRhythm(rhythmConfig)).catch(e=>{lastError=String(e);mode='onboard'});void loop();void hallLoop()})

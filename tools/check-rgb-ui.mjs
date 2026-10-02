@@ -9,10 +9,10 @@ await build({configFile:false,plugins:[react(),{
   name:'isolated-rgb-service',enforce:'pre',
   transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/protocol/rgbService.ts'))return code.replace('http://127.0.0.1:16868','http://127.0.0.1:5190')},
 }],build:{outDir:root,rollupOptions:{input:'tests/fixtures/rgb-ui.html'}}})
-let online=false,legacy=false,failApply=false,enabled=false,sessionId='fixture-session',savedOpacity=null
+let online=false,legacy=false,failApply=false,enabled=false,sessionId='fixture-session',savedOpacity=null,mode='onboard',rhythmConfiguration=null
 const requests=[]
 const effects=['aurora','comet','pressure-wave','jelly','scan','breath','ripple','touch','reaction','aoe','mixing','trail','rt']
-const status=()=>({apiVersion:4,...(!legacy?{supportedEffects:effects,supportedBaseEffects:["aurora"]}:{}),sessionId,enabled,mode:enabled?'custom':'onboard',connected:false,preset:true,fps:40,frameMs:1,frames:0,packets:0,hallSnapshots:0,timeouts:0,maxGapMs:25,lastError:null})
+const status=()=>({apiVersion:legacy?4:5,...(!legacy?{supportedEffects:effects,supportedBaseEffects:["aurora"],supportedModes:['onboard','custom','rhythm'],supportedRhythmModes:[169,170,171,172,173,180,428],supportedRhythmSideModes:[500]}:{}),sessionId,enabled,mode:enabled?mode:'onboard',connected:false,preset:true,fps:60,targetFps:60,frameMs:1,frames:0,packets:0,hallSnapshots:0,timeouts:0,maxGapMs:17,lastError:null,rhythmConfiguration,sideOutput:false})
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.woff2':'font/woff2'}
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1:5190')
@@ -27,14 +27,21 @@ createServer(async(req,res)=>{
     }
     json({online,enabled,sessionId,savedOpacity,requests});return
   }
-  if(['/status','/mode','/preset','/stop','/frames','/device/request'].includes(url.pathname)){
+  if(['/status','/mode','/preset','/rhythm/start','/rhythm/config','/audio/devices','/stop','/frames','/device/request'].includes(url.pathname)){
     if(!online){json({error:'Mock service offline'},503);return}
     if(url.pathname==='/status'){json(status());return}
+    if(url.pathname==='/audio/devices'){json({devices:[{id:'fixture-speakers',name:'Fixture speakers',default:true}]});return}
     if(url.pathname==='/frames'){res.writeHead(200,{'Content-Type':'text/event-stream'});res.write(`data: ${JSON.stringify({...status(),sequence:1})}\n\n`);return}
     requests.push({path:url.pathname,mode:input.mode,sessionId:input.sessionId})
+    if(url.pathname==='/rhythm/start'||url.pathname==='/rhythm/config'){
+      if(legacy){json({error:'Update app'},404);return}
+      if(url.pathname==='/rhythm/config'&&input.sessionId!==sessionId){json({error:'Stale session'},409);return}
+      if(input.configuration.sideMode!==500){json({error:'Side unverified'},400);return}
+      enabled=true;mode='rhythm';rhythmConfiguration=input.configuration;json(status());return
+    }
     if(url.pathname==='/mode'){
       if(failApply){failApply=false;json({error:'Simulated Apply failure'},500);return}
-      enabled=input.mode==='custom';savedOpacity=input.profile?.custom?.layers?.[0]?.opacity??savedOpacity;json(status());return
+      enabled=input.mode==='custom';mode=input.mode;savedOpacity=input.profile?.custom?.layers?.[0]?.opacity??savedOpacity;json(status());return
     }
     if(url.pathname==='/preset'){
       if(input.sessionId!==sessionId){json({error:'Stale session'},409);return}

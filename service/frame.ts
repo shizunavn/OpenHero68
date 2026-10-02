@@ -16,22 +16,31 @@ export function prepareFrame(frame: Record<string,string>, previous?: PaletteSta
     if(entry){entry.members.push(i);if(entry.prior!==prior)entry.prior=-1}
     else unique.set(key,{color,members:[i],black:color[0]===0&&color[1]===0&&color[2]===0,prior})
   })
-  const groups=[...unique.values()]
-  while(groups.length>32) {
+  let groups=[...unique.values()]
+  const count=groups.length,active=Array(count).fill(true),costs=new Float64Array(count*count)
+  const cost=(i:number,j:number)=>{
+    const a=groups[i],b=groups[j]
+    if(a.black||b.black)return Infinity
+    let value=distance(a.color,b.color)*a.members.length*b.members.length/(a.members.length+b.members.length)
+    if(a.prior>=0&&a.prior===b.prior)value*=.6
+    return value
+  }
+  if(count>32)for(let i=0;i<count;i++)for(let j=i+1;j<count;j++)costs[i*count+j]=cost(i,j)
+  let remaining=count
+  while(remaining>32) {
     let left=0,right=1,best=Infinity
-    for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++) {
-      const a=groups[i],b=groups[j]
-      // Keep released/unaffected keys fully off rather than tinting black.
-      if(a.black||b.black)continue
-      let cost=distance(a.color,b.color)*a.members.length*b.members.length/(a.members.length+b.members.length)
-      if(a.prior>=0&&a.prior===b.prior)cost*=.6
-      if(cost<best){best=cost;left=i;right=j}
+    for(let i=0;i<count;i++)if(active[i])for(let j=i+1;j<count;j++)if(active[j]) {
+      const value=costs[i*count+j]
+      if(value<best){best=value;left=i;right=j}
     }
     const a=groups[left],b=groups[right],total=a.members.length+b.members.length
     a.color=a.color.map((v,i)=>(v*a.members.length+b.color[i]*b.members.length)/total)
     if(a.prior!==b.prior)a.prior=-1
-    a.members.push(...b.members);groups.splice(right,1)
+    a.members.push(...b.members);active[right]=false;remaining--
+    // Only distances involving the merged color change. Reuse all other pairs.
+    for(let i=0;i<count;i++)if(active[i]&&i!==left){const lo=Math.min(i,left),hi=Math.max(i,left);costs[lo*count+hi]=cost(lo,hi)}
   }
+  groups=groups.filter((_,i)=>active[i])
   // Average neighboring colors instead of snapping to an unrelated brighter key.
   // Favor preceding key groups slightly to avoid palette flicker in slow gradients.
   const assignments:number[]=[],keys:Record<string,string>={}

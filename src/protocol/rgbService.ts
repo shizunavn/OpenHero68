@@ -1,8 +1,19 @@
 import type { RgbProfile } from './hero68/rgb'
 import { decodeReport } from './hero68/codec'
 import { fetchLocalService, LocalServicePermissionError } from './localServiceAccess'
-export type RgbServiceStatus={apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom';sessionId?:string;enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number;hallSnapshots:number;timeouts:number;maxGapMs:number;lastError:string|null}
-export type RgbServiceFrame={enabled:boolean;connected:boolean;keys?:Record<string,string>;sequence?:number;sessionId?:string;shuttingDown?:boolean}
+import type { RhythmConfiguration } from '../keyboard/rhythm'
+export type RgbServiceStatus={
+  apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom'|'rhythm';sessionId?:string
+  enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number
+  hallSnapshots:number;timeouts:number;maxGapMs:number;lastError:string|null;targetFps?:number;renderFps?:number;reusedFrames?:number
+  sideOutput?:boolean;supportedModes?:string[];supportedRhythmModes?:number[];supportedRhythmSideModes?:number[];rhythmConfiguration?:RhythmConfiguration
+  audioState?:string;audioError?:string;audioLevel?:number;sampleRate?:number;audioEndpoint?:string;droppedFrames?:number
+  audioToWriteP95Ms?:number|null;audioTimestampInvalid?:number;audioLatencySamples?:number;captureToWriteP95Ms?:number|null
+  frameGapP95Ms?:number|null;configurationBusy?:boolean
+  renderMs?:number;encodeMs?:number;writeMs?:number
+}
+export type RgbServiceFrame={enabled:boolean;connected:boolean;keys?:Record<string,string>;side?:string[];audioLevel?:number;mode?:'onboard'|'custom'|'rhythm';sideOutput?:boolean;sequence?:number;sessionId?:string;shuttingDown?:boolean}
+export type AudioEndpoint={id:string;name:string;default:boolean}
 export type RgbServiceHallRecord={keyId:string;pos:number;distanceUnits:number;adc:number;pressed:boolean}
 const endpoint='http://127.0.0.1:16868'
 const availability=new Set<(online:boolean)=>void>()
@@ -19,6 +30,9 @@ async function request(path:string,value?:unknown):Promise<RgbServiceStatus>{
   return result
 }
 export const rgbService={
+  rhythmStart:(configuration:RhythmConfiguration)=>request('/rhythm/start',{configuration}),
+  rhythmUpdate:(configuration:RhythmConfiguration,sessionId:string)=>request('/rhythm/config',{configuration,sessionId}),
+  async audioDevices():Promise<AudioEndpoint[]>{const response=await fetchLocalService(endpoint+'/audio/devices',{},5000);const result=await response.json();if(!response.ok)throw Error(result.error??'Cannot list playback devices');return result.devices},
   status:()=>request('/status'),start:(profile:RgbProfile)=>request('/start',profile),update:(profile:RgbProfile,sessionId:string)=>request('/preset',{profile,sessionId}),stop:()=>request('/stop',{}),mode:(mode:'onboard'|'custom',profile?:RgbProfile)=>request('/mode',{mode,...(profile?{profile}:{})}),
   onAvailability(listener:(online:boolean)=>void){availability.add(listener);return()=>availability.delete(listener)},
   async deviceRequest(packet:Uint8Array,reenumerate=false){

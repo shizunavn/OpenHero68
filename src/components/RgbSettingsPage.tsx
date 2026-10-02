@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Lightbulb, Sparkles, Waves, Palette, RotateCcw } from 'lucide-react'
 import CustomRgbEditor from './CustomRgbEditor'
+import RhythmSyncEditor from './RhythmSyncEditor'
 import Hero68Preview from './Hero68Preview'
 import RgbColorPicker from './RgbColorPicker'
 import { FirmwareRgbPreview } from "../keyboard/rgbPreview"
@@ -23,6 +24,7 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
   const [frame,setFrame]=useState<{keys:LightingFrame;side:string[]}>({keys:{},side:Array(18).fill('#35393b')})
   const [error,setError]=useState<string|null>(null)
   const [customMode,setCustomMode]=useState(initialCustom)
+  const [rhythmMode,setRhythmMode]=useState(false)
   const playback=useCustomRgbPlayback(value,onChange,onSetup)
   const engineRef=useRef<FirmwareRgbPreview|null>(null)
   const replayRef=useRef(replay)
@@ -33,7 +35,7 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
   const brightnessMax=zone==='side'?4:20
   function change(patch:Partial<RgbZone>) {onChange({...value,[zone]:{...config,...patch,...(patch.mix!==undefined||patch.rgb!==undefined?{mixValue:undefined}:{})}})}
   useEffect(()=>{
-    if(customMode) return
+    if(customMode||rhythmMode) return
     let handle=0, elapsed=0, previous=0, eventIndex=0, disposed=false
     const reduced=window.matchMedia("(prefers-reduced-motion: reduce)")
     const events=HERO68_KEY_IDS.slice(17,22).flatMap((id,i)=>[{at:150+i*140,id,pressed:true},{at:350+i*140,id,pressed:false}]).sort((a,b)=>a.at-b.at)
@@ -60,7 +62,7 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
       document.addEventListener("visibilitychange",resume);reduced.addEventListener("change",resume);resume()
       return ()=>{disposed=true;cancelAnimationFrame(handle);document.removeEventListener("visibilitychange",resume);reduced.removeEventListener("change",resume)}
     } catch(e) {setError(e instanceof Error?e.message:String(e))}
-  },[value,replay,customMode])
+  },[value,replay,customMode,rhythmMode])
   function toggle(id:string) {
     if(perKey) setSelected(previous=>{const next=new Set(previous);if(next.has(id))next.delete(id);else next.add(id);return next})
     else {const engine=engineRef.current;if(engine){
@@ -70,10 +72,11 @@ export default function RgbSettingsPage({value,onChange,busy,advancedBindings,on
     }}
   }
   return <div className="page settings-page rgb-settings-page page-enter">
-    <div className="settings-hero"><div><h1>RGB Settings</h1><p>{customMode?'Build a base and blend your own RGB effects.':'Onboard lighting · Changes are applied with Save.'}</p></div><span className="rgb-basic-badge">{customMode?'Custom':'Onboard'}</span></div>
-    <div className="rgb-zone-tabs" role="group" aria-label="RGB mode">{[false,true].map(custom=><button key={String(custom)} disabled={busy||playback.busy} aria-pressed={customMode===custom} onClick={()=>setCustomMode(custom)}>{custom?'Custom Effects':'Onboard Effects'}</button>)}</div>
+    <div className="settings-hero"><div><h1>RGB Settings</h1><p>{rhythmMode?'System audio · Live rhythm lighting.':customMode?'Build a base and blend your own RGB effects.':'Onboard lighting · Changes are applied with Save.'}</p></div><span className="rgb-basic-badge">{rhythmMode?'Rhythm':customMode?'Custom':'Onboard'}</span></div>
+    <div className="rgb-zone-tabs" role="group" aria-label="RGB mode">{[false,true].map(custom=><button key={String(custom)} disabled={busy||playback.busy} aria-pressed={!rhythmMode&&customMode===custom} onClick={()=>{setRhythmMode(false);setCustomMode(custom)}}>{custom?'Custom Effects':'Onboard Effects'}</button>)}<button disabled={busy||playback.busy} aria-pressed={rhythmMode} onClick={()=>{setCustomMode(false);setRhythmMode(true)}}>Rhythm Sync</button></div>
+    {rhythmMode&&<RhythmSyncEditor onSetup={onSetup}/>}
     <CustomRgbEditor value={value} onChange={onChange} busy={busy} advancedBindings={advancedBindings} visible={customMode} onSetup={onSetup} playback={playback}/>
-    {!customMode&&<>
+    {!customMode&&!rhythmMode&&<>
     <div className="rgb-preview-stage">
       <Hero68Preview advancedBindings={advancedBindings} selectedKeys={perKey?selected:new Set()} onToggleKey={toggle} lightingFrame={frame.keys} lightingSource="local" selectionEnabled={perKey}/>
       <div className="rgb-side-preview" aria-label="18 side light positions">{frame.side.map((color,i)=><span key={i} style={{background:color,color}}/>)}</div>

@@ -22,7 +22,7 @@ export function useCustomRgbPlayback(value: RgbProfile, onChange: (value: RgbPro
   const config=restoreCustomRgb(value.custom,value)
   const unsupported=status?unsupportedRgbEffects(config,status):[]
   const updateRequired=!!status&&((status.apiVersion??0)<3||unsupported.length>0)
-  const applied=!!session&&status?.sessionId===session&&status.enabled
+  const applied=!!session&&status?.sessionId===session&&status.enabled&&status.mode==='custom'
 
   useEffect(()=>{
     if(session&&(!status||!status.enabled||status.sessionId!==session)){

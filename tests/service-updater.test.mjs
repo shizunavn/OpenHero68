@@ -14,7 +14,7 @@ const pair=generateKeyPairSync('ed25519'),publicKey=pair.publicKey.export({forma
 const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex')
 const prefix='https://github.com/shizunavn/OpenHero68-RGB-Service/releases/download/v'
 
-function fixture({version='0.2.3',minLauncher='0.2.3',apiVersion=4,coreVersion='0.2.3',launcherVersion='0.2.3',mutate=()=>{}}={}){
+function fixture({version='0.2.3',minLauncher='0.2.3',apiVersion=5,coreVersion='0.2.3',launcherVersion='0.2.3',mutate=()=>{}}={}){
   const core=Buffer.from('verified core '+version),zip=Buffer.from('verified Windows package '+version)
   const payload={version,apiVersion,minLauncher,sha256:digest(core).slice(7),size:core.length,asset:'OpenHero68-RGB-core.cjs'}
   const signed={payload,signature:sign(null,Buffer.from(JSON.stringify(payload)),pair.privateKey).toString('base64')}
@@ -37,7 +37,7 @@ test('updater considers native compatibility even when the core already equals l
     ['0.2.3','0.2.3','0.2.4','0.2.4',true,true],
     ['0.2.4','0.2.1','0.2.3','0.2.3',false,false]
   ])await withUpdater({coreVersion,launcherVersion,version,minLauncher},async updater=>{const result=await updater.latestCore();assert.equal(result.available,available);assert.equal(result.requiresFullPackage,requiresFullPackage)})
-  await withUpdater({apiVersion:5},async updater=>{assert.equal((await updater.latestCore()).requiresFullPackage,true)})
+  await withUpdater({apiVersion:6},async updater=>{assert.equal((await updater.latestCore()).requiresFullPackage,true)})
 })
 
 test('compatible core staging reuses the signed manifest and does not download the large ZIP',async()=>{

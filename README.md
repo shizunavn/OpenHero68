@@ -12,8 +12,9 @@ WebHID keyboard configuration app and Windows tray RGB service for AULA HERO68.
 - Custom RGB with an Aurora base and composable FX, including Comet, Pressure Wave, Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail and RT Display.
 - A layer editor, local Demo without the Windows app, and a Background Service setup tutorial.
 - Portable Windows tray service for RGB playback while the browser is closed.
+- Rhythm Sync with seven key modes, native system-audio capture, live preview and a 60 FPS USB scheduler shared with Custom Effects.
 
-Gamepad output and Rhythm Sync are unfinished. The RGB service streams main keys; side LEDs retain their onboard effect.
+Gamepad output is unfinished. Rhythm side modes are available in demo, but live side output remains gated until the HERO68 LED count, order and protocol are verified. Side LEDs retain their onboard effect during key playback.
 
 ## Run the app from source
 
@@ -38,14 +39,14 @@ The production app is generated in `dist/`. Serve it over HTTPS for WebHID.
 1. Download the Windows x64 ZIP from Releases and extract it to a permanent folder.
 2. Run `Hero68RgbService.exe`; the H icon appears in the system tray.
 3. Open the web app and choose **Allow** if the browser asks to access apps and services on this device.
-4. Go to RGB Settings > Custom Effects, choose your preset, and select **Apply to keyboard**.
+4. Go to RGB Settings > Custom Effects or Rhythm Sync, choose your preset, and select **Apply to keyboard**.
 5. Closing the browser leaves playback running. Right-click the tray icon for controls.
 
-The Pages website requires service core 0.2.3 or later. Upgrading from 0.2.2 or
-earlier requires the full 0.2.3 Windows ZIP: quit the old tray app, extract all files
-over its folder, then run the new launcher. Check for updates can download this ZIP.
-If your old tray says the 0.2.3 core is latest while its launcher is older, download
-the ZIP manually. The corrected 0.2.3 package shows **Launcher: 0.2.3** in its menu.
+Rhythm Sync in this source build requires **core 0.3.0, launcher 0.3.0 and API 5**.
+Use the full Windows ZIP because the native audio/HID helper also changes: quit
+the old tray app, extract all files over its folder, then run the new launcher.
+The local build writes the ZIP to `service/releases/`; GitHub's latest download
+only changes after that package is published. A core-only update is insufficient.
 If Auto-start points to another folder, the new tray offers **Auto-start: replace
 old app path**. Click it to register this folder instead; auto-start stays optional.
 Without the app, select **Try demo** to edit and preview effects locally. Opening
@@ -63,9 +64,9 @@ Install Visual Studio Build Tools with the C++ desktop workload and Windows SDK.
 $env:HERO68_VCVARS = 'C:\path\to\VC\Auxiliary\Build\vcvars64.bat'
 npm ci
 npm run build:service
-powershell -NoProfile -File tools/package-rgb-service.ps1
+node tools/package-rgb-service.mjs
 ```
 
 The native launcher and HID bridge are compiled with MSVC; the TypeScript RGB engine and current Node runtime are bundled into `service/dist/`. Packaging writes a ZIP and SHA256 checksum to `service/releases/`.
 
-See [Custom RGB documentation](docs/CUSTOM_RGB.md) and [protocol notes](src/protocol/README.md) for implementation details and limitations.
+See [Rhythm Sync documentation](docs/RHYTHM_SYNC.md), [Custom RGB documentation](docs/CUSTOM_RGB.md) and [protocol notes](src/protocol/README.md) for implementation details and limitations.

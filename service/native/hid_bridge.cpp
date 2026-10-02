@@ -14,6 +14,9 @@
 #include <mutex>
 #include <thread>
 #include <cwctype>
+#include <deque>
+#include <sstream>
+#include "rhythm_audio.h"
 
 std::mutex outputMutex;
 void emitLine(const std::string& value) {
@@ -135,11 +138,102 @@ bool allowed(const std::array<unsigned char,64>& p) {
            false;
 }
 int main() {
+    DWORD schedulingTask=0;HANDLE scheduling=AvSetMmThreadCharacteristicsW(L"Playback",&schedulingTask);
     HANDLE rawWorker = CreateThread(nullptr, 0, rawThread, nullptr, 0, nullptr);
     std::unique_ptr<Device> device;
     HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002, TIMER_MODIFY_STATE | SYNCHRONIZE);
-    std::string line;
-    while (std::getline(std::cin, line)) {
+    if (!timer) timer = CreateWaitableTimerW(nullptr, FALSE, nullptr);
+    HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    std::mutex queueMutex;std::deque<std::string> queue;std::atomic<bool> ended{false};
+    std::thread reader([&] { std::string line;while(std::getline(std::cin,line)) { {std::lock_guard<std::mutex> lock(queueMutex);queue.push_back(std::move(line));}SetEvent(ready); }ended=true;SetEvent(ready); });
+    rhythm::Capture capture;rhythm::Engine engine;bool rhythmActive=false,rhythmPaused=false,customActive=false;
+    std::vector<rhythm::Report> customBatch;uint64_t submission=0,lastSubmission=0,reusedFrames=0;
+    double nextFrame=0,reconnectAt=0,lastFrame=0;uint64_t dropped=0,lastAudioSequence=0;
+    auto parseReport=[](const std::string& text,std::array<unsigned char,64>& request) {
+        if(text.size()!=128)return false;
+        auto digit=[](char c){return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:-1;};
+        for(size_t i=0;i<64;++i){int a=digit(text[i*2]),b=digit(text[i*2+1]);if(a<0||b<0)return false;request[i]=static_cast<unsigned char>(a*16+b);}return allowed(request);
+    };
+    auto writeReport=[&](const rhythm::Report& request) {
+        if(!device)device=openDevice();if(!device)return false;
+        std::vector<unsigned char> output(device->output);std::copy(request.begin(),request.end(),output.begin());DWORD count=0;
+        return io(*device,output,true,100,count)&&count==output.size();
+    };
+    while (!ended) {
+      const double now=rhythm::clockMs();
+      if(customActive && !rhythmPaused && now>=nextFrame) {
+        if(now-nextFrame>=1000./60)dropped+=uint64_t((now-nextFrame)/(1000./60));
+        nextFrame+=1000./60;if(nextFrame<=now)nextFrame=now+1000./60;
+        if(!customBatch.empty()&&now>=reconnectAt){
+          bool okay=true;for(const auto& p:customBatch)if(!writeReport(p)){okay=false;break;}
+          if(okay){double completed=rhythm::clockMs();if(submission==lastSubmission)++reusedFrames;lastSubmission=submission;
+            std::ostringstream event;event<<"custom-frame:{\"submission\":"<<submission<<",\"packets\":"<<customBatch.size()<<",\"frameMs\":"<<completed-now<<",\"gapMs\":"<<(lastFrame?completed-lastFrame:0)<<",\"droppedFrames\":"<<dropped<<",\"reusedFrames\":"<<reusedFrames<<"}";emitLine(event.str());lastFrame=completed;
+          }else{device.reset();reconnectAt=now+1000;emitLine("custom-error:Device disconnected or RGB write failed");}
+        }
+        emitLine("custom-tick:");
+      }
+      if(rhythmActive && !rhythmPaused && now>=nextFrame) {
+        if(now-nextFrame>=1000./60)dropped+=uint64_t((now-nextFrame)/(1000./60));
+        nextFrame+=1000./60;if(nextFrame<=now)nextFrame=now+1000./60;
+        if(now>=reconnectAt) {
+          auto audio=capture.snapshot();const auto frame=engine.render(audio.audio,now);const double renderedAt=rhythm::clockMs();const auto encoded=rhythm::encode(frame);const double encodedAt=rhythm::clockMs();
+          bool okay=true;for(const auto& p:encoded.packets)if(!writeReport(p)){okay=false;break;}
+          if(okay) {
+            const double completed=rhythm::clockMs();std::ostringstream event;
+            event<<"rhythm-frame:{\"colors\":[";
+            for(size_t i=0;i<encoded.keys.size();++i){if(i)event<<',';char color[8];sprintf_s(color,"#%02x%02x%02x",encoded.keys[i][0],encoded.keys[i][1],encoded.keys[i][2]);event<<rhythm::jsonString(color);}
+            event<<"],\"packets\":"<<encoded.packets.size()<<",\"frameMs\":"<<completed-now<<",\"gapMs\":"<<(lastFrame?completed-lastFrame:0)<<",\"droppedFrames\":"<<dropped;
+            event<<",\"renderMs\":"<<renderedAt-now<<",\"encodeMs\":"<<encodedAt-renderedAt<<",\"writeMs\":"<<completed-encodedAt;
+            event<<",\"audioLevel\":"<<frame.level<<",\"audioState\":"<<rhythm::jsonString(audio.state)<<",\"audioError\":"<<rhythm::jsonString(audio.error)<<",\"sampleRate\":"<<audio.sampleRate<<",\"audioEndpoint\":"<<rhythm::jsonString(audio.endpoint);
+            // Silence and repeatedly rendered snapshots are not latency samples.
+            const bool freshAudio=audio.audio.sequence!=lastAudioSequence&&audio.audio.envelope>.0001&&audio.audio.sampleQpcMs>0&&completed-audio.audio.receivedMs<100;
+            const double sampleLatency=completed-audio.audio.sampleQpcMs;
+            event<<",\"audioToWriteMs\":"<<(freshAudio&&sampleLatency>=0?sampleLatency:-1);
+            event<<",\"captureToWriteMs\":"<<(freshAudio?completed-audio.audio.receivedMs:-1)<<",\"audioTimestampInvalid\":"<<(freshAudio&&sampleLatency<0?"true":"false")<<"}";
+            lastAudioSequence=audio.audio.sequence;
+            emitLine(event.str());lastFrame=completed;
+          }else{device.reset();reconnectAt=now+1000;emitLine("rhythm-error:Device disconnected or RGB write failed");}
+        }
+      }
+      std::string line;
+      {std::lock_guard<std::mutex> lock(queueMutex);if(!queue.empty()){line=std::move(queue.front());queue.pop_front();}}
+      if(line.empty()) {
+        if((rhythmActive||customActive)&&!rhythmPaused&&timer){LARGE_INTEGER due{};due.QuadPart=-std::max<LONGLONG>(1,LONGLONG((nextFrame-rhythm::clockMs())*10000));SetWaitableTimer(timer,&due,0,nullptr,nullptr,FALSE);HANDLE handles[]={ready,timer};WaitForMultipleObjects(2,handles,FALSE,1000);}
+        else WaitForSingleObject(ready,1000);
+        continue;
+      }
+      if(line=="audio-devices"){emitLine("audio-devices:"+rhythm::audioDevices());continue;}
+      if(line=="custom-start"){rhythmActive=false;capture.stop();customActive=true;customBatch.clear();submission=lastSubmission=reusedFrames=dropped=0;lastFrame=0;rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("custom-ready");continue;}
+      if(line=="custom-stop"){customActive=false;customBatch.clear();emitLine("custom-stopped");continue;}
+      if(line=="rhythm-stop"){rhythmActive=false;rhythmPaused=false;capture.stop();engine.reset();emitLine("rhythm-stopped");continue;}
+      if(line=="rhythm-pause"){rhythmPaused=true;emitLine("rhythm-paused");continue;}
+      if(line=="rhythm-resume"){rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("rhythm-resumed");continue;}
+      if(line.rfind("rhythm:",0)==0) {
+        try {
+          rhythm::Config c;std::vector<std::string> fields;std::istringstream parts(line.substr(7));std::string part;while(std::getline(parts,part,';'))fields.push_back(part);
+          if(fields.size()!=14)throw std::runtime_error("Invalid rhythm command");
+          c.keyMode=std::stoi(fields[0]);c.sideMode=std::stoi(fields[1]);c.brightness=std::stod(fields[2]);c.sensitivity=std::stod(fields[3]);c.releaseMs=std::stod(fields[4]);
+          for(int i=0;i<3;++i){int n=std::stoi(fields[5+i]);if(n<0||n>255)throw std::runtime_error("Invalid color");c.color[i]=uint8_t(n);}
+          c.palette=std::stoi(fields[8]);c.db=std::stod(fields[9]);c.window=std::stoi(fields[10]);c.spatialRadius=std::stoi(fields[11]);
+          // Side protocol is not yet verified on the target board; reject activation honestly.
+          if(fields[12]!="1"||c.sideMode!=500)throw std::runtime_error("Side rhythm is not hardware-verified");
+          c.endpoint.clear();if(fields[13].size()%2)throw std::runtime_error("Invalid endpoint");
+          for(size_t i=0;i<fields[13].size();i+=2)c.endpoint+=char(std::stoi(fields[13].substr(i,2),nullptr,16));
+          engine.configure(c);capture.start(c.endpoint);customActive=false;customBatch.clear();if(!rhythmActive){dropped=0;lastFrame=0;nextFrame=rhythm::clockMs();}rhythmActive=true;emitLine("rhythm-ready");
+        }catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}
+        continue;
+      }
+      if(line.rfind("batch:",0)==0||line.rfind("frame:",0)==0) {
+        const bool queued=line.rfind("frame:",0)==0;uint64_t id=0;std::string payload=line.substr(6);
+        if(queued){const auto colon=payload.find(':');try{id=std::stoull(payload.substr(0,colon));if(colon==std::string::npos||!customActive||id==0)throw std::runtime_error("Invalid frame");payload=payload.substr(colon+1);}catch(...){emitLine("error:Invalid frame submission");continue;}}
+        std::vector<rhythm::Report> batch;std::istringstream parts(payload);std::string part;bool okay=!rhythmActive;
+        while(std::getline(parts,part,',')){rhythm::Report p{};if(!parseReport(part,p)||p[1]!=8||p[2]!=1||p[4]>4||p[4]==0||p[5]!=batch.size()){okay=false;break;}batch.push_back(p);}
+        if(batch.empty()||batch.size()>4)okay=false;for(const auto& p:batch)if(p[4]!=batch.size())okay=false;
+        if(!okay){emitLine("error:Invalid RGB batch");continue;}
+        if(queued){customBatch=std::move(batch);submission=id;emitLine("frame-queued");continue;}
+        for(const auto& p:batch)if(!writeReport(p)){okay=false;break;}
+        if(!okay){device.reset();emitLine("error:RGB batch write failed");}else emitLine("batch-written");continue;
+      }
         if (line.rfind("wait:", 0) == 0) {
             double delay = 0;
             try { delay = std::stod(line.substr(5)); } catch (...) {}
@@ -150,7 +244,7 @@ int main() {
             }
             emitLine("waited"); continue;
         }
-        if (line == "close") { device.reset(); emitLine("closed"); continue; }
+        if (line == "close") { device.reset(); reconnectAt=rhythm::clockMs()+1000; emitLine("closed"); continue; }
         const bool sendOnly=line.rfind("send:",0)==0;
         if(sendOnly)line=line.substr(5);
         std::array<unsigned char,64> request{};
@@ -197,6 +291,8 @@ int main() {
         for (unsigned i = 0; i < 64; ++i) std::cout << std::hex << std::setw(2) << std::setfill('0') << unsigned(input[i]);
         std::cout << std::endl;
     }
+    capture.stop();reader.join();CloseHandle(ready);
+    if(scheduling)AvRevertMmThreadCharacteristics(scheduling);
     if (timer) CloseHandle(timer);
     if (rawWorker) CloseHandle(rawWorker);
 }

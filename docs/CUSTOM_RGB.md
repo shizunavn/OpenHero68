@@ -94,12 +94,16 @@ simulate full travel. Hall input in the service remains available without the
 browser, via passive `98/01`, at most nine positions per response. Whole-board
 snapshots are eight consecutive requests, not an atomic 68-key snapshot.
 
-Target output is 40 FPS; a native high-resolution waitable timer paces frames
-when Hall streaming is idle. Hall polling is owned by the service and shared
+Target output is 60 FPS. A native high-resolution waitable timer owns USB
+deadlines and writes each complete frame batch before servicing Hall commands.
+Node renders the existing engine using elapsed time and submits the newest
+frame in one IPC operation. The native worker repeats the last complete frame
+if rendering is delayed; `/status` exposes distinct `renderFps` and `reusedFrames`
+so repeated output is visible. Hall polling is owned by the service and shared
 with the web over `/hall/stream`. A web Hall Stream no longer starts a second
 USB polling loop. Up to ten selected keys are prioritized at a 100 Hz target;
 a full-board viewer gets batched updates at about 30 Hz. Actual rate depends
-on simultaneous LED traffic: a 60-second live ten-key test with RGB measured
+on simultaneous LED traffic. For comparison, an older 40 FPS build's 60-second live ten-key test measured
 88.9 samples/key/s and 38.4 FPS, with no HID timeouts. Ten keys require two
 sequential Hall requests per snapshot, so the UI must not claim an achieved
 100 Hz rate during concurrent playback. This measures telemetry throughput,
@@ -128,8 +132,9 @@ keeps HID open for configuration; Quit closes it.
 No persistent `06`/`04` writes are used for animation.
 
 The known live protocol addresses main keys only. The 18 side LEDs retain their
-onboard effect; the preview's side frame is not streamed. Rhythm Sync, Gamepad,
-Spiral/Noise host FX are outside this service. The tray Check for updates
+onboard effect; the preview's side frame is not streamed. Rhythm Sync is described
+in [RHYTHM_SYNC.md](RHYTHM_SYNC.md). Gamepad and Spiral/Noise host FX remain outside
+this service. The tray Check for updates
 checks GitHub Releases through the local service and shows a window message
 when current, without opening the control panel. Compatible signed core
 updates are applied and restarted automatically. A release requiring a newer

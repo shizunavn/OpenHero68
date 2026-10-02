@@ -125,6 +125,7 @@ export class Hero68DeviceManager implements Hero68Transport {
   #waiters = new Set<ReportWaiter>()
   #viaService = false
   #reconnectViaService = false
+  #requestTail: Promise<unknown> = Promise.resolve()
   get viaService() { return this.#viaService }
 
   constructor() {
@@ -387,6 +388,43 @@ export class Hero68DeviceManager implements Hero68Transport {
   }
 
   async request(
+    report: Uint8Array,
+    expectedCommand: number,
+    expectedZone?: number,
+    timeoutMs = 800,
+    predicate?: (report: DecodedReport) => boolean,
+  ): Promise<DecodedReport> {
+    // One transaction at a time: overlapping waiters for the same command can
+    // consume each other's ACKs. Web Locks also serialize direct HID across tabs.
+    const work = async () => {
+      const run = async () => {
+        const selecting = report[1] === 0x10 && report[2] === 0 && report[6] === 1 && report[7] <= 2
+        for (let attempt = 0; ; attempt++) {
+          try { return await this.#requestOnce(report, expectedCommand, expectedZone, timeoutMs, predicate) }
+          catch (error) {
+            if (!selecting || !/timed out|timeout/i.test(errorMessage(error))) throw error
+            // Selection is idempotent. A lost ACK is not a failed write: verify
+            // the active slot before retrying, and never accept a different slot.
+            try {
+              const active = await this.#requestOnce(buildReport({command:0x90,data:[0]}), 0x90, 0, timeoutMs)
+              const verified = decodeReport(report)
+              if (active.data[0] === report[7] && (!predicate || predicate(verified))) return verified
+            } catch { /* Retry only the same profile selection. */ }
+            if (attempt >= 2) throw error
+          }
+        }
+      }
+      if (!this.#viaService && typeof navigator !== 'undefined' && navigator.locks) {
+        return navigator.locks.request('openhero68:hid-control', run)
+      }
+      return run()
+    }
+    const next = this.#requestTail.then(work)
+    this.#requestTail = next.catch(() => {})
+    return next
+  }
+
+  async #requestOnce(
     report: Uint8Array,
     expectedCommand: number,
     expectedZone?: number,
