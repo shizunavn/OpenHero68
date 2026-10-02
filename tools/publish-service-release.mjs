@@ -17,7 +17,7 @@ const names=['OpenHero68-RGB-Windows-x64.zip','SHA256SUMS.txt','OpenHero68-RGB-c
 const payloads=new Map(await Promise.all(names.map(async name=>[name,await readFile(path.join(root,'service','releases',name))])))
 const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex')
 const manifest=JSON.parse(payloads.get('OpenHero68-RGB-core.json').toString())
-if(manifest.payload.version!==version||manifest.payload.apiVersion!==5||manifest.payload.minLauncher!=='0.3.2')throw Error('Manifest release identity mismatch')
+if(manifest.payload.version!==version||manifest.payload.apiVersion!==5||manifest.payload.minLauncher!=='0.3.0')throw Error('Manifest release identity mismatch')
 if(digest(payloads.get('OpenHero68-RGB-core.cjs'))!=='sha256:'+manifest.payload.sha256)throw Error('Core digest mismatch')
 if(!payloads.get('SHA256SUMS.txt').toString().startsWith(digest(payloads.get(names[0])).slice(7)+'  '+names[0]))throw Error('ZIP checksum mismatch')
 const credentials=execFileSync('git',['credential','fill'],{input:'protocol=https\nhost=github.com\n\n',encoding:'utf8',windowsHide:true,stdio:['pipe','pipe','pipe']})

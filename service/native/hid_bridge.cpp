@@ -68,9 +68,8 @@ DWORD WINAPI rawThread(LPVOID) {
 
 struct Device {
     HANDLE h = INVALID_HANDLE_VALUE;
-    HANDLE ioEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     DWORD input = 64, output = 64;
-    ~Device() { if (ioEvent) CloseHandle(ioEvent); if (h != INVALID_HANDLE_VALUE) CloseHandle(h); }
+    ~Device() { if (h != INVALID_HANDLE_VALUE) CloseHandle(h); }
 };
 std::unique_ptr<Device> openDevice() {
     GUID guid; HidD_GetHidGuid(&guid);
@@ -106,9 +105,8 @@ std::unique_ptr<Device> openDevice() {
     return result;
 }
 bool io(Device& d, std::vector<unsigned char>& buffer, bool write, DWORD timeout, DWORD& count) {
-    if (!d.ioEvent) return false;
-    ResetEvent(d.ioEvent);
-    OVERLAPPED ov{}; ov.hEvent = d.ioEvent;
+    OVERLAPPED ov{}; ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!ov.hEvent) return false;
     BOOL okay = write ? WriteFile(d.h, buffer.data(), DWORD(buffer.size()), &count, &ov)
                       : ReadFile(d.h, buffer.data(), DWORD(buffer.size()), &count, &ov);
     if (!okay && GetLastError() == ERROR_IO_PENDING) {
@@ -116,7 +114,7 @@ bool io(Device& d, std::vector<unsigned char>& buffer, bool write, DWORD timeout
             okay = GetOverlappedResult(d.h, &ov, &count, FALSE);
         else { CancelIoEx(d.h, &ov); WaitForSingleObject(ov.hEvent, INFINITE); okay = FALSE; }
     }
-    return !!okay;
+    CloseHandle(ov.hEvent); return !!okay;
 }
 bool valid(const unsigned char* p, size_t n) {
     unsigned sum = 0; for (size_t i = 0; i < 64 && i < n; ++i) sum += p[i];
@@ -140,8 +138,7 @@ bool allowed(const std::array<unsigned char,64>& p) {
            false;
 }
 int main() {
-    constexpr double frameIntervalMs=1000.0/60.0,audioCoalesceMaxMs=6.0,audioCoalesceSlackMs=.5;
-    DWORD schedulingTask=0;HANDLE scheduling=AvSetMmThreadCharacteristicsW(L"Playback",&schedulingTask);if(scheduling)AvSetMmThreadPriority(scheduling,AVRT_PRIORITY_HIGH);
+    DWORD schedulingTask=0;HANDLE scheduling=AvSetMmThreadCharacteristicsW(L"Playback",&schedulingTask);
     HANDLE rawWorker = CreateThread(nullptr, 0, rawThread, nullptr, 0, nullptr);
     std::unique_ptr<Device> device;
     HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, 0x00000002, TIMER_MODIFY_STATE | SYNCHRONIZE);
@@ -151,7 +148,7 @@ int main() {
     std::thread reader([&] { std::string line;while(std::getline(std::cin,line)) { {std::lock_guard<std::mutex> lock(queueMutex);queue.push_back(std::move(line));}SetEvent(ready); }ended=true;SetEvent(ready); });
     rhythm::Capture capture;rhythm::Engine engine;bool rhythmActive=false,rhythmPaused=false,customActive=false;
     std::vector<rhythm::Report> customBatch;uint64_t submission=0,lastSubmission=0,reusedFrames=0;
-    double nextFrame=0,reconnectAt=0,lastFrame=0,rhythmCoalesceUntil=0;uint64_t dropped=0,lastAudioSequence=0,rhythmCoalesceSequence=0;bool rhythmCoalescing=false;
+    double nextFrame=0,reconnectAt=0,lastFrame=0;uint64_t dropped=0,lastAudioSequence=0;
     auto parseReport=[](const std::string& text,std::array<unsigned char,64>& request) {
         if(text.size()!=128)return false;
         auto digit=[](char c){return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:-1;};
@@ -165,8 +162,8 @@ int main() {
     while (!ended) {
       const double now=rhythm::clockMs();
       if(customActive && !rhythmPaused && now>=nextFrame) {
-        if(now-nextFrame>=frameIntervalMs)dropped+=uint64_t((now-nextFrame)/frameIntervalMs);
-        nextFrame+=frameIntervalMs;if(nextFrame<=now)nextFrame=now+frameIntervalMs;
+        if(now-nextFrame>=1000./60)dropped+=uint64_t((now-nextFrame)/(1000./60));
+        nextFrame+=1000./60;if(nextFrame<=now)nextFrame=now+1000./60;
         if(!customBatch.empty()&&now>=reconnectAt){
           bool okay=true;for(const auto& p:customBatch)if(!writeReport(p)){okay=false;break;}
           if(okay){double completed=rhythm::clockMs();if(submission==lastSubmission)++reusedFrames;lastSubmission=submission;
@@ -175,62 +172,42 @@ int main() {
         }
         emitLine("custom-tick:");
       }
-      if(rhythmActive && !rhythmPaused && (now>=nextFrame || rhythmCoalescing)) {
-        auto audio=capture.snapshot();
-        if(rhythmCoalescing && audio.audio.sequence==rhythmCoalesceSequence && now<rhythmCoalesceUntil) {
-          // A capture packet is predicted to arrive shortly. Wait for it instead of
-          // spending this 60 Hz slot on an older snapshot.
-        } else {
-          if(!rhythmCoalescing && now>=nextFrame && audio.audio.sequence!=lastAudioSequence && audio.packetIntervalMs>=2 && audio.packetIntervalMs<=30) {
-            const double untilNext=audio.audio.receivedMs+audio.packetIntervalMs-now;
-            if(untilNext>.2 && untilNext<=audioCoalesceMaxMs) {
-              rhythmCoalescing=true;rhythmCoalesceSequence=audio.audio.sequence;
-              rhythmCoalesceUntil=std::min(nextFrame+audioCoalesceMaxMs,now+untilNext+audioCoalesceSlackMs);
-            }
-          }
-          if(!rhythmCoalescing || audio.audio.sequence!=rhythmCoalesceSequence || now>=rhythmCoalesceUntil) {
-            rhythmCoalescing=false;
-            if(now-nextFrame>=frameIntervalMs)dropped+=uint64_t((now-nextFrame)/frameIntervalMs);
-            nextFrame+=frameIntervalMs;if(nextFrame<=now)nextFrame=now+frameIntervalMs;
-            if(now>=reconnectAt) {
-              const auto frame=engine.render(audio.audio,now);const double renderedAt=rhythm::clockMs();const auto encoded=rhythm::encode(frame);const double encodedAt=rhythm::clockMs();
-              bool okay=true;for(const auto& p:encoded.packets)if(!writeReport(p)){okay=false;break;}
-              if(okay) {
-                const double completed=rhythm::clockMs();std::ostringstream event;
-                event<<"rhythm-frame:{\"colors\":[";
-                for(size_t i=0;i<encoded.keys.size();++i){if(i)event<<',';char color[8];sprintf_s(color,"#%02x%02x%02x",encoded.keys[i][0],encoded.keys[i][1],encoded.keys[i][2]);event<<rhythm::jsonString(color);}
-                event<<"],\"packets\":"<<encoded.packets.size()<<",\"frameMs\":"<<completed-now<<",\"gapMs\":"<<(lastFrame?completed-lastFrame:0)<<",\"droppedFrames\":"<<dropped;
-                event<<",\"renderMs\":"<<renderedAt-now<<",\"encodeMs\":"<<encodedAt-renderedAt<<",\"writeMs\":"<<completed-encodedAt;
-                event<<",\"audioLevel\":"<<frame.level<<",\"audioState\":"<<rhythm::jsonString(audio.state)<<",\"audioError\":"<<rhythm::jsonString(audio.error)<<",\"sampleRate\":"<<audio.sampleRate<<",\"audioEndpoint\":"<<rhythm::jsonString(audio.endpoint);
-                // Silence and repeatedly rendered snapshots are not latency samples.
-                const bool freshAudio=audio.audio.sequence!=lastAudioSequence&&audio.audio.envelope>.0001&&audio.audio.sampleQpcMs>0&&completed-audio.audio.receivedMs<100;
-                const double sampleLatency=completed-audio.audio.sampleQpcMs;
-                event<<",\"audioToWriteMs\":"<<(freshAudio&&sampleLatency>=0?sampleLatency:-1);
-                event<<",\"captureToWriteMs\":"<<(freshAudio?completed-audio.audio.receivedMs:-1)<<",\"audioTimestampInvalid\":"<<(freshAudio&&sampleLatency<0?"true":"false")<<"}";
-                lastAudioSequence=audio.audio.sequence;
-                emitLine(event.str());lastFrame=completed;
-              }else{device.reset();reconnectAt=now+1000;emitLine("rhythm-error:Device disconnected or RGB write failed");}
-            }
-          }
+      if(rhythmActive && !rhythmPaused && now>=nextFrame) {
+        if(now-nextFrame>=1000./60)dropped+=uint64_t((now-nextFrame)/(1000./60));
+        nextFrame+=1000./60;if(nextFrame<=now)nextFrame=now+1000./60;
+        if(now>=reconnectAt) {
+          auto audio=capture.snapshot();const auto frame=engine.render(audio.audio,now);const double renderedAt=rhythm::clockMs();const auto encoded=rhythm::encode(frame);const double encodedAt=rhythm::clockMs();
+          bool okay=true;for(const auto& p:encoded.packets)if(!writeReport(p)){okay=false;break;}
+          if(okay) {
+            const double completed=rhythm::clockMs();std::ostringstream event;
+            event<<"rhythm-frame:{\"colors\":[";
+            for(size_t i=0;i<encoded.keys.size();++i){if(i)event<<',';char color[8];sprintf_s(color,"#%02x%02x%02x",encoded.keys[i][0],encoded.keys[i][1],encoded.keys[i][2]);event<<rhythm::jsonString(color);}
+            event<<"],\"packets\":"<<encoded.packets.size()<<",\"frameMs\":"<<completed-now<<",\"gapMs\":"<<(lastFrame?completed-lastFrame:0)<<",\"droppedFrames\":"<<dropped;
+            event<<",\"renderMs\":"<<renderedAt-now<<",\"encodeMs\":"<<encodedAt-renderedAt<<",\"writeMs\":"<<completed-encodedAt;
+            event<<",\"audioLevel\":"<<frame.level<<",\"audioState\":"<<rhythm::jsonString(audio.state)<<",\"audioError\":"<<rhythm::jsonString(audio.error)<<",\"sampleRate\":"<<audio.sampleRate<<",\"audioEndpoint\":"<<rhythm::jsonString(audio.endpoint);
+            // Silence and repeatedly rendered snapshots are not latency samples.
+            const bool freshAudio=audio.audio.sequence!=lastAudioSequence&&audio.audio.envelope>.0001&&audio.audio.sampleQpcMs>0&&completed-audio.audio.receivedMs<100;
+            const double sampleLatency=completed-audio.audio.sampleQpcMs;
+            event<<",\"audioToWriteMs\":"<<(freshAudio&&sampleLatency>=0?sampleLatency:-1);
+            event<<",\"captureToWriteMs\":"<<(freshAudio?completed-audio.audio.receivedMs:-1)<<",\"audioTimestampInvalid\":"<<(freshAudio&&sampleLatency<0?"true":"false")<<"}";
+            lastAudioSequence=audio.audio.sequence;
+            emitLine(event.str());lastFrame=completed;
+          }else{device.reset();reconnectAt=now+1000;emitLine("rhythm-error:Device disconnected or RGB write failed");}
         }
       }
       std::string line;
       {std::lock_guard<std::mutex> lock(queueMutex);if(!queue.empty()){line=std::move(queue.front());queue.pop_front();}}
       if(line.empty()) {
-        if((rhythmActive||customActive)&&!rhythmPaused&&timer){
-          const double wakeAt=rhythmActive&&rhythmCoalescing?rhythmCoalesceUntil:nextFrame;LARGE_INTEGER due{};due.QuadPart=-std::max<LONGLONG>(1,LONGLONG((wakeAt-rhythm::clockMs())*10000));SetWaitableTimer(timer,&due,0,nullptr,nullptr,FALSE);
-          if(rhythmActive&&rhythmCoalescing&&capture.readyEvent()){HANDLE handles[]={ready,capture.readyEvent(),timer};WaitForMultipleObjects(3,handles,FALSE,1000);}
-          else{HANDLE handles[]={ready,timer};WaitForMultipleObjects(2,handles,FALSE,1000);}
-        }
+        if((rhythmActive||customActive)&&!rhythmPaused&&timer){LARGE_INTEGER due{};due.QuadPart=-std::max<LONGLONG>(1,LONGLONG((nextFrame-rhythm::clockMs())*10000));SetWaitableTimer(timer,&due,0,nullptr,nullptr,FALSE);HANDLE handles[]={ready,timer};WaitForMultipleObjects(2,handles,FALSE,1000);}
         else WaitForSingleObject(ready,1000);
         continue;
       }
       if(line=="audio-devices"){emitLine("audio-devices:"+rhythm::audioDevices());continue;}
-      if(line=="custom-start"){rhythmActive=false;rhythmCoalescing=false;capture.stop();customActive=true;customBatch.clear();submission=lastSubmission=reusedFrames=dropped=0;lastFrame=0;rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("custom-ready");continue;}
+      if(line=="custom-start"){rhythmActive=false;capture.stop();customActive=true;customBatch.clear();submission=lastSubmission=reusedFrames=dropped=0;lastFrame=0;rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("custom-ready");continue;}
       if(line=="custom-stop"){customActive=false;customBatch.clear();emitLine("custom-stopped");continue;}
-      if(line=="rhythm-stop"){rhythmActive=false;rhythmPaused=false;rhythmCoalescing=false;capture.stop();engine.reset();emitLine("rhythm-stopped");continue;}
-      if(line=="rhythm-pause"){rhythmPaused=true;rhythmCoalescing=false;emitLine("rhythm-paused");continue;}
-      if(line=="rhythm-resume"){rhythmPaused=false;rhythmCoalescing=false;nextFrame=rhythm::clockMs();emitLine("rhythm-resumed");continue;}
+      if(line=="rhythm-stop"){rhythmActive=false;rhythmPaused=false;capture.stop();engine.reset();emitLine("rhythm-stopped");continue;}
+      if(line=="rhythm-pause"){rhythmPaused=true;emitLine("rhythm-paused");continue;}
+      if(line=="rhythm-resume"){rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("rhythm-resumed");continue;}
       if(line.rfind("rhythm:",0)==0) {
         try {
           rhythm::Config c;std::vector<std::string> fields;std::istringstream parts(line.substr(7));std::string part;while(std::getline(parts,part,';'))fields.push_back(part);
@@ -242,7 +219,7 @@ int main() {
           if(fields[12]!="1"||c.sideMode!=500)throw std::runtime_error("Side rhythm is not hardware-verified");
           c.endpoint.clear();if(fields[13].size()%2)throw std::runtime_error("Invalid endpoint");
           for(size_t i=0;i<fields[13].size();i+=2)c.endpoint+=char(std::stoi(fields[13].substr(i,2),nullptr,16));
-          engine.configure(c);capture.start(c.endpoint);customActive=false;customBatch.clear();rhythmCoalescing=false;if(!rhythmActive){dropped=0;lastFrame=0;nextFrame=rhythm::clockMs();}rhythmActive=true;emitLine("rhythm-ready");
+          engine.configure(c);capture.start(c.endpoint);customActive=false;customBatch.clear();if(!rhythmActive){dropped=0;lastFrame=0;nextFrame=rhythm::clockMs();}rhythmActive=true;emitLine("rhythm-ready");
         }catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}
         continue;
       }
