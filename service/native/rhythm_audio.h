@@ -44,15 +44,15 @@ inline std::string audioDevices() {
   }
   devices.Reset();en.Reset();if(SUCCEEDED(init))CoUninitialize();return out;
 }
-struct CaptureState { Audio audio;std::string state="stopped",error,endpoint;unsigned sampleRate=0,channels=0; };
+struct CaptureState { Audio audio;std::string state="stopped",error,endpoint;unsigned sampleRate=0,channels=0;double packetIntervalMs=0; };
 class Capture {
   std::mutex mutex_;CaptureState state_;
-  std::thread thread_;HANDLE stop_=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+  std::thread thread_;HANDLE stop_=CreateEventW(nullptr,TRUE,FALSE,nullptr);HANDLE ready_=CreateEventW(nullptr,FALSE,FALSE,nullptr);
   std::string requested_;
   uint64_t generation_=0,sequence_=0;
-  void state(const std::string& value,const std::string& error="") { std::lock_guard<std::mutex> lock(mutex_);state_.state=value;state_.error=error;if(value=="connecting"||value=="unavailable"){state_.audio={};state_.audio.generation=++generation_;} }
+  void state(const std::string& value,const std::string& error="") { {std::lock_guard<std::mutex> lock(mutex_);state_.state=value;state_.error=error;if(value=="connecting"||value=="unavailable"){state_.audio={};state_.audio.generation=++generation_;}} if(ready_)SetEvent(ready_); }
   void run() {
-    HRESULT init=CoInitializeEx(nullptr,COINIT_MULTITHREADED);DWORD task=0;HANDLE mmcss=AvSetMmThreadCharacteristicsW(L"Audio",&task);
+    HRESULT init=CoInitializeEx(nullptr,COINIT_MULTITHREADED);DWORD task=0;HANDLE mmcss=AvSetMmThreadCharacteristicsW(L"Audio",&task);if(mmcss)AvSetMmThreadPriority(mmcss,AVRT_PRIORITY_HIGH);
     while(WaitForSingleObject(stop_,0)!=WAIT_OBJECT_0) {
       state("connecting");
       try { stream(); }catch(const std::exception& e){state("unavailable",e.what());}
@@ -76,8 +76,8 @@ class Capture {
     struct Event {HANDLE h;~Event(){CloseHandle(h);}} cleanup{event};
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,AUDCLNT_STREAMFLAGS_LOOPBACK|AUDCLNT_STREAMFLAGS_EVENTCALLBACK,0,0,raw,nullptr),"Cannot initialize event-driven loopback");
     check(client->SetEventHandle(event),"Cannot bind loopback event");check(client->GetService(IID_PPV_ARGS(&capture)),"Cannot open capture client");
-    std::array<float,256> ring{};size_t offset=0;double lastDefaultCheck=clockMs();
-    { std::lock_guard<std::mutex> lock(mutex_);state_={};state_.state="listening";state_.endpoint=id;state_.sampleRate=raw->nSamplesPerSec;state_.channels=raw->nChannels;state_.audio.generation=++generation_; }
+    std::array<float,256> ring{};size_t offset=0;double lastDefaultCheck=clockMs(),lastPacketAt=0,packetIntervalMs=0;
+    { std::lock_guard<std::mutex> lock(mutex_);state_={};state_.state="listening";state_.endpoint=id;state_.sampleRate=raw->nSamplesPerSec;state_.channels=raw->nChannels;state_.audio.generation=++generation_; }if(ready_)SetEvent(ready_);
     check(client->Start(),"Cannot start loopback capture");
     HANDLE events[]={stop_,event};
     try {
@@ -97,20 +97,21 @@ class Capture {
           }
           Audio a;for(size_t i=0;i<256;++i)a.samples[i]=ring[(offset+i)%256];
           a.envelope=peak>0?std::max(0.,peak-(count?sum/count:0)):0;a.sampleQpcMs=(flags&AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)?0:double(qpc)/10000+double(peakIndex)*1000/raw->nSamplesPerSec;
-          a.receivedMs=clockMs();a.generation=generation_;a.sequence=++sequence_;
+          a.receivedMs=clockMs();if(lastPacketAt>0){const double dt=a.receivedMs-lastPacketAt;if(dt>=1&&dt<=50)packetIntervalMs=packetIntervalMs?packetIntervalMs*.8+dt*.2:dt;}lastPacketAt=a.receivedMs;a.generation=generation_;a.sequence=++sequence_;
           check(capture->ReleaseBuffer(count),"Cannot release loopback buffer");
-          {std::lock_guard<std::mutex> lock(mutex_);state_.audio=a;state_.state=peak>.0001?"active":"silent";}
+          {std::lock_guard<std::mutex> lock(mutex_);state_.audio=a;state_.packetIntervalMs=packetIntervalMs;state_.state=peak>.0001?"active":"silent";}if(ready_)SetEvent(ready_);
           check(capture->GetNextPacketSize(&size),"Loopback capture interrupted");
         }
       }
     }catch(...){client->Stop();throw;}
     client->Stop();
-    {std::lock_guard<std::mutex> lock(mutex_);state_.audio={};state_.audio.generation=++generation_;}
+    {std::lock_guard<std::mutex> lock(mutex_);state_.audio={};state_.audio.generation=++generation_;}if(ready_)SetEvent(ready_);
   }
 public:
-  ~Capture(){stop();CloseHandle(stop_);}
+  ~Capture(){stop();if(ready_)CloseHandle(ready_);CloseHandle(stop_);}
   void start(const std::string& endpoint) { if(thread_.joinable()&&requested_==endpoint)return;stop();requested_=endpoint;ResetEvent(stop_);thread_=std::thread([this]{run();}); }
-  void stop(){SetEvent(stop_);if(thread_.joinable())thread_.join();std::lock_guard<std::mutex> lock(mutex_);state_={};}
+  void stop(){SetEvent(stop_);if(thread_.joinable())thread_.join();{std::lock_guard<std::mutex> lock(mutex_);state_={};}if(ready_)SetEvent(ready_);}
+  HANDLE readyEvent() const { return ready_; }
   CaptureState snapshot(){std::lock_guard<std::mutex> lock(mutex_);return state_;}
 };
 }

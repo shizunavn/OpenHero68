@@ -1,2 +1,2 @@
 // Public verification key. The signing key stays outside the repository.
-export const UPDATE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA2pRERMJHqOI+mLjhux+1ZvsuoqkEAwqO2j2pWkAOxpM=\n-----END PUBLIC KEY-----\n"
+export const UPDATE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAy2jEL5+uCPpI4Gz7aCyAF4fvpF3Cxsc6DFeimEhctsk=\n-----END PUBLIC KEY-----\n"
