@@ -47,6 +47,9 @@ Use the full Windows ZIP because the native audio/HID helper also changes: quit
 the old tray app, extract all files over its folder, then run the new launcher.
 The local build writes the ZIP to `service/releases/`; GitHub's latest download
 only changes after that package is published. A core-only update is insufficient.
+Versions 0.2.3 and 0.3.0 can report `Unexpected update source` after the GitHub
+repository rename. Download the full 0.3.1 ZIP manually once; its updater accepts
+both the canonical repository name and the original alias.
 If Auto-start points to another folder, the new tray offers **Auto-start: replace
 old app path**. Click it to register this folder instead; auto-start stays optional.
 Without the app, select **Try demo** to edit and preview effects locally. Opening

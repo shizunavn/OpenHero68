@@ -12,6 +12,7 @@ for(const entry of entries){const source=await readFile(path.join(distribution,p
 const hash=createHash('sha256').update(await readFile(archive)).digest('hex')
 assert.match(await readFile('service/releases/SHA256SUMS.txt','utf8'),new RegExp('^'+hash+'  OpenHero68-RGB-Windows-x64.zip'))
 const launcherVersion=execFileSync('powershell.exe',['-NoProfile','-Command',`[System.Diagnostics.FileVersionInfo]::GetVersionInfo(${quote(path.join(distribution,'Hero68RgbService.exe'))}).FileVersion`],{windowsHide:true,encoding:'utf8'}).trim()
-assert.equal(launcherVersion,'0.3.0')
+const versionHeader=await readFile('service/native/version.h','utf8')
+assert.equal(launcherVersion,versionHeader.match(/HERO68_VERSION_W L"([^"]+)"/)[1])
 await writeFile('reports/service-package-verification.json',JSON.stringify({passed:true,launcherVersion,sha256:hash,entries},null,2))
 console.log(JSON.stringify({passed:true,launcherVersion,files:entries.length,sha256:hash}))

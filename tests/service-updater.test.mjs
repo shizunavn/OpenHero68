@@ -51,6 +51,36 @@ test('compatible core staging reuses the signed manifest and does not download t
   })
 })
 
+test('renamed GitHub repository supports signed core and full Windows package downloads',async()=>{
+  const rename=({release})=>{for(const asset of release.assets)asset.browser_download_url=asset.browser_download_url.replace('OpenHero68-RGB-Service/','OpenHero68/')}
+  await withUpdater({version:'0.3.1',coreVersion:'0.3.0',launcherVersion:'0.3.0',minLauncher:'0.3.0',mutate:rename},async(updater,f)=>{
+    const release=await updater.latestCore()
+    assert.equal(release.requiresFullPackage,false)
+    assert.equal(await updater.stageCoreUpdate(release),'0.3.1')
+    assert.equal(f.calls[0],'https://api.github.com/repos/shizunavn/OpenHero68/releases/latest')
+    assert.ok(f.calls.slice(1).every(url=>url.startsWith('https://github.com/shizunavn/OpenHero68/releases/download/')))
+  })
+  await withUpdater({version:'0.3.1',coreVersion:'0.2.3',launcherVersion:'0.2.3',minLauncher:'0.3.0',mutate:rename},async(updater,f)=>{
+    const release=await updater.latestCore()
+    assert.equal(release.requiresFullPackage,true)
+    assert.deepEqual(await readFile(await updater.downloadFullPackage(release)),f.zip)
+  })
+})
+
+test('update source allowlist rejects lookalike hosts, owners and repository names before fetch',async()=>{
+  for(const url of [
+    'https://github.com.evil.test/shizunavn/OpenHero68/releases/download/v0.3.1/core.json',
+    'https://github.com/other/OpenHero68/releases/download/v0.3.1/core.json',
+    'https://github.com/shizunavn/OpenHero68-fake/releases/download/v0.3.1/core.json',
+    'https://github.com/shizunavn/OpenHero68-RGB-Service-fake/releases/download/v0.3.1/core.json',
+    'http://github.com/shizunavn/OpenHero68/releases/download/v0.3.1/core.json',
+    'https://github.com/shizunavn/OpenHero68/raw/main/core.json',
+  ])await withUpdater({mutate:({release})=>release.assets[0].browser_download_url=url},async(updater,f)=>{
+    await assert.rejects(updater.latestCore(),/Unexpected update source/)
+    assert.equal(f.calls.length,1)
+  })
+})
+
 test('full package is downloaded once, checksum checked, cached and redownloaded if cache is corrupt',async()=>{
   await withUpdater({launcherVersion:'0.2.1'},async(updater,f)=>{
     const release=await updater.latestCore()

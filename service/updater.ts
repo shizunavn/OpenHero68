@@ -3,8 +3,13 @@ import {mkdir,readFile,writeFile,rename} from 'node:fs/promises'
 import path from 'node:path'
 import {CORE_API_VERSION,newer,inspectManifest,verifyCore,type CoreManifest} from './updatePackage'
 
-const releaseApi='https://api.github.com/repos/shizunavn/OpenHero68-RGB-Service/releases/latest'
-const assetPrefix='https://github.com/shizunavn/OpenHero68-RGB-Service/releases/download/'
+const releaseApi='https://api.github.com/repos/shizunavn/OpenHero68/releases/latest'
+// Keep the original repository alias for older releases, and the canonical name
+// returned by GitHub after the rename. Do not trust arbitrary URLs from metadata.
+const assetPrefixes=[
+  'https://github.com/shizunavn/OpenHero68/releases/download/',
+  'https://github.com/shizunavn/OpenHero68-RGB-Service/releases/download/',
+]
 type ReleaseAsset={name:string;browser_download_url:string;size:number;digest?:string}
 export type UpdateOptions={coreVersion:string;launcherVersion:string;stateDir:string;fetch?:typeof fetch;publicKey?:string}
 
@@ -12,7 +17,7 @@ export type UpdateOptions={coreVersion:string;launcherVersion:string;stateDir:st
 export function createServiceUpdater(options:UpdateOptions){
   const request=options.fetch??fetch
   async function downloadAsset(url:string,limit:number){
-    if(!url.startsWith(assetPrefix))throw Error('Unexpected update source')
+    if(!assetPrefixes.some(prefix=>url.startsWith(prefix)))throw Error('Unexpected update source')
     const response=await request(url,{signal:AbortSignal.timeout(limit>8_000_000?120000:30000)})
     if(!response.ok||!response.body)throw Error(`Update download failed (${response.status})`)
     const chunks:Buffer[]=[];let size=0
