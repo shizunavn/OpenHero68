@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { HERO68_LAYOUT, makeDemoLighting } from '../keyboard/hero68Layout'
 import { subscribeLightingFrame, type LightingFrame } from '../keyboard/lightingPreviewBus'
@@ -6,6 +6,8 @@ import { useServiceLighting } from '../protocol/serviceLighting'
 import { HERO68_HALL_VISUAL_MAX_MM } from '../protocol/hero68/hallStream'
 import type { AdvancedBinding } from '../protocol/hero68/advanced'
 import AdvancedKeyIcon from './AdvancedKeyIcon'
+import { TachyonContext } from '../app/TachyonContext'
+const tachyonLightingFrame = Object.fromEntries(HERO68_LAYOUT.flat().map(key => [key.id, '#000000']))
 
 
 const WOOTILITY_MAX_FONT_PX = 12.3199
@@ -63,8 +65,9 @@ export default function Hero68Preview({
   onWidthChange,
 }: Hero68PreviewProps) {
   const demoFrame = useMemo(() => makeDemoLighting(), [])
-  const serviceLighting = useServiceLighting(lightingSource !== 'local')
-  const displayedLighting = lightingSource === 'local' ? lightingFrame : serviceLighting ?? lightingFrame
+  const tachyon = useContext(TachyonContext)
+  const serviceLighting = useServiceLighting(!tachyon && lightingSource !== 'local')
+  const displayedLighting = tachyon ? tachyonLightingFrame : lightingSource === 'local' ? lightingFrame : serviceLighting ?? lightingFrame
   const advancedByKey = useMemo(() => new Map(advancedBindings.flatMap(binding => binding.keys.map(key => [key, binding] as const))), [advancedBindings])
   const previewTooltips = useMemo(() => {
     const result = { ...keyTooltips }
@@ -154,10 +157,10 @@ export default function Hero68Preview({
     return () => observer.disconnect()
   }, [onWidthChange])
 
-  useEffect(() => lightingFrame ? undefined : subscribeLightingFrame((frame) => {
+  useEffect(() => lightingFrame || tachyon ? undefined : subscribeLightingFrame((frame) => {
     // Realtime-ready: protocol can publish only the LEDs that changed.
     setLighting((previous) => ({ ...previous, ...frame }))
-  }), [lightingFrame])
+  }), [lightingFrame, tachyon])
 
   useEffect(() => () => clearTooltipTimer(), [])
 

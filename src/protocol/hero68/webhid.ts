@@ -387,6 +387,40 @@ export class Hero68DeviceManager implements Hero68Transport {
     for(let i=0;i<packets.length;i+=128)await rgbService.deviceBatch(packets.slice(i,i+128))
   }
 
+  /** Reopen a stalled host handle without resetting firmware or changing settings. */
+  async recoverControlChannel(): Promise<void> {
+    return this.#queueControlOperation(async () => {
+      if (!this.connected) throw new Error('HERO68 is not connected')
+      if (this.#viaService) return
+      const device = this.#device!
+      device.removeEventListener('inputreport', this.#onInputReport)
+      try {
+        await device.close()
+        if (this.#device !== device) throw new Error('HERO68 disconnected')
+        await device.open()
+        if (this.#device !== device) throw new Error('HERO68 disconnected')
+        device.addEventListener('inputreport', this.#onInputReport)
+        // Read-only identity verifies the fresh handle before polling resumes.
+        await this.#requestOnce(buildReport({ command: 0x82, zone: 1 }), 0x82, 1, 1500)
+      } finally {
+        if (this.#device === device) {
+          device.removeEventListener('inputreport', this.#onInputReport)
+          if (device.opened) device.addEventListener('inputreport', this.#onInputReport)
+          else this.#setSnapshot({ state: 'error', error: 'Could not reopen HERO68 HID interface' })
+        }
+      }
+    })
+  }
+
+  #queueControlOperation<T>(run: () => Promise<T>): Promise<T> {
+    const work = () => !this.#viaService && typeof navigator !== 'undefined' && navigator.locks
+      ? navigator.locks.request('openhero68:hid-control', run)
+      : run()
+    const next = this.#requestTail.then(work)
+    this.#requestTail = next.catch(() => {})
+    return next
+  }
+
   async request(
     report: Uint8Array,
     expectedCommand: number,
@@ -414,14 +448,9 @@ export class Hero68DeviceManager implements Hero68Transport {
           }
         }
       }
-      if (!this.#viaService && typeof navigator !== 'undefined' && navigator.locks) {
-        return navigator.locks.request('openhero68:hid-control', run)
-      }
       return run()
     }
-    const next = this.#requestTail.then(work)
-    this.#requestTail = next.catch(() => {})
-    return next
+    return this.#queueControlOperation(work)
   }
 
   async #requestOnce(
@@ -440,6 +469,10 @@ export class Hero68DeviceManager implements Hero68Transport {
     }
 
     return new Promise<DecodedReport>((resolve, reject) => {
+      const timeoutError = (stage: 'read' | 'send') => {
+        const zoneText = expectedZone === undefined ? '' : `, zone=0x${expectedZone.toString(16).padStart(2, '0')}`
+        return new Error(`HERO68 ${stage} timed out (command=0x${expectedCommand.toString(16).padStart(2, '0')}${zoneText})`)
+      }
       const waiter: ReportWaiter = {
         expectedCommand,
         expectedZone,
@@ -448,13 +481,25 @@ export class Hero68DeviceManager implements Hero68Transport {
         reject,
         timer: window.setTimeout(() => {
           this.#waiters.delete(waiter)
-          const zoneText = expectedZone === undefined ? '' : `, zone=0x${expectedZone.toString(16).padStart(2, '0')}`
-          reject(new Error(`HERO68 read timed out (command=0x${expectedCommand.toString(16).padStart(2, '0')}${zoneText})`))
-        }, Math.max(0, timeoutMs)),
+          const error = timeoutError('send')
+          reject(error)
+          // A write whose delivery is still pending must not let queued
+          // configuration commands overtake it. Fail the channel explicitly.
+          this.#setSnapshot({ state: 'error', error: error.message })
+        }, Math.max(2000, timeoutMs)),
       }
       this.#waiters.add(waiter)
 
-      void this.send(report).catch((error) => {
+      // Register before writing so fast replies are caught, but start the read
+      // deadline only after Windows confirms that the report was delivered.
+      void this.send(report).then(() => {
+        if (!this.#waiters.has(waiter)) return
+        window.clearTimeout(waiter.timer)
+        waiter.timer = window.setTimeout(() => {
+          this.#waiters.delete(waiter)
+          reject(timeoutError('read'))
+        }, Math.max(0, timeoutMs))
+      }).catch((error) => {
         window.clearTimeout(waiter.timer)
         this.#waiters.delete(waiter)
         reject(error instanceof Error ? error : new Error(String(error)))

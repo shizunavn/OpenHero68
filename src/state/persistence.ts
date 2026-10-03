@@ -1,6 +1,7 @@
 import type { RemapLayers } from '../protocol/hero68/remap'
 import type { RgbProfile, RgbDirty } from '../protocol/hero68/rgb'
 import type { AdvancedBinding } from '../protocol/hero68/advanced'
+import type { LanguagePreference } from '../i18n'
 
 export const OPENHERO68_STATE_KEY = 'openhero68:web-state:v1'
 
@@ -25,6 +26,9 @@ export type PersistedOpenHeroState = {
   compactSidebar?: boolean
   showAdvancedPages?: boolean
   rememberSelection?: boolean
+  languagePreference?: LanguagePreference
+  languageManuallySet?: boolean
+  languageRegionDetected?: boolean
   pollingRate?: 125 | 250 | 500 | 1000 | 2000 | 4000 | 8000
   osModeMac?: boolean
   winLock?: boolean
@@ -50,7 +54,25 @@ export function loadOpenHeroState(): PersistedOpenHeroState | null {
     const raw = window.localStorage.getItem(OPENHERO68_STATE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed as PersistedOpenHeroState : null
+    if (!parsed || typeof parsed !== 'object') return null
+
+    // Migrate the previous visible `auto` language option into the new hidden
+    // automatic-detection mode. Explicit en/vi choices from the old build are
+    // treated as manual overrides; auto/missing keeps region detection enabled.
+    const previousLanguagePreference = parsed.languagePreference
+    if (previousLanguagePreference !== 'en' && previousLanguagePreference !== 'vi') {
+      delete parsed.languagePreference
+    }
+    if (typeof parsed.languageManuallySet !== 'boolean') {
+      parsed.languageManuallySet = previousLanguagePreference === 'en' || previousLanguagePreference === 'vi'
+    }
+    // Older builds did not cache completion of automatic region detection.
+    // Leave it false so they perform at most one final lookup, then persist it.
+    if (typeof parsed.languageRegionDetected !== 'boolean') {
+      parsed.languageRegionDetected = false
+    }
+
+    return parsed as PersistedOpenHeroState
   } catch {
     return null
   }

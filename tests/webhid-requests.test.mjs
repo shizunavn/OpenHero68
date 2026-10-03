@@ -16,7 +16,7 @@ async function withDevice(run){
   }}
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{hid:{async getDevices(){return [device]}}}})
   globalThis.window={setTimeout,clearTimeout}
-  function reply(command,data){const packet=buildReport({command,data});for(const listener of listeners)listener({reportId:9,data:new DataView(packet.buffer,1,63)})}
+  function reply(command,data,zone=0){const packet=buildReport({command,data,zone});for(const listener of listeners)listener({reportId:9,data:new DataView(packet.buffer,1,63)})}
   const manager=new Hero68DeviceManager()
   try{await manager.connect(false);await run({manager,sent,reply,setRespond(fn){respond=fn},max(){return maximum}})}
   finally{await manager.disconnect();globalThis.window=oldWindow;if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else delete globalThis.navigator}
@@ -40,4 +40,17 @@ test('wrong active slot retries selection and never hides a persistent timeout',
 test('ordinary writes are not retried when their ACK is missing',()=>withDevice(async({manager,sent})=>{
   await assert.rejects(()=>manager.request(buildReport({command:0x13,data:[0,1]}),0x13,0,12),/timed out/)
   assert.equal(sent.length,1)
+}))
+
+test('Hall snapshot waiter ignores other positions, incomplete snapshots and wrong zones',()=>withDevice(async({manager,setRespond,reply})=>{
+  const records=[0,30,0,100,0,123,0,56,0,50,0,124]
+  setRespond(request=>{
+    reply(0x98,records,0)
+    reply(0x98,records.slice(0,6),1)
+    reply(0x98,[0,31,...records.slice(2)],1)
+    reply(0x98,records,1)
+  })
+  const report=await manager.request(buildReport({command:0x98,zone:1,data:[0,30,0,56]}),0x98,1,100,
+    report=>report.data.length===12&&report.data[1]===30&&report.data[7]===56)
+  assert.deepEqual([...report.data],records)
 }))

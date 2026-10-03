@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n'
 import type { Dispatch, SetStateAction } from 'react'
 import Hero68Preview from '../components/Hero68Preview'
 import type { AdvancedBinding } from '../protocol/hero68/advanced'
@@ -52,6 +53,7 @@ export interface QuickSettingsPageProps {
   bottomDeadzone: number
   bottomDeadzoneMixed: boolean
   setBottomDeadzoneForSelection: (value: number) => void
+  tachyonBusy: boolean
   tachyon: boolean
   handleTachyonChange: (enabled: boolean) => Promise<void>
   deviceConnected: boolean
@@ -102,11 +104,13 @@ function QuickSettingsPage({
   bottomDeadzone,
   bottomDeadzoneMixed,
   setBottomDeadzoneForSelection,
+  tachyonBusy,
   tachyon,
   handleTachyonChange,
   deviceConnected,
   setQuickPreviewMode,
 }: QuickSettingsPageProps) {
+  const { tr } = useI18n()
   return (
             <div className="page quick-page page-enter">
               <section className="keyboard-stage">
@@ -123,15 +127,15 @@ function QuickSettingsPage({
 
               <div className="selection-instruction">
                 {hasSelection
-                  ? `${selectedKeys.size} key${selectedKeys.size === 1 ? '' : 's'} selected.`
-                  : 'To adjust Actuation Point, Rapid Trigger, or Dead Zone, select one or more keys first.'}
+                  ? tr(selectedKeys.size === 1 ? '{count} key selected.' : '{count} keys selected.', { count: selectedKeys.size })
+                  : tr('To adjust Actuation Point, Rapid Trigger, or Dead Zone, select one or more keys first.')}
               </div>
 
               <div className="quick-heading-row">
-                <h1>Quick Settings</h1>
+                <h1>{tr('Quick Settings')}</h1>
                 <div className="selection-actions">
-                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>Select all keys</button>
-                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>Discard selection</button>
+                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>{tr('Select all keys')}</button>
+                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>{tr('Discard selection')}</button>
                 </div>
               </div>
 
@@ -142,13 +146,13 @@ function QuickSettingsPage({
                   onMouseLeave={() => setQuickPreviewMode('none')}
                 >
                   <div className="card-head compact-head">
-                    <h2>Actuation Point</h2>
-                    <p>Set the point at which a key activates when pressed for all selected keys.</p>
+                    <h2>{tr('Actuation Point')}</h2>
+                    <p>{tr('Set the point at which a key activates when pressed for all selected keys.')}</p>
                   </div>
                   <div className="actuation-visual with-switch-preview">
                     <div className={`selected-switch-preview ${switchProfileMixed ? 'is-mixed' : ''}`} aria-hidden="true">
                       {selectedSwitch.front ? <img src={selectedSwitch.front} alt="" /> : <SwitchStemMenuIcon />}
-                      <span>{switchProfileMixed ? 'Mixed switch profiles' : selectedSwitch.name}</span>
+                      <span>{switchProfileMixed ? tr('Mixed switch profiles') : selectedSwitch.name}</span>
                     </div>
                     <VerticalRangeControl
                       value={actuation}
@@ -172,20 +176,20 @@ function QuickSettingsPage({
                 >
                   <div className="card-head with-toggle compact-head">
                     <div>
-                      <h2>Rapid Trigger</h2>
-                      <p>When enabled, selected keys dynamically activate and reset based on press and release movement.</p>
+                      <h2>{tr('Rapid Trigger')}</h2>
+                      <p>{tr('When enabled, selected keys dynamically activate and reset based on press and release movement.')}</p>
                     </div>
-                    <Toggle checked={rapidTrigger} mixed={rapidTriggerMixed} onChange={setRapidTriggerForSelection} label="Rapid Trigger" disabled={!hasSelection} />
+                    <Toggle checked={rapidTrigger} mixed={rapidTriggerMixed} onChange={setRapidTriggerForSelection} label={tr('Rapid Trigger')} disabled={!hasSelection} />
                   </div>
 
                   <div className="split-row">
-                    <span>Separate press/release sensitivity</span>
-                    <Toggle checked={splitSensitivity} mixed={splitSensitivityMixed} onChange={setSplitSensitivityForSelection} label="Separate press/release sensitivity" disabled={!rapidTriggerControlsEnabled} />
+                    <span>{tr('Separate press/release sensitivity')}</span>
+                    <Toggle checked={splitSensitivity} mixed={splitSensitivityMixed} onChange={setSplitSensitivityForSelection} label={tr('Separate press/release sensitivity')} disabled={!rapidTriggerControlsEnabled} />
                   </div>
 
                   {!splitSensitivity && !splitSensitivityMixed ? (
                     <>
-                      <div className="setting-subtitle">Sensitivity</div>
+                      <div className="setting-subtitle">{tr('Sensitivity')}</div>
                       <div className="range-stack">
                         <RangeControl
                           value={rapidSensitivity}
@@ -199,13 +203,13 @@ function QuickSettingsPage({
                           disabled={!splitSensitivityControlsEnabled}
                           onChange={setRapidSensitivityForSelection}
                         />
-                        <div className="range-labels"><span>High</span><span>Low</span></div>
+                        <div className="range-labels"><span>{tr('High')}</span><span>{tr('Low')}</span></div>
                       </div>
                     </>
                   ) : (
                     <div className="separate-sensitivity-grid">
                       <div className="separate-sensitivity-item">
-                        <div className="setting-subtitle">Press</div>
+                        <div className="setting-subtitle">{tr('Press')}</div>
                         <div className="range-stack">
                           <RangeControl
                             value={pressSensitivity}
@@ -219,11 +223,11 @@ function QuickSettingsPage({
                             disabled={!splitSensitivityControlsEnabled}
                             onChange={setPressSensitivityForSelection}
                           />
-                          <div className="range-labels"><span>High</span><span>Low</span></div>
+                          <div className="range-labels"><span>{tr('High')}</span><span>{tr('Low')}</span></div>
                         </div>
                       </div>
                       <div className="separate-sensitivity-item">
-                        <div className="setting-subtitle">Release</div>
+                        <div className="setting-subtitle">{tr('Release')}</div>
                         <div className="range-stack">
                           <RangeControl
                             value={releaseSensitivity}
@@ -237,7 +241,7 @@ function QuickSettingsPage({
                             disabled={!splitSensitivityControlsEnabled}
                             onChange={setReleaseSensitivityForSelection}
                           />
-                          <div className="range-labels"><span>High</span><span>Low</span></div>
+                          <div className="range-labels"><span>{tr('High')}</span><span>{tr('Low')}</span></div>
                         </div>
                       </div>
                     </div>
@@ -251,14 +255,14 @@ function QuickSettingsPage({
                 >
                   <div className="card-head with-toggle compact-head deadzone-title-row">
                     <div>
-                      <h2>Dead zone setting</h2>
-                      <p>The top dead zone reduces false touches, while the bottom dead zone reduces disconnection.</p>
+                      <h2>{tr('Dead zone setting')}</h2>
+                      <p>{tr('The top dead zone reduces false touches, while the bottom dead zone reduces disconnection.')}</p>
                     </div>
-                    <Toggle checked={deadzoneEnabled} mixed={deadzoneEnabledMixed} onChange={setDeadzoneEnabledForSelection} label="Dead zone setting" disabled={!hasSelection} />
+                    <Toggle checked={deadzoneEnabled} mixed={deadzoneEnabledMixed} onChange={setDeadzoneEnabledForSelection} label={tr('Dead zone setting')} disabled={!hasSelection} />
                   </div>
                   <div className="deadzone-grid standalone-deadzone-grid">
                     <div className="deadzone-card">
-                      <div className="deadzone-head">Top dead zone</div>
+                      <div className="deadzone-head">{tr('Top dead zone')}</div>
                       <VerticalRangeControl
                         value={topDeadzone}
                         min={0}
@@ -272,7 +276,7 @@ function QuickSettingsPage({
                       />
                     </div>
                     <div className="deadzone-card">
-                      <div className="deadzone-head">Bottom dead zone</div>
+                      <div className="deadzone-head">{tr('Bottom dead zone')}</div>
                       <VerticalRangeControl
                         value={bottomDeadzone}
                         min={0}
@@ -292,11 +296,11 @@ function QuickSettingsPage({
                   <div className="tachyon-card-inner">
                     <div>
                       <div className="card-head with-toggle compact-head tachyon-head-inline">
-                        <h2>Tachyon Mode</h2>
-                        <Toggle checked={tachyon} onChange={handleTachyonChange} label="Tachyon Mode" disabled={!deviceConnected} />
+                        <h2>{tr('Tachyon Mode')}</h2>
+                        <Toggle checked={tachyon} onChange={handleTachyonChange} label={tr('Tachyon Mode')} disabled={!deviceConnected || tachyonBusy} />
                       </div>
                       <p className="tachyon-copy">
-                        Tachyon Mode forces 8000 Hz polling and keeps diagnostic streams out of the fast path. Starting Hall Stream turns the host-side Tachyon mode off without changing polling, so the keyboard does not USB re-enumerate just to open telemetry.
+                        {tr('Tachyon Mode uses 8000 Hz polling and turns off key and side lighting. Custom Effects, Rhythm Sync and automatic Hall polling are paused. The background app stays open. Hall Stream and Visual Feedback you enable remain available.')}
                       </p>
                     </div>
                   </div>

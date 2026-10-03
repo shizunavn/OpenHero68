@@ -4,7 +4,7 @@ import { fetchLocalService, LocalServicePermissionError } from './localServiceAc
 import type { RhythmConfiguration } from '../keyboard/rhythm'
 import { serviceHealth } from './serviceHealth'
 export type RgbServiceStatus={
-  apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom'|'rhythm';sessionId?:string
+  tachyon?:boolean;supportsTachyon?:boolean;apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom'|'rhythm';sessionId?:string
   enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number
   hallSnapshots:number;timeouts:number;maxGapMs:number;lastError:string|null;targetFps?:number;renderFps?:number;reusedFrames?:number
   sideOutput?:boolean;supportedModes?:string[];supportedRhythmModes?:number[];supportedRhythmSideModes?:number[];rhythmConfiguration?:RhythmConfiguration
@@ -34,6 +34,7 @@ async function request(path:string,value?:unknown):Promise<RgbServiceStatus>{
   return result
 }
 export const rgbService={
+  tachyon:(enabled:boolean)=>request('/tachyon',{enabled}),
   rhythmStart:(configuration:RhythmConfiguration)=>request('/rhythm/start',{configuration}),
   rhythmUpdate:(configuration:RhythmConfiguration,sessionId:string)=>request('/rhythm/config',{configuration,sessionId}),
   async audioDevices():Promise<AudioEndpoint[]>{const response=await fetchLocalService(endpoint+'/audio/devices',{},5000);const result=await response.json();if(!response.ok)throw Error(result.error??'Cannot list playback devices');return result.devices},

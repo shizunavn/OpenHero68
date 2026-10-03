@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { PersistedOpenHeroState } from '../../state/persistence'
 import { hero68DeviceManager } from '../../protocol/hero68/webhid'
 import { hero68HallStream } from '../../protocol/hero68/hallStream'
@@ -12,6 +12,8 @@ import {
   readWinLock,
   writePollingRate,
 } from '../../protocol/hero68/commands'
+import { setTachyonLighting } from '../../protocol/tachyon'
+import { rgbService } from '../../protocol/rgbService'
 import type { PollingRate } from '../../protocol/hero68/types'
 
 type HallStreamState = {
@@ -40,6 +42,28 @@ export function useDeviceSettings({
   tachyonPreviousPollingRate,
   setTachyonPreviousPollingRate,
 }: UseDeviceSettingsOptions) {
+  const tachyonChanging = useRef(false)
+  const tachyonRef = useRef(tachyon); tachyonRef.current = tachyon
+  const [tachyonBusy, setTachyonBusy] = useState(false)
+  useEffect(() => {
+    let disposed = false
+    const synchronize = async () => {
+      if (tachyonChanging.current || !hero68DeviceManager.connected) return
+      tachyonChanging.current = true
+      try {
+        const status = await rgbService.status().catch(() => null)
+        if (disposed) return
+        if (tachyonRef.current) await setTachyonLighting(true)
+        else if (status?.tachyon) setTachyon(true)
+      } catch (error) {
+        if (!disposed) setDeviceActionError(error instanceof Error ? error.message : String(error))
+      } finally { tachyonChanging.current = false }
+    }
+    const unsubscribeDevice = hero68DeviceManager.subscribe(() => void synchronize())
+    const unsubscribeService = rgbService.onAvailability(online => { if (online) void synchronize() })
+    void synchronize()
+    return () => { disposed = true; unsubscribeDevice(); unsubscribeService() }
+  }, [])
   const [devicePollingRate, setDevicePollingRateState] = useState<PollingRate | null>(() => persistedState?.pollingRate ?? null)
   const [deviceOsModeMac, setDeviceOsModeMac] = useState(() => persistedState?.osModeMac ?? false)
   const [deviceWinLock, setDeviceWinLock] = useState(() => persistedState?.winLock ?? false)
@@ -99,6 +123,7 @@ export function useDeviceSettings({
         await hero68DeviceManager.send(liveIdle())
         setRgbStreamActive(false)
       }
+      if (tachyon && rate !== 8000) await setTachyonLighting(false)
       await setDevicePollingRate(rate)
       if (tachyon && rate !== 8000) {
         setTachyon(false)
@@ -136,32 +161,51 @@ export function useDeviceSettings({
   }
 
   async function handleTachyonChange(enabled: boolean) {
+    if (tachyonChanging.current || deviceSettingsState === 'saving') return
     if (!hero68DeviceManager.connected) {
       setDeviceActionError('Connect HERO68 before changing Tachyon Mode.')
       return
     }
+    tachyonChanging.current = true
+    setTachyonBusy(true)
+    setDeviceSettingsState('saving')
     setDeviceActionError(null)
+    const resumeHall = hallStream.active || hallStream.starting
+    const hallKeys = hero68HallStream.getRequestedKeys()
+    const hallSource = hero68HallStream.getSnapshot().source
     try {
+      // Polling changes re-enumerate USB. Resume only telemetry the user enabled.
+      if (resumeHall) await hero68HallStream.stop()
       if (enabled) {
         const previous = await readCurrentPollingRate()
-        setTachyonPreviousPollingRate(previous)
-        if (hallStream.active || hallStream.starting) await hero68HallStream.stop()
+        if (!tachyon) setTachyonPreviousPollingRate(previous)
+        await setTachyonLighting(true)
+        setTachyon(true)
         await hero68DeviceManager.send(liveIdle())
         setRgbStreamActive(false)
         if (previous !== 8000) await setDevicePollingRate(8000)
-        setTachyon(true)
       } else {
         const restoreRate = tachyonPreviousPollingRate ?? 1000
-        await setDevicePollingRate(restoreRate)
+        if (await readCurrentPollingRate() !== restoreRate) await setDevicePollingRate(restoreRate)
+        await setTachyonLighting(false)
         setTachyon(false)
         setTachyonPreviousPollingRate(null)
       }
+      setDeviceSettingsState('ready')
     } catch (error) {
+      setDeviceSettingsState('error')
       setDeviceActionError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (resumeHall && hero68DeviceManager.connected) {
+        await hero68HallStream.start(hallKeys, hallSource).catch(error => setDeviceActionError(error instanceof Error ? error.message : String(error)))
+      }
+      tachyonChanging.current = false
+      setTachyonBusy(false)
     }
   }
 
   return {
+    tachyonBusy,
     devicePollingRate,
     deviceOsModeMac,
     setDeviceOsModeMac,

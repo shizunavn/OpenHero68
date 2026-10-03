@@ -20,6 +20,7 @@ import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SID
 import {latestSse} from './latestSse'
 import {profileRequest} from './profileSelection'
 import {CustomPlayback} from './customPlayback'
+import {TachyonLighting,validTachyonSnapshot,isTachyonLightingWrite} from '../src/protocol/hero68/tachyonLighting'
 
 function option(name:string){const index=process.argv.indexOf(name);if(index>=0&&!process.argv[index+1])throw Error(`Missing ${name} value`);return index>=0?process.argv[index+1]:undefined}
 const port=Number(option('--port')??16868)
@@ -45,11 +46,18 @@ export function normalizeProfile(input:unknown):RgbProfile {
   profile.side.mode=0
   return profile
 }
+let tachyon=false
+const tachyonFile=path.join(stateDir,'tachyon.json')
+let tachyonSnapshot:import('../src/protocol/hero68/tachyonLighting').TachyonLightingSnapshot|null=null
+try{const saved=JSON.parse(readFileSync(tachyonFile,'utf8'));tachyon=saved.enabled===true;if(validTachyonSnapshot(saved.snapshot))tachyonSnapshot=saved.snapshot}catch{}
+function persistTachyon(){writeFileSync(tachyonFile+'.tmp',JSON.stringify({enabled:tachyon,snapshot:tachyonLighting.snapshot}));renameSync(tachyonFile+'.tmp',tachyonFile)}
+const tachyonLighting=new TachyonLighting(tachyonSnapshot, snapshot=>{tachyonLighting.snapshot=snapshot;persistTachyon()})
 let profile:RgbProfile|null=null, mode:'onboard'|'custom'|'rhythm'='onboard', connected=false, closing=false, updating=false
 let rhythmConfig:RhythmConfiguration=defaultRhythm(),savedMode:'onboard'|'custom'|'rhythm'='onboard',configurationBusy=false
 try{rhythmConfig=validateRhythm(JSON.parse(readFileSync(path.join(stateDir,'rhythm-preset.json'),'utf8')))}catch{}
 function persistRhythm(){const file=path.join(stateDir,'rhythm-preset.json');writeFileSync(file+'.tmp',JSON.stringify(rhythmConfig));renameSync(file+'.tmp',file)}
 try{const saved=JSON.parse(readFileSync(path.join(stateDir,'preset.json'),'utf8'));if(saved.profile)profile=normalizeProfile(saved.profile);savedMode=saved.savedMode??saved.mode??(saved.enabled?'custom':'onboard');mode=saved.mode==='rhythm'?'rhythm':saved.mode==='custom'||(saved.mode===undefined&&saved.enabled===true)?'custom':'onboard'}catch{}
+if(tachyon)mode='onboard'
 function persist(){
   const file=path.join(stateDir,'preset.json')
   try{
@@ -114,7 +122,7 @@ const hallClients=new Map<ServerResponse,HallClient>()
 const hallSamples=new Map<string,HallRecord>()
 let nextPriorityAt=0,nextSecondaryAt=0,secondaryIndex=0,hallPolls=0,priorityCount=0,secondaryCount=0
 const priorityHallIntervalMs=10
-function needsAnalogHall(){return mode==='custom'&&needsRgbAnalogHall(profile?.custom)}
+function needsAnalogHall(){return !tachyon&&mode==='custom'&&needsRgbAnalogHall(profile?.custom)}
 function publishHall(records:HallRecord[]){
   const now=performance.now()
   for(const [client,subscription] of hallClients){
@@ -231,11 +239,29 @@ class Bridge {
   end(){this.process.stdin.end()}
 }
 const bridge=new Bridge()
+const lightingTransport={request:(packet:Uint8Array)=>bridge.request(packet)}
 async function connect(){
   const identity=await bridge.request(buildReport({command:0x82,zone:1}))
   if(![0x11,0,0,0,0,3].every((v,i)=>identity.data[i]===v))throw Error('Device is not the supported HERO68')
   connected=true;lastError=null;hallSamples.clear();frameEncoder.reset();engine=playback.start(profile);outputHeld.clear();pendingInputs.length=0;lastFrameAt=0
+  if(tachyon){try{await tachyonLighting.disable(lightingTransport)}catch(e){connected=false;throw e}}
   log('HERO68 connected')
+}
+async function setTachyon(enabled:boolean){
+  if(enabled){
+    // Latch before awaiting: concurrent tray/editor requests cannot restart RGB.
+    tachyon=true;persistTachyon()
+    await stop()
+    // Stop both native schedulers even if the previous mode was already idle.
+    await bridge.stopCustom();await bridge.stopRhythm()
+    try{if(!connected)await connect();else await tachyonLighting.disable(lightingTransport)}catch(e){connected=false;lastError=String(e);throw e}
+  }else{
+    if(!connected)await connect()
+    await tachyonLighting.restore(lightingTransport)
+    tachyon=false;persistTachyon()
+    // Effects stay idle until the user explicitly starts a preset again.
+  }
+  publishFrame({enabled:false,connected,mode:'onboard',tachyon,sessionId})
 }
 async function stop(){
   const previousMode=mode;mode='onboard'
@@ -265,6 +291,7 @@ async function tick(){
 let timer:ReturnType<typeof setTimeout>
 async function loop(){
   const now=performance.now()
+  if(tachyon&&!connected&&!closing&&now>=reconnectAt){reconnectAt=now+1000;try{await exclusive(connect)}catch(e){connected=false;lastError=String(e)}}
   if(now-windowStart>=1000){fps=windowFrames*1000/(now-windowStart);renderFps=windowRendered*1000/(now-windowStart);windowFrames=windowRendered=0;windowStart=now}
   if(!closing)timer=setTimeout(loop,250)
 }
@@ -289,7 +316,7 @@ function percentile(values:readonly number[],fraction=.95){if(!values.length)ret
 function status(){return {
   service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,
   supportedEffects:CUSTOM_RGB_EFFECTS.map(effect=>effect.id),supportedBaseEffects:['aurora'],
-  pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,enabled:mode!=='onboard',connected,
+  pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,tachyon,supportsTachyon:true,enabled:mode!=='onboard',connected,
   preset:!!profile||savedMode==='rhythm',savedMode,configurationBusy,pendingRequests,sessionId,
   fps,frameMs,renderMs,encodeMs,writeMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,
   frameGapP95Ms:percentile(frameGaps),frameGapP99Ms:percentile(frameGaps,.99),gapsOver100,lastLongGapAt,
@@ -337,7 +364,7 @@ const server=createServer(async(req,res)=>{
       const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);heartbeat.unref()
       req.on('close',()=>{clearInterval(heartbeat);hallClients.delete(res)});return
     }
-    if(req.method!=='POST'||!['/start','/stop','/mode','/preset','/rhythm/start','/rhythm/config','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
+    if(req.method!=='POST'||!['/tachyon','/start','/stop','/mode','/preset','/rhythm/start','/rhythm/config','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
     if(req.headers['content-type']?.split(';')[0]!=='application/json'){json(415,{error:'Expected application/json'});return}
     let body='',size=0
     for await(const chunk of req){size+=chunk.length;if(size>65536)throw Error('Preset too large');body+=chunk}
@@ -356,8 +383,13 @@ const server=createServer(async(req,res)=>{
       try{await exclusive(async()=>{});const version=await stageCoreUpdate();json(200,{staged:true,version});setImmediate(()=>void restartForUpdate());return}
       catch(e){updating=false;throw e}
     }
+    if(req.url==='/tachyon'){
+      if(typeof input.enabled!=='boolean')throw Error('Expected Tachyon enabled boolean')
+      await exclusive(()=>setTachyon(input.enabled));json(200,status());return
+    }
     if(req.url==='/rhythm/start'||req.url==='/rhythm/config'||(req.url==='/start'&&!Object.keys(input).length&&savedMode==='rhythm')){
       await exclusive(async()=>{
+        if(tachyon)throw Error('Turn off Tachyon Mode before starting RGB effects.')
         const editing=req.url==='/rhythm/config'
         if(editing&&(mode!=='rhythm'||input.sessionId!==sessionId))throw Error('Stale rhythm editor session; configuration was not applied')
         const config=validateRhythm(input.configuration??(req.url==='/start'?rhythmConfig:input))
@@ -373,6 +405,7 @@ const server=createServer(async(req,res)=>{
       const requests:ReturnType<typeof validateDeviceRequest>[]=batch?(Array.isArray(input.requests)&&input.requests.length>0&&input.requests.length<=128?input.requests.map(validateDeviceRequest):(()=>{throw Error('Expected 1-128 device requests')})()):[validateDeviceRequest(input)]
       if(batch&&requests.some(({reenumerate})=>reenumerate))throw Error('Re-enumeration requires a standalone request')
       const replies=await exclusive(async()=>{
+        if(tachyon&&requests.some(({packet})=>isTachyonLightingWrite(packet)))throw Error('Turn off Tachyon Mode before changing RGB lighting.')
         configurationBusy=true;const resume=mode!=='onboard';if(resume)await bridge.line('rhythm-pause')
         try{
         if(!connected)await connect()
@@ -400,6 +433,7 @@ const server=createServer(async(req,res)=>{
     }
     await exclusive(async()=>{
       if(req.url==='/stop'||req.url==='/shutdown'||(req.url==='/mode'&&input.mode==='onboard')){await stop();return}
+      if(tachyon)throw Error('Turn off Tachyon Mode before starting RGB effects.')
       if(req.url==='/mode'&&input.mode!=='custom')throw Error('Expected onboard or custom mode')
       if(req.url==='/preset'&&input.sessionId!==sessionId)throw Error('Stale RGB editor session; preset was not applied')
       if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);if(engine)engine.configure(profile);else engine=playback.start(profile);persist()}

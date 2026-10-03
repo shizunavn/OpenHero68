@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { createPortal } from 'react-dom'
 import { CircleHelp } from 'lucide-react'
 import './FeatureHelp.css'
+import { useI18n } from '../i18n'
 
 type FeatureHelpProps = {
   title: string
@@ -15,6 +16,7 @@ type FeatureHelpProps = {
 }
 
 export default function FeatureHelp({ title, paragraphs, icon, triggerClassName, triggerLabel, onActivate, pinOnClick = true, disabled }: FeatureHelpProps) {
+  const { tr } = useI18n()
   const id = useId()
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
@@ -90,7 +92,7 @@ export default function FeatureHelp({ title, paragraphs, icon, triggerClassName,
       type="button"
       disabled={disabled}
       className={`${triggerClassName ?? 'feature-help-trigger'} ${open ? 'is-open' : ''}`}
-      aria-label={triggerLabel ?? `About ${title}`}
+      aria-label={triggerLabel ? tr(triggerLabel) : tr('About {title}', { title: tr(title) })}
       aria-describedby={open ? id : undefined}
       onMouseEnter={show}
       onMouseLeave={scheduleClose}
@@ -113,8 +115,8 @@ export default function FeatureHelp({ title, paragraphs, icon, triggerClassName,
       onMouseEnter={cancelClose}
       onMouseLeave={scheduleClose}
     >
-      <strong>{title}</strong>
-      {paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}
+      <strong>{tr(title)}</strong>
+      {paragraphs.map(paragraph => <p key={paragraph}>{tr(paragraph)}</p>)}
     </div>, document.body)}
   </>
 }

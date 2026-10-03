@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n'
 import type { Dispatch, SetStateAction } from 'react'
 import Hero68Preview from '../components/Hero68Preview'
 import FeatureHelp from '../components/FeatureHelp'
@@ -91,6 +92,7 @@ function RapidPage({
   setQuickPreviewMode,
   rapidTriggerByKey,
 }: RapidPageProps) {
+  const { tr } = useI18n()
   return (
             <div className="page quick-page rapid-page page-enter">
               <section className="keyboard-stage rapid-keyboard-stage">
@@ -106,21 +108,21 @@ function RapidPage({
 
               <div className="selection-instruction rapid-selection-instruction">
                 {hasSelection
-                  ? `Adjusting Rapid Trigger for ${selectedKeys.size} selected key${selectedKeys.size === 1 ? '' : 's'}.`
-                  : 'To adjust Rapid Trigger, please select one or more keys first.'}
+                  ? tr(selectedKeys.size === 1 ? 'Adjusting Rapid Trigger for {count} selected key.' : 'Adjusting Rapid Trigger for {count} selected keys.', { count: selectedKeys.size })
+                  : tr('To adjust Rapid Trigger, please select one or more keys first.')}
               </div>
 
               <div className="quick-heading-row rapid-heading-row">
                 <div className="rapid-title-wrap">
-                  <h1>Rapid Trigger</h1>
+                  <h1>{tr('Rapid Trigger')}</h1>
                   <FeatureHelp title="Rapid Trigger" paragraphs={[
                     'Rapid Trigger dynamically adjusts the actuation and deactivation points. After the key reaches its actuation point, pressing it down activates it and releasing it resets it according to the sensitivity you set.',
                     "This can make repeated inputs faster in competitive games: you don't have to fully release a key before pressing it again. A lower sensitivity value requires less movement, while a higher value helps avoid unintended inputs.",
                   ]} />
                 </div>
                 <div className="selection-actions">
-                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>Select all keys</button>
-                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>Discard selection</button>
+                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>{tr('Select all keys')}</button>
+                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>{tr('Discard selection')}</button>
                 </div>
               </div>
 
@@ -130,14 +132,14 @@ function RapidPage({
                   onMouseEnter={() => setQuickPreviewMode('rapid')}
                 >
                   <div className="rapid-card-head with-control">
-                    <h2>Enable Rapid Trigger</h2>
-                    <Toggle checked={rapidTrigger} mixed={rapidTriggerMixed} onChange={setRapidTriggerForSelection} label="Rapid Trigger" disabled={!hasSelection} />
+                    <h2>{tr('Enable Rapid Trigger')}</h2>
+                    <Toggle checked={rapidTrigger} mixed={rapidTriggerMixed} onChange={setRapidTriggerForSelection} label={tr('Rapid Trigger')} disabled={!hasSelection} />
                   </div>
                   <p className="rapid-card-copy">
-                    Rapid Trigger dynamically actuates and resets your key based on your intention to press or release the key. Rapid Trigger starts and ends after the actuation point.
+                    {tr('Rapid Trigger dynamically actuates and resets your key based on your intention to press or release the key. Rapid Trigger starts and ends after the actuation point.')}
                   </p>
                   <div className="rapid-enabled-summary">
-                    <span>ENABLED ON <strong>{HERO68_KEY_IDS.filter((keyId) => rapidTriggerByKey[keyId]).length}</strong> KEYS</span>
+                    <span>{tr('ENABLED ON')} <strong>{HERO68_KEY_IDS.filter((keyId) => rapidTriggerByKey[keyId]).length}</strong> {tr('KEYS')}</span>
                   </div>
                 </article>
 
@@ -146,11 +148,11 @@ function RapidPage({
                   onMouseEnter={() => setQuickPreviewMode('rapid')}
                 >
                   <div className="rapid-card-head">
-                    <h2>Rapid Trigger Sensitivity</h2>
+                    <h2>{tr('Rapid Trigger Sensitivity')}</h2>
                   </div>
 
                   <div className="rapid-split-row">
-                    <span className="rapid-split-label">Split sensitivity <FeatureHelp title="Split sensitivity" paragraphs={[
+                    <span className="rapid-split-label">{tr('Split sensitivity')} <FeatureHelp title="Split sensitivity" paragraphs={[
                       'Set separate Rapid Trigger sensitivities for pressing and releasing a key. Press sensitivity controls how far the key moves down to reactivate; release sensitivity controls how far it moves up to reset.',
                       'Use a smaller release value for a quicker reset, or a larger press value to reduce accidental reactivation. With split sensitivity off, the same value applies in both directions.',
                     ]} /></span>
@@ -158,14 +160,14 @@ function RapidPage({
                       checked={splitSensitivity}
                       mixed={splitSensitivityMixed}
                       onChange={setSplitSensitivityForSelection}
-                      label="Split sensitivity"
+                      label={tr('Split sensitivity')}
                       disabled={!rapidTriggerControlsEnabled}
                     />
                   </div>
 
                   {!splitSensitivity && !splitSensitivityMixed ? (
                     <div className="rapid-sensitivity-control">
-                      <div className="rapid-control-label">SENSITIVITY</div>
+                      <div className="rapid-control-label">{tr('SENSITIVITY')}</div>
                       <RangeControl
                         value={rapidSensitivity}
                         min={0.01}
@@ -178,12 +180,12 @@ function RapidPage({
                         disabled={!splitSensitivityControlsEnabled}
                         onChange={setRapidSensitivityForSelection}
                       />
-                      <div className="rapid-range-labels"><span>HIGH</span><span>LOW</span></div>
+                      <div className="rapid-range-labels"><span>{tr('HIGH')}</span><span>{tr('LOW')}</span></div>
                     </div>
                   ) : (
                     <div className="rapid-split-controls">
                       <div>
-                        <div className="rapid-control-label">PRESS</div>
+                        <div className="rapid-control-label">{tr('PRESS')}</div>
                         <RangeControl
                           value={pressSensitivity}
                           min={0.01}
@@ -198,7 +200,7 @@ function RapidPage({
                         />
                       </div>
                       <div>
-                        <div className="rapid-control-label">RELEASE</div>
+                        <div className="rapid-control-label">{tr('RELEASE')}</div>
                         <RangeControl
                           value={releaseSensitivity}
                           min={0.01}
@@ -222,16 +224,16 @@ function RapidPage({
                   onMouseLeave={() => setQuickPreviewMode('rapid')}
                 >
                   <div className="rapid-card-head with-control">
-                    <h2>Dead Zone</h2>
-                    <Toggle checked={deadzoneEnabled} mixed={deadzoneEnabledMixed} onChange={setDeadzoneEnabledForSelection} label="Dead Zone" disabled={!hasSelection} />
+                    <h2>{tr('Dead Zone')}</h2>
+                    <Toggle checked={deadzoneEnabled} mixed={deadzoneEnabledMixed} onChange={setDeadzoneEnabledForSelection} label={tr('Dead Zone')} disabled={!hasSelection} />
                   </div>
                   <p className="rapid-card-copy rapid-deadzone-copy">
-                    The top dead zone reduces false touches, while the bottom dead zone helps prevent unintended release near full travel.
+                    {tr('The top dead zone reduces false touches, while the bottom dead zone helps prevent unintended release near full travel.')}
                   </p>
 
                   <div className="deadzone-grid rapid-deadzone-grid">
                     <div className="deadzone-card rapid-deadzone-control-card">
-                      <div className="deadzone-head">Top dead zone</div>
+                      <div className="deadzone-head">{tr('Top dead zone')}</div>
                       <VerticalRangeControl
                         value={topDeadzone}
                         min={0}
@@ -245,7 +247,7 @@ function RapidPage({
                       />
                     </div>
                     <div className="deadzone-card rapid-deadzone-control-card">
-                      <div className="deadzone-head">Bottom dead zone</div>
+                      <div className="deadzone-head">{tr('Bottom dead zone')}</div>
                       <VerticalRangeControl
                         value={bottomDeadzone}
                         min={0}

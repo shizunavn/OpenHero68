@@ -25,6 +25,8 @@ import MyProfilePage from './components/MyProfilePage'
 import { mergeRgb, readRgbProfile, restoreStoredRgb, rgbChanges, rgbDirtyCount, saveRgbProfile, type RgbProfile } from './protocol/hero68/rgb'
 import { HERO68_KEY_IDS } from './keyboard/hero68Layout'
 import { loadOpenHeroState, saveOpenHeroState, type PersistedOpenHeroState, type ProfileDraft } from './state/persistence'
+import { createTranslator, I18nProvider, type LanguagePreference } from './i18n'
+import { browserSuggestedLanguage, detectRegion } from './i18n/region'
 import { defaultRemapLayers, isMacroRemapValue, readRemapLayers, readOnboardProfileName, saveOnboardProfileName, saveRemapChanges, REMAP_LAYERS, type RemapLayer, type RemapLayers } from './protocol/hero68/remap'
 import { makeKeyDeviceSettings, saveDeviceConfiguration } from './protocol/deviceBridge'
 import { hero68DeviceManager, useHero68Device, type Hero68ConnectionState } from './protocol/hero68/webhid'
@@ -61,6 +63,7 @@ import { KeyRemapMenuIcon } from './app/components/KeyRemapMenuIcon'
 import { AdvancedKeysMenuIcon } from './app/components/AdvancedKeysMenuIcon'
 import { RapidTriggerMenuIcon } from './app/components/RapidTriggerMenuIcon'
 import { Toggle } from './app/components/Toggle'
+import { LanguageSelect } from './app/components/LanguageSelect'
 import { QuickSettingsPage } from './pages/QuickSettingsPage'
 import { StreamPage } from './pages/StreamPage'
 import { RgbPage } from './pages/RgbPage'
@@ -68,6 +71,7 @@ import BackgroundServicePage from './pages/BackgroundServicePage'
 import LocalServicePermissionGuide from './components/LocalServicePermissionGuide'
 import { ActuationPage } from './pages/ActuationPage'
 import { RapidPage } from './pages/RapidPage'
+import { TachyonContext } from './app/TachyonContext'
 import { useDeviceSettings } from './app/hooks/useDeviceSettings'
 
 const RgbSettingsPage = lazy(() => import('./components/RgbSettingsPage'))
@@ -115,6 +119,11 @@ function App() {
   const [compactSidebar, setCompactSidebar] = useState(() => persistedState?.compactSidebar ?? false)
   const [showAdvancedPages, setShowAdvancedPages] = useState(() => persistedState?.showAdvancedPages ?? true)
   const [rememberSelection, setRememberSelection] = useState(() => persistedState?.rememberSelection ?? true)
+  const [languagePreference, setLanguagePreference] = useState<LanguagePreference>(() => persistedState?.languagePreference ?? browserSuggestedLanguage())
+  const [languageManuallySet, setLanguageManuallySet] = useState(() => persistedState?.languageManuallySet ?? false)
+  const [languageRegionDetected, setLanguageRegionDetected] = useState(() => persistedState?.languageRegionDetected ?? false)
+  const resolvedLanguage = languagePreference
+  const tr = useMemo(() => createTranslator(resolvedLanguage), [resolvedLanguage])
   const [switchSearch, setSwitchSearch] = useState(() => persistedState?.switchSearch ?? '')
   const [switchBrandFilter, setSwitchBrandFilter] = useState(() => persistedState?.switchBrandFilter ?? 'all')
   const [saveState, setSaveState] = useState<'idle' | 'staged' | 'sent'>('idle')
@@ -160,6 +169,7 @@ function App() {
     handlePollingRateChange,
     applyBooleanDeviceSetting,
     handleTachyonChange,
+    tachyonBusy,
   } = useDeviceSettings({
     persistedState,
     hallStream,
@@ -175,27 +185,27 @@ function App() {
 
   const sidebarItems = useMemo(() => {
     const items = [
-      { id: 'actuation', label: 'Actuation Point', icon: <ArrowDownToLine size={18} />, advanced: false },
-      { id: 'rapid', label: 'Rapid Trigger', icon: <RapidTriggerMenuIcon />, advanced: false },
-      { id: 'stream', label: 'Hall Stream', icon: <Activity size={18} />, advanced: true },
-      { id: 'rgb', label: 'RGB Settings', icon: <Lightbulb size={18} />, advanced: false },
-      { id: 'remap', label: 'Key Remap', icon: <KeyRemapMenuIcon />, advanced: false },
-      { id: 'advanced', label: 'Advanced Keys', icon: <AdvancedKeysMenuIcon />, advanced: false },
-      { id: 'macros', label: 'Macros', icon: <ListOrdered size={18} />, advanced: false },
-      { id: 'gamepad', label: 'Gamepad', icon: <Gamepad2 size={18} />, advanced: true },
+      { id: 'actuation', label: tr('Actuation Point'), icon: <ArrowDownToLine size={18} />, advanced: false },
+      { id: 'rapid', label: tr('Rapid Trigger'), icon: <RapidTriggerMenuIcon />, advanced: false },
+      { id: 'stream', label: tr('Hall Stream'), icon: <Activity size={18} />, advanced: true },
+      { id: 'rgb', label: tr('RGB Settings'), icon: <Lightbulb size={18} />, advanced: false },
+      { id: 'remap', label: tr('Key Remap'), icon: <KeyRemapMenuIcon />, advanced: false },
+      { id: 'advanced', label: tr('Advanced Keys'), icon: <AdvancedKeysMenuIcon />, advanced: false },
+      { id: 'macros', label: tr('Macros'), icon: <ListOrdered size={18} />, advanced: false },
+      { id: 'gamepad', label: tr('Gamepad'), icon: <Gamepad2 size={18} />, advanced: true },
     ]
     return items.filter((item) => showAdvancedPages || !item.advanced)
-  }, [showAdvancedPages])
+  }, [showAdvancedPages, tr])
 
   const keyboardSettingsItems = useMemo(() => [
-    { id: 'general', label: 'General Settings', icon: <KeyboardMenuIcon /> },
-    { id: 'switches', label: 'Switch Selector', icon: <SwitchStemMenuIcon /> },
-  ], [])
+    { id: 'general', label: tr('General Settings'), icon: <KeyboardMenuIcon /> },
+    { id: 'switches', label: tr('Switch Selector'), icon: <SwitchStemMenuIcon /> },
+  ], [tr])
 
   const uiSettingsItems = useMemo(() => [
-    { id: 'interface', label: 'Interface', icon: <Palette size={18} /> },
-    { id: 'background-service', label: 'Background Service', icon: <Activity size={18} /> },
-  ], [])
+    { id: 'interface', label: tr('Interface'), icon: <Palette size={18} /> },
+    { id: 'background-service', label: tr('Background Service'), icon: <Activity size={18} /> },
+  ], [tr])
 
   const selectedSwitch: SwitchOption = SWITCH_OPTIONS.find((option) => option.id === selectedSwitchId) ?? { id: selectedSwitchId, name: switchProfileLabel(selectedSwitchId), fullName: switchProfileLabel(selectedSwitchId), brand: 'Stored keyboard profile', accent: '#9ba3a8', note: '' }
   const switchTopImageById = useMemo(() => Object.fromEntries(SWITCH_OPTIONS.map((option) => [option.id, option.top ?? ''])) as Record<SwitchTone, string>, [])
@@ -222,9 +232,9 @@ function App() {
     }]),
   ) as Record<string, { distanceMm: number; rawAdc: number; pressed: boolean; releaseInferred: boolean }>, [hallStream.samples])
   const hallStreamActiveSamples = useMemo(() => Object.values(hallStream.samples)
-    .filter((sample) => sample.pressed || sample.releaseInferred || sample.visualDistanceMm >= 0.05)
+    .filter((sample) => sample.pressed || sample.visualDistanceMm >= 0.05)
     .sort((a, b) => b.timestampMs - a.timestampMs), [hallStream.samples])
-  const hallStreamListKeyIds = hallStreamActiveSamples.slice(0, 8).map((sample) => sample.keyId)
+  const hallStreamListKeyIds = hallStreamActiveSamples.map((sample) => sample.keyId)
   const hallStreamPreviewSelection = useMemo(
     () => new Set(hallStreamPinnedKeyId ? [hallStreamPinnedKeyId] : []),
     [hallStreamPinnedKeyId],
@@ -267,6 +277,27 @@ function App() {
   })
   const switchBrands = useMemo(() => Array.from(new Set(SWITCH_OPTIONS.map((option) => option.brand))), [])
   const brandFilterLabel = switchBrandFilter === 'all' ? 'Filter by brand' : switchBrandFilter
+
+  useEffect(() => {
+    document.documentElement.lang = resolvedLanguage
+  }, [resolvedLanguage])
+
+  useEffect(() => {
+    if (languageManuallySet || languageRegionDetected) return
+    let cancelled = false
+    void detectRegion().then(result => {
+      if (cancelled) return
+      setLanguagePreference(result.suggestedLanguage)
+      setLanguageRegionDetected(true)
+    })
+    return () => { cancelled = true }
+  }, [languageManuallySet, languageRegionDetected])
+
+  function selectLanguage(language: LanguagePreference) {
+    setLanguagePreference(language)
+    setLanguageManuallySet(true)
+    setLanguageRegionDetected(true)
+  }
 
   useEffect(() => {
     if (!brandMenuOpen) return
@@ -337,6 +368,9 @@ function App() {
       compactSidebar,
       showAdvancedPages,
       rememberSelection,
+      languagePreference,
+      languageManuallySet,
+      languageRegionDetected,
       pollingRate: devicePollingRate ?? undefined,
       osModeMac: deviceOsModeMac,
       winLock: deviceWinLock,
@@ -350,7 +384,7 @@ function App() {
       profileDrafts: { ...profileDrafts, [profileSlot]: currentProfileDraft() },
     }
     saveOpenHeroState(snapshot)
-  }, [activeRail, activePage, activeSettingsPage, selectedKeys, selectedSwitchId, assignedSwitchesByKey, actuationByKey, rapidTriggerByKey, splitSensitivityByKey, rapidSensitivityByKey, pressSensitivityByKey, releaseSensitivityByKey, deadzoneEnabledByKey, topDeadzoneByKey, bottomDeadzoneByKey, tachyon, tachyonPreviousPollingRate, compactSidebar, showAdvancedPages, rememberSelection, devicePollingRate, deviceOsModeMac, deviceWinLock, deviceHallDebounce, deviceAutoCalibration, switchSearch, switchBrandFilter, profileSlot, profileNames, remapLayers, profileDrafts, dirtyKeys, dirtyRemaps, rgb, rgbBaseline, advancedBindings, advancedBaseline])
+  }, [activeRail, activePage, activeSettingsPage, selectedKeys, selectedSwitchId, assignedSwitchesByKey, actuationByKey, rapidTriggerByKey, splitSensitivityByKey, rapidSensitivityByKey, pressSensitivityByKey, releaseSensitivityByKey, deadzoneEnabledByKey, topDeadzoneByKey, bottomDeadzoneByKey, tachyon, tachyonPreviousPollingRate, compactSidebar, showAdvancedPages, rememberSelection, languagePreference, languageManuallySet, languageRegionDetected, devicePollingRate, deviceOsModeMac, deviceWinLock, deviceHallDebounce, deviceAutoCalibration, switchSearch, switchBrandFilter, profileSlot, profileNames, remapLayers, profileDrafts, dirtyKeys, dirtyRemaps, rgb, rgbBaseline, advancedBindings, advancedBaseline])
 
   function currentProfileDraft(): ProfileDraft {
     return { assignedSwitchesByKey, actuationByKey, rapidTriggerByKey, splitSensitivityByKey,
@@ -644,15 +678,7 @@ function App() {
         // normal RGB/key-label state immediately.
         setHallStreamPinnedKeyId(null)
       } else {
-        // Do not restore the pre-Tachyon polling rate here. Polling writes make
-        // firmware 0323 re-enumerate USB, which made the old Stream button look
-        // like it disconnected the keyboard. A diagnostic stream simply takes
-        // precedence over the host-side Tachyon composite while keeping the
-        // current hardware polling rate untouched.
-        if (tachyon) {
-          setTachyon(false)
-          setTachyonPreviousPollingRate(null)
-        }
+        // Explicit UI telemetry is allowed while Tachyon keeps all RGB idle.
         await hero68HallStream.start(preferredKeyIds, 'direct-poll')
       }
     } catch (error) {
@@ -833,6 +859,9 @@ function App() {
       compactSidebar,
       showAdvancedPages,
       rememberSelection,
+      languagePreference,
+      languageManuallySet,
+      languageRegionDetected,
       pollingRate: devicePollingRate ?? undefined,
       osModeMac: deviceOsModeMac,
       winLock: deviceWinLock,
@@ -908,7 +937,7 @@ function App() {
         const verified = await saveAdvancedBindings(hero68DeviceManager, profileSlot, advancedBindings, advancedBaseline)
         setAdvancedBaseline(verified)
       }
-      if (result.mode === 'sent' && rgbPending) await saveRgbProfile(hero68DeviceManager, rgb, rgbBaseline, setRgbBaseline)
+      if (result.mode === 'sent' && rgbPending && !tachyon) await saveRgbProfile(hero68DeviceManager, rgb, rgbBaseline, setRgbBaseline)
       if (result.mode === 'sent') {
         if(dirtyKeys.size)setDirtyKeys(new Set())
         if(dirtyRemaps.size){remapBaselineRef.current=structuredClone(remapLayers);setDirtyRemaps(new Set())}
@@ -927,16 +956,16 @@ function App() {
   const deviceConnected = deviceConnectionState === 'connected'
   const deviceConnecting = deviceConnectionState === 'connecting'
   const deviceStatusLabel = deviceConnectionState === 'connected'
-    ? 'Connected'
+    ? tr('Connected')
     : deviceConnectionState === 'connecting'
-      ? 'Connecting…'
+      ? tr('Connecting…')
       : deviceConnectionState === 'unsupported'
-        ? 'WebHID unavailable'
+        ? tr('WebHID unavailable')
         : deviceConnectionState === 'error'
-          ? 'Connection error'
-          : 'Not connected'
+          ? tr('Connection error')
+          : tr('Not connected')
   const deviceFeedback = deviceActionError ?? hero68Device.error
-    ?? (deviceReadState === 'success' ? `Profile ${profileSlot} loaded from keyboard.` : null)
+    ?? (deviceReadState === 'success' ? tr('Profile {slot} loaded from keyboard.', { slot: profileSlot }) : null)
 
   const renderDevicePanel = () => (
     <div className={`device-panel is-${deviceConnectionState}`}>
@@ -956,12 +985,12 @@ function App() {
           onClick={handleDeviceConnection}
           disabled={profileBusy || deviceConnecting || deviceConnectionState === 'unsupported'}
         >
-          {deviceConnecting ? 'Connecting…' : deviceConnected ? 'Disconnect' : 'Connect'}
+          {deviceConnecting ? tr('Connecting…') : deviceConnected ? tr('Disconnect') : tr('Connect')}
         </button>
 
         <div className="profile-slot-row">
-          <span>Profile slot</span>
-          <div className="profile-slot-buttons" role="group" aria-label="Onboard profile slot">
+          <span>{tr('Profile slot')}</span>
+          <div className="profile-slot-buttons" role="group" aria-label={tr('Profile slot')}>
             {([0, 1, 2] as const).map((slot) => (
               <button
                 type="button"
@@ -983,7 +1012,7 @@ function App() {
           onClick={() => void handleReadFromDevice()}
           disabled={!deviceConnected || profileBusy}
         >
-          {deviceReadState === 'reading' ? 'Reading…' : 'Read from device'}
+          {deviceReadState === 'reading' ? tr('Reading…') : tr('Read from device')}
         </button>
       </div>
 
@@ -994,6 +1023,7 @@ function App() {
   const showKeyboardArea = activeRail === 'keyboard'
 
   return (
+    <I18nProvider language={resolvedLanguage}><TachyonContext.Provider value={tachyon}>
     <div
       className={`app-shell ${compactSidebar ? 'is-sidebar-compact' : ''}`}
     >
@@ -1001,9 +1031,9 @@ function App() {
       <aside className="rail">
         <div className="brand-mark"><img src={logo} alt="OpenHero68" /></div>
         <div className="rail-stack">
-          <RailItem icon={<Keyboard size={22} />} label="Keyboard" active={activeRail === 'keyboard'} onClick={() => setActiveRail('keyboard')} />
-          <RailItem icon={<Settings size={22} />} label="Settings" active={activeRail === 'settings'} onClick={() => setActiveRail('settings')} />
-          <RailItem icon={<CircleHelp size={22} />} label="Help" active={activeRail === 'help'} onClick={() => setActiveRail('help')} />
+          <RailItem icon={<Keyboard size={22} />} label={tr('Keyboard')} active={activeRail === 'keyboard'} onClick={() => setActiveRail('keyboard')} />
+          <RailItem icon={<Settings size={22} />} label={tr('Settings')} active={activeRail === 'settings'} onClick={() => setActiveRail('settings')} />
+          <RailItem icon={<CircleHelp size={22} />} label={tr('Help')} active={activeRail === 'help'} onClick={() => setActiveRail('help')} />
         </div>
       </aside>
 
@@ -1011,17 +1041,17 @@ function App() {
         {showKeyboardArea ? (
           <>
             <div className="sidebar-title">
-              <strong>Keyboard Configuration</strong>
-              <button className="icon-button compact" aria-label="Collapse sidebar">‹</button>
+              <strong>{tr('Keyboard Configuration')}</strong>
+              <button className="icon-button compact" aria-label={tr('Collapse sidebar')}>‹</button>
             </div>
 
             {renderDevicePanel()}
 
-            <div className="sidebar-section-label">Profiles</div>
-            <SidebarItem icon={<Zap size={18} />} label="Quick Settings" active={activePage === 'quick'} onClick={() => setActivePage('quick')} />
-            <SidebarItem icon={<Sparkles size={18} />} label="My Profile" active={activePage === 'profile'} onClick={() => setActivePage('profile')} />
+            <div className="sidebar-section-label">{tr('Profiles')}</div>
+            <SidebarItem icon={<Zap size={18} />} label={tr('Quick Settings')} active={activePage === 'quick'} onClick={() => setActivePage('quick')} />
+            <SidebarItem icon={<Sparkles size={18} />} label={tr('My Profile')} active={activePage === 'profile'} onClick={() => setActivePage('profile')} />
 
-            <div className="sidebar-section-label">Keyboard Configuration</div>
+            <div className="sidebar-section-label">{tr('Keyboard Configuration')}</div>
             {sidebarItems.map((item) => (
               <SidebarItem key={item.id} icon={item.icon} label={item.label} active={activePage === item.id} onClick={() => setActivePage(item.id)} />
             ))}
@@ -1031,31 +1061,31 @@ function App() {
         ) : activeRail === 'settings' ? (
           <>
             <div className="sidebar-title">
-              <strong>Settings</strong>
-              <button className="icon-button compact" aria-label="Collapse sidebar">‹</button>
+              <strong>{tr('Settings')}</strong>
+              <button className="icon-button compact" aria-label={tr('Collapse sidebar')}>‹</button>
             </div>
 
             {renderDevicePanel()}
 
-            <div className="sidebar-section-label">Cài đặt bàn phím</div>
+            <div className="sidebar-section-label">{tr('Keyboard settings')}</div>
             {keyboardSettingsItems.map((item) => (
               <SidebarItem key={item.id} icon={item.icon} label={item.label} active={activeSettingsPage === item.id} onClick={() => setActiveSettingsPage(item.id)} />
             ))}
 
-            <div className="sidebar-section-label">Cài đặt UI</div>
+            <div className="sidebar-section-label">{tr('Interface settings')}</div>
             {uiSettingsItems.map((item) => (
               <SidebarItem key={item.id} icon={item.icon} label={item.label} active={activeSettingsPage === item.id} onClick={() => setActiveSettingsPage(item.id)} />
             ))}
 
-            <div className="sidebar-version">OpenHero68 <span>Settings UI</span></div>
+            <div className="sidebar-version">OpenHero68 <span>{tr('Settings UI')}</span></div>
           </>
         ) : (
           <>
             <div className="sidebar-title">
-              <strong>Help</strong>
+              <strong>{tr('Help')}</strong>
             </div>
             <div className="help-sidebar-copy">
-              <p>This baseline currently focuses on the keyboard workspace and the switch profile selector settings page.</p>
+              <p>{tr('This baseline currently focuses on the keyboard workspace and the switch profile selector settings page.')}</p>
             </div>
           </>
         )}
@@ -1066,7 +1096,7 @@ function App() {
           <header className="topbar">
             <div className="profile-control-wrap">
               {showKeyboardArea && activePage === 'macros' ? (
-                <div className="page-title-bar"><span className="profile-icon"><ListOrdered size={17}/></span><strong>Macro library</strong></div>
+                <div className="page-title-bar"><span className="profile-icon"><ListOrdered size={17}/></span><strong>{tr('Macro library')}</strong></div>
               ) : showKeyboardArea ? (
                 <>
                   <button className="profile-control" disabled={profileBusy} onClick={() => setProfileOpen(!profileOpen)}>
@@ -1083,23 +1113,23 @@ function App() {
                           disabled={profileBusy}
                           onClick={() => { setProfileOpen(false); void selectOnboardProfile(slot) }}
                         >
-                          {profileNames[slot]} {profileSlot === slot && <span>Current</span>}
+                          {profileNames[slot]} {profileSlot === slot && <span>{tr('Current')}</span>}
                         </button>
                       ))}
-                      <button onClick={() => { setActivePage('profile'); setProfileOpen(false) }}>Manage profile</button>
+                      <button onClick={() => { setActivePage('profile'); setProfileOpen(false) }}>{tr('Manage profile')}</button>
                     </div>
                   )}
                 </>
               ) : (
                 <div className="page-title-bar">
                   <span className="profile-icon"><Settings size={17} /></span>
-                  <strong>Help</strong>
+                  <strong>{tr('Help')}</strong>
                 </div>
               )}
             </div>
 
             <div className="topbar-actions">
-              {showKeyboardArea && activePage === 'macros' ? <span className="profile-status">Local + HERO68 macro library</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? 'Syncing…' : saveState === 'sent' ? `Saved to profile ${profileSlot}` : saveState === 'staged' ? 'Saved locally' : `Save to profile ${profileSlot}`}</button>}
+              {showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : saveState === 'staged' ? tr('Saved locally') : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
             </div>
           </header>
         )}
@@ -1114,7 +1144,7 @@ function App() {
             <KeyRemapPage advancedBindings={advancedBindings} key={profileSlot} layers={remapLayers} busy={profileBusy} dirtyCount={dirtyRemaps.size} canSave={deviceConnected && loadedProfileSlot === profileSlot} onSave={() => void handleSaveAll()} onAssign={assignRemap} onCopyLayer={copyRemapLayer} />
           ) : activePage === 'advanced' ? (
             <>
-              {advancedReadError && <p className="ak-error" role="alert">Advanced Keys could not be read: {advancedReadError}. Read the profile again before saving these bindings.</p>}
+              {advancedReadError && <p className="ak-error" role="alert">{tr('Advanced Keys could not be read: {error}. Read the profile again before saving these bindings.', { error: advancedReadError })}</p>}
               <AdvancedKeysPage key={profileSlot} bindings={advancedBindings} busy={profileBusy} pending={advancedPending} connected={deviceConnected && loadedProfileSlot === profileSlot} onChange={next => { if (!profileBusyRef.current) { setAdvancedBindings(next); setSaveState('idle') } }} />
             </>
           ) : activePage === 'actuation' ? (
@@ -1233,6 +1263,7 @@ function App() {
               bottomDeadzoneMixed={bottomDeadzoneMixed}
               setBottomDeadzoneForSelection={setBottomDeadzoneForSelection}
               tachyon={tachyon}
+              tachyonBusy={tachyonBusy}
               handleTachyonChange={handleTachyonChange}
               deviceConnected={deviceConnected}
               setQuickPreviewMode={setQuickPreviewMode}
@@ -1269,8 +1300,8 @@ function App() {
           ) : (
             <div className="placeholder-page page-enter">
               <div className="placeholder-icon"><SlidersHorizontal size={28} /></div>
-              <h1>{sidebarItems.find((item) => item.id === activePage)?.label ?? 'Profile'}</h1>
-              <p>This page is not implemented yet.</p>
+              <h1>{sidebarItems.find((item) => item.id === activePage)?.label ?? tr('Profile')}</h1>
+              <p>{tr('This page is not implemented yet.')}</p>
             </div>
           )
         ) : activeRail === 'settings' ? (
@@ -1278,8 +1309,8 @@ function App() {
             <div className="page settings-page general-device-settings page-enter">
               <div className="settings-hero general-settings-hero">
                 <div>
-                  <h1>General Settings</h1>
-                  <p>Device-wide HERO68 settings. Values are read from the keyboard and writes are verified with readback.</p>
+                  <h1>{tr('General Settings')}</h1>
+                  <p>{tr('Device-wide HERO68 settings. Values are read from the keyboard and writes are verified with readback.')}</p>
                 </div>
                 <button
                   type="button"
@@ -1287,7 +1318,7 @@ function App() {
                   disabled={!deviceConnected || deviceSettingsState === 'reading' || deviceSettingsState === 'saving'}
                   onClick={() => void readDeviceGeneralSettings()}
                 >
-                  {deviceSettingsState === 'reading' ? 'Reading…' : 'Refresh device settings'}
+                  {deviceSettingsState === 'reading' ? tr('Reading…') : tr('Refresh device settings')}
                 </button>
               </div>
 
@@ -1295,10 +1326,10 @@ function App() {
                 <article className="settings-card wooting-settings-card">
                   <div className="device-setting-section first">
                     <div className="device-setting-copy">
-                      <h2>Polling Rate</h2>
-                      <p>A higher polling rate lets the keyboard report to the computer more often. Changing it makes firmware 0323 briefly reconnect over USB.</p>
+                      <h2>{tr('Polling Rate')}</h2>
+                      <p>{tr('A higher polling rate lets the keyboard report to the computer more often. Changing it makes firmware 0323 briefly reconnect over USB.')}</p>
                     </div>
-                    <div className="device-option-list polling-options" role="radiogroup" aria-label="Polling rate">
+                    <div className="device-option-list polling-options" role="radiogroup" aria-label={tr('Polling rate')}>
                       {[...POLLING_RATES].reverse().map((rate) => (
                         <button
                           key={rate}
@@ -1311,7 +1342,7 @@ function App() {
                         >
                           <span className="device-radio-dot" aria-hidden="true" />
                           <span>{rate} Hz</span>
-                          {rate === 8000 && <small>Lowest latency</small>}
+                          {rate === 8000 && <small>{tr('Lowest latency')}</small>}
                         </button>
                       ))}
                     </div>
@@ -1319,10 +1350,10 @@ function App() {
 
                   <div className="device-setting-section">
                     <div className="device-setting-copy">
-                      <h2>Operating System Mode</h2>
-                      <p>Select the keyboard OS mode stored by the HERO68 firmware.</p>
+                      <h2>{tr('Operating System Mode')}</h2>
+                      <p>{tr('Select the keyboard OS mode stored by the HERO68 firmware.')}</p>
                     </div>
-                    <div className="device-option-list" role="radiogroup" aria-label="Operating system mode">
+                    <div className="device-option-list" role="radiogroup" aria-label={tr('Operating system mode')}>
                       <button
                         type="button"
                         role="radio"
@@ -1332,7 +1363,7 @@ function App() {
                         onClick={() => void applyBooleanDeviceSetting('OS mode', false, 17, writeOsMode(false), readOsMode(), setDeviceOsModeMac)}
                       >
                         <span className="device-radio-dot" aria-hidden="true" />
-                        <span>Windows mode</span>
+                        <span>{tr('Windows mode')}</span>
                       </button>
                       <button
                         type="button"
@@ -1343,33 +1374,33 @@ function App() {
                         onClick={() => void applyBooleanDeviceSetting('OS mode', true, 17, writeOsMode(true), readOsMode(), setDeviceOsModeMac)}
                       >
                         <span className="device-radio-dot" aria-hidden="true" />
-                        <span>macOS mode</span>
+                        <span>{tr('macOS mode')}</span>
                       </button>
                     </div>
                   </div>
 
                   <div className="device-setting-section toggle-setting-section">
                     <div className="device-setting-copy">
-                      <h2>Windows Key Lock</h2>
-                      <p>Lock or unlock the Windows key using the keyboard firmware setting.</p>
+                      <h2>{tr('Windows Key Lock')}</h2>
+                      <p>{tr('Lock or unlock the Windows key using the keyboard firmware setting.')}</p>
                     </div>
                     <Toggle
                       checked={deviceWinLock}
                       onChange={(enabled) => void applyBooleanDeviceSetting('Windows key lock', enabled, 21, writeWinLock(enabled), readWinLock(), setDeviceWinLock)}
-                      label="Windows key lock"
+                      label={tr('Windows key lock')}
                       disabled={!deviceConnected || deviceSettingsState === 'reading' || deviceSettingsState === 'saving'}
                     />
                   </div>
 
                   <div className="device-setting-section toggle-setting-section">
                     <div className="device-setting-copy">
-                      <h2>Hall Debounce</h2>
-                      <p>Firmware Hall-switch debounce (feature zone 24). Leave it off for the most direct Hall response unless you specifically need filtering.</p>
+                      <h2>{tr('Hall Debounce')}</h2>
+                      <p>{tr('Firmware Hall-switch debounce (feature zone 24). Leave it off for the most direct Hall response unless you specifically need filtering.')}</p>
                     </div>
                     <Toggle
                       checked={deviceHallDebounce}
                       onChange={(enabled) => void applyBooleanDeviceSetting('Hall debounce', enabled, 24, writeHallDebounce(enabled), readHallDebounce(), setDeviceHallDebounce)}
-                      label="Hall debounce"
+                      label={tr('Hall debounce')}
                       disabled={!deviceConnected || deviceSettingsState === 'reading' || deviceSettingsState === 'saving'}
                     />
                   </div>
@@ -1377,13 +1408,13 @@ function App() {
                   {showAdvancedPages && (
                     <div className="device-setting-section toggle-setting-section advanced-device-setting">
                       <div className="device-setting-copy">
-                        <h2>Auto Calibration <span className="advanced-badge">ADVANCED</span></h2>
-                        <p>Expose the firmware auto-calibration feature toggle recovered from the AULA driver. This is separate from the live Hall Stream page.</p>
+                        <h2>{tr('Auto Calibration')} <span className="advanced-badge">{tr('ADVANCED')}</span></h2>
+                        <p>{tr('Expose the firmware auto-calibration feature toggle recovered from the AULA driver. This is separate from the live Hall Stream page.')}</p>
                       </div>
                       <Toggle
                         checked={deviceAutoCalibration}
                         onChange={(enabled) => void applyBooleanDeviceSetting('Auto calibration', enabled, 25, writeAutoCalibration(enabled), readAutoCalibration(), setDeviceAutoCalibration)}
-                        label="Auto calibration"
+                        label={tr('Auto calibration')}
                         disabled={!deviceConnected || deviceSettingsState === 'reading' || deviceSettingsState === 'saving'}
                       />
                     </div>
@@ -1392,21 +1423,21 @@ function App() {
 
                 <div className={`device-settings-read-status is-${deviceSettingsState}`}>
                   {!deviceConnected
-                    ? 'Connect HERO68 to read device settings.'
+                    ? tr('Connect HERO68 to read device settings.')
                     : deviceSettingsState === 'reading'
-                      ? 'Reading settings from HERO68…'
+                      ? tr('Reading settings from HERO68…')
                       : deviceSettingsState === 'saving'
-                        ? 'Applying and verifying setting…'
+                        ? tr('Applying and verifying setting…')
                         : deviceSettingsState === 'error'
-                          ? 'A device setting failed. See the device panel for details.'
-                          : 'Device settings are synchronized with the keyboard.'}
+                          ? tr('A device setting failed. See the device panel for details.')
+                          : tr('Device settings are synchronized with the keyboard.')}
                 </div>
               </section>
             </div>
           ) : activeSettingsPage === 'switches' ? (
             <div className="page settings-page switch-selector-page page-enter">
               <div className="switch-page-actions">
-                    <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0)}>{saveState === 'sent' ? 'Saved' : saveState === 'staged' ? 'Saved locally' : 'Save'}</button>
+                    <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0)}>{saveState === 'sent' ? tr('Saved') : saveState === 'staged' ? tr('Saved locally') : tr('Save')}</button>
               </div>
 
               <section className="switch-selector-stage">
@@ -1419,23 +1450,23 @@ function App() {
 
               <div className="selection-instruction switch-selection-instruction">
                 {hasSelection
-                  ? `${selectedKeys.size} KEY${selectedKeys.size === 1 ? '' : 'S'} SELECTED`
-                  : 'SELECT ONE OR MORE KEYS FIRST'}
+                  ? tr(selectedKeys.size === 1 ? '{count} KEY SELECTED' : '{count} KEYS SELECTED', { count: selectedKeys.size })
+                  : tr('SELECT ONE OR MORE KEYS FIRST')}
               </div>
 
               <div className="switch-selector-heading-row">
-                <h1>Switch Selector</h1>
+                <h1>{tr('Switch Selector')}</h1>
                 <div className="selection-actions">
-                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>Select all keys</button>
-                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>Discard selection</button>
+                  <button type="button" className="secondary-button" disabled={allSelected} aria-pressed={allSelected} onClick={selectAll}>{tr('Select all keys')}</button>
+                  <button type="button" className={hasSelection ? "secondary-button" : "ghost-button"} disabled={!hasSelection} onClick={discardSelection}>{tr('Discard selection')}</button>
                 </div>
               </div>
 
               <section className="switch-assignment-grid">
                 <article className="settings-card switch-assignment-card">
                   <div className="settings-card-head">
-                    <h2>Assign Switch Profiles</h2>
-                    <p>Select keys on the keyboard preview, then choose a calibration profile for your installed switches. The keyboard reports its saved profile IDs; it does not detect the physical switch model.</p>
+                    <h2>{tr('Assign Switch Profiles')}</h2>
+                    <p>{tr('Select keys on the keyboard preview, then choose a calibration profile for your installed switches. The keyboard reports its saved profile IDs; it does not detect the physical switch model.')}</p>
                   </div>
 
                   <div className="switch-toolbar">
@@ -1445,7 +1476,7 @@ function App() {
                         type="text"
                         value={switchSearch}
                         onChange={(e) => setSwitchSearch(e.target.value)}
-                        placeholder="Search for a switch profile"
+                        placeholder={tr('Search for a switch profile')}
                       />
                     </label>
 
@@ -1457,12 +1488,12 @@ function App() {
                         aria-expanded={brandMenuOpen}
                         onClick={() => setBrandMenuOpen((open) => !open)}
                       >
-                        <span>{brandFilterLabel}</span>
+                        <span>{tr(brandFilterLabel)}</span>
                         <ChevronDown size={16} />
                       </button>
 
                       {brandMenuOpen && (
-                        <div className="brand-filter-menu" role="listbox" aria-label="Filter switch profiles by brand">
+                        <div className="brand-filter-menu" role="listbox" aria-label={tr('Filter switch profiles by brand')}>
                           <button
                             type="button"
                             role="option"
@@ -1473,7 +1504,7 @@ function App() {
                               setBrandMenuOpen(false)
                             }}
                           >
-                            All brands
+                            {tr('All brands')}
                           </button>
                           {switchBrands.map((brand) => (
                             <button
@@ -1487,7 +1518,7 @@ function App() {
                                 setBrandMenuOpen(false)
                               }}
                             >
-                              {brand}
+                              {tr(brand)}
                             </button>
                           ))}
                         </div>
@@ -1502,18 +1533,18 @@ function App() {
                         type="button"
                         className={`switch-profile-card ${(!hasSelection || !switchProfileMixed) && option.id === selectedSwitch.id ? 'is-active' : ''}`}
                         disabled={!hasSelection || profileBusy}
-                        title={!hasSelection ? 'Select one or more keys first' : undefined}
+                        title={!hasSelection ? tr('Select one or more keys first') : undefined}
                         onClick={() => assignSwitchProfile(option.id)}
                       >
                         <span className="switch-profile-thumb" style={{ color: option.accent }}>
                           {option.top ? <img src={option.top} alt={option.fullName} /> : <SwitchStemMenuIcon />}
                         </span>
-                        <span className="switch-profile-brand">{option.brand}</span>
+                        <span className="switch-profile-brand">{tr(option.brand)}</span>
                         <strong>{option.fullName}</strong>
                       </button>
                     ))}
                     {!filteredSwitchOptions.length && (
-                      <div className="switch-profile-empty">No switch profiles match the current search.</div>
+                      <div className="switch-profile-empty">{tr('No switch profiles match the current search.')}</div>
                     )}
                   </div>
                 </article>
@@ -1525,36 +1556,47 @@ function App() {
             <div className="page settings-page page-enter">
               <div className="settings-hero">
                 <div>
-                  <h1>Interface</h1>
-                  <p>OpenHero68 interface preferences. Every option on this page has an immediate UI effect.</p>
+                  <h1>{tr('Interface')}</h1>
+                  <p>{tr('OpenHero68 interface preferences. Every option on this page has an immediate UI effect.')}</p>
                 </div>
               </div>
               <section className="selector-page-grid">
                 <article className="settings-card interface-only-card">
                   <div className="settings-card-head">
-                    <h2>General</h2>
-                    <p>Application-only settings inspired by Wootility's interface preferences.</p>
+                    <h2>{tr('General')}</h2>
+                    <p>{tr("Application-only settings inspired by Wootility's interface preferences.")}</p>
                   </div>
                   <div className="setting-line">
                     <div>
-                      <strong>Show advanced pages</strong>
-                      <p>Show Hall Stream, Gamepad, and advanced device controls. Turning this off hides them immediately.</p>
+                      <strong>{tr('Language')}</strong>
+                      <p>{tr('Choose the display language used by OpenHero68.')}</p>
                     </div>
-                    <Toggle checked={showAdvancedPages} onChange={setShowAdvancedPages} label="Show advanced pages" />
+                    <LanguageSelect
+                      value={languagePreference}
+                      onChange={selectLanguage}
+                      label={tr('Language')}
+                    />
                   </div>
                   <div className="setting-line">
                     <div>
-                      <strong>Compact sidebar</strong>
-                      <p>Reduce spacing in the main sidebar for smaller screens.</p>
+                      <strong>{tr('Show advanced pages')}</strong>
+                      <p>{tr('Show Hall Stream, Gamepad, and advanced device controls. Turning this off hides them immediately.')}</p>
                     </div>
-                    <Toggle checked={compactSidebar} onChange={setCompactSidebar} label="Compact sidebar" />
+                    <Toggle checked={showAdvancedPages} onChange={setShowAdvancedPages} label={tr('Show advanced pages')} />
                   </div>
                   <div className="setting-line">
                     <div>
-                      <strong>Remember last selected keys</strong>
-                      <p>Restore the currently selected keys after reloading OpenHero68. Turning this off stops persisting the selection.</p>
+                      <strong>{tr('Compact sidebar')}</strong>
+                      <p>{tr('Reduce spacing in the main sidebar for smaller screens.')}</p>
                     </div>
-                    <Toggle checked={rememberSelection} onChange={setRememberSelection} label="Remember last selected keys" />
+                    <Toggle checked={compactSidebar} onChange={setCompactSidebar} label={tr('Compact sidebar')} />
+                  </div>
+                  <div className="setting-line">
+                    <div>
+                      <strong>{tr('Remember last selected keys')}</strong>
+                      <p>{tr('Restore the currently selected keys after reloading OpenHero68. Turning this off stops persisting the selection.')}</p>
+                    </div>
+                    <Toggle checked={rememberSelection} onChange={setRememberSelection} label={tr('Remember last selected keys')} />
                   </div>
                 </article>
               </section>
@@ -1563,8 +1605,8 @@ function App() {
             <div className="page settings-page page-enter">
               <div className="settings-hero">
                 <div>
-                  <h1>Settings</h1>
-                  <p>Select a settings category from the sidebar.</p>
+                  <h1>{tr('Settings')}</h1>
+                  <p>{tr('Select a settings category from the sidebar.')}</p>
                 </div>
               </div>
             </div>
@@ -1572,13 +1614,14 @@ function App() {
         ) : (
           <div className="placeholder-page page-enter">
             <div className="placeholder-icon"><CircleHelp size={28} /></div>
-            <h1>Help</h1>
-            <p>Use the left rail to switch between the keyboard workspace and the new settings page.</p>
+            <h1>{tr('Help')}</h1>
+            <p>{tr('Use the left rail to switch between the keyboard workspace and the new settings page.')}</p>
           </div>
         )}
         </div>
       </main>
     </div>
+    </TachyonContext.Provider></I18nProvider>
   )
 }
 

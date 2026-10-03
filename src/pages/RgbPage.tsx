@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n'
 import { Suspense } from 'react'
 import type * as React from 'react'
 import type { AdvancedBinding } from '../protocol/hero68/advanced'
@@ -31,8 +32,9 @@ function RgbPage({
   setSaveState,
   RgbSettingsPage,
 }: RgbPageProps) {
+  const { tr } = useI18n()
   return (
-            <Suspense fallback={<div className="page settings-page">Loading RGB preview…</div>}><RgbSettingsPage onSetup={onSetup} initialCustom={initialCustom} onEntered={onEntered} advancedBindings={advancedBindings} key={profileSlot} value={rgb} busy={profileBusy} onChange={next => { setRgb(next); setSaveState('idle') }} /></Suspense>
+            <Suspense fallback={<div className="page settings-page">{tr('Loading RGB preview…')}</div>}><RgbSettingsPage onSetup={onSetup} initialCustom={initialCustom} onEntered={onEntered} advancedBindings={advancedBindings} key={profileSlot} value={rgb} busy={profileBusy} onChange={next => { setRgb(next); setSaveState('idle') }} /></Suspense>
   )
 }
 
