@@ -31,6 +31,7 @@ const VI: Record<string, string> = {
   'Cài đặt UI': 'Cài đặt giao diện',
   'Settings UI': 'Giao diện cài đặt',
   'Collapse sidebar': 'Thu gọn thanh bên',
+  'Expand sidebar': 'Mở rộng thanh bên',
   'Visual Feedback': 'Phản hồi trực quan',
   'Enable Rapid Trigger': 'Bật Rapid Trigger',
   'Rapid Trigger Sensitivity': 'Độ nhạy Rapid Trigger',

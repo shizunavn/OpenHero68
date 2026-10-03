@@ -3,6 +3,8 @@ import {
   Activity,
   ArrowDownToLine,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Gamepad2,
   Keyboard,
@@ -1047,7 +1049,15 @@ function App() {
           <>
             <div className="sidebar-title">
               <strong>{tr('Keyboard Configuration')}</strong>
-              <button className="icon-button compact" aria-label={tr('Collapse sidebar')}>‹</button>
+              <button
+                type="button"
+                className="icon-button compact"
+                aria-label={compactSidebar ? tr('Expand sidebar') : tr('Collapse sidebar')}
+                title={compactSidebar ? tr('Expand sidebar') : tr('Collapse sidebar')}
+                onClick={() => setCompactSidebar((prev) => !prev)}
+              >
+                {compactSidebar ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              </button>
             </div>
 
             {renderDevicePanel()}
@@ -1067,7 +1077,15 @@ function App() {
           <>
             <div className="sidebar-title">
               <strong>{tr('Settings')}</strong>
-              <button className="icon-button compact" aria-label={tr('Collapse sidebar')}>‹</button>
+              <button
+                type="button"
+                className="icon-button compact"
+                aria-label={compactSidebar ? tr('Expand sidebar') : tr('Collapse sidebar')}
+                title={compactSidebar ? tr('Expand sidebar') : tr('Collapse sidebar')}
+                onClick={() => setCompactSidebar((prev) => !prev)}
+              >
+                {compactSidebar ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              </button>
             </div>
 
             {renderDevicePanel()}

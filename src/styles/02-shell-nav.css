@@ -48,7 +48,7 @@
   z-index: 3;
   background: #202324;
   border-right: 1px solid var(--line);
-  padding: 0 var(--sidebar-inline-pad) 18px;
+  padding: 0 var(--sidebar-inline-pad) 10px;
   overflow-y: auto;
   scrollbar-gutter: auto;
   scrollbar-width: none;
@@ -67,8 +67,9 @@
   font-size: 14px;
 }
 .icon-button {
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 38px;
   height: 38px;
   border: 0;
@@ -78,14 +79,18 @@
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease);
 }
+.icon-button svg {
+  display: block;
+  pointer-events: none;
+}
 .icon-button:hover { background: rgba(255,255,255,.05); color: var(--text-1); }
-.icon-button.compact { width: 28px; height: 28px; font-size: 22px; }
+.icon-button.compact { width: 28px; height: 28px; padding: 0; font-size: inherit; }
 .device-card {
   width: 100%;
   border: 1px solid transparent;
   border-radius: 9px;
   background: #2b2f31;
-  padding: 9px;
+  padding: 7px 9px;
   display: grid;
   grid-template-columns: var(--device-thumb-size) minmax(0, 1fr) 18px;
   gap: 10px;
@@ -109,10 +114,10 @@
 .device-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .device-copy small { color: var(--text-3); font-size: 11px; }
 .device-copy strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
-.sidebar-section-label { color: var(--text-3); font-size: 11px; margin: 22px 12px 8px; }
+.sidebar-section-label { color: var(--text-3); font-size: 11px; margin: 14px 12px 6px; }
 .sidebar-item {
   width: 100%;
-  min-height: 43px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -146,7 +151,7 @@
 .sidebar-item:hover .sidebar-icon { color: #e7edf1; }
 .sidebar-item.is-active { background: #3a3f42; color: var(--text-1); font-weight: 650; }
 .sidebar-item.is-active .sidebar-icon { color: var(--brand); }
-.sidebar-version { margin: 28px 12px 0; font-size: 12px; color: #6f7a82; }
+.sidebar-version { margin: 12px 12px 0; font-size: 12px; color: #6f7a82; }
 .sidebar-version span { color: #5c656c; }
 
 
