@@ -50,6 +50,14 @@
   border-right: 1px solid var(--line);
   padding: 0 var(--sidebar-inline-pad) 18px;
   overflow-y: auto;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sidebar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 .sidebar-title {
   min-height: 58px;
