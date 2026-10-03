@@ -1,7 +1,7 @@
 /* Real HERO68 WebHID connection + onboard profile controls */
 .device-panel {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 .device-card.device-card-static {
   cursor: default;
@@ -48,12 +48,12 @@
 .device-controls {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 6px;
+  gap: 7px;
 }
 .device-connect-button,
 .device-read-button {
   width: 100%;
-  min-height: 32px;
+  min-height: 34px;
   border: 1px solid rgba(255,255,255,.07);
   border-radius: 7px;
   background: #303638;
@@ -88,12 +88,12 @@
   cursor: default;
 }
 .profile-slot-row {
-  min-height: 32px;
+  min-height: 36px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 4px 6px 4px 10px;
+  padding: 5px 6px 5px 10px;
   border: 1px solid rgba(255,255,255,.055);
   border-radius: 7px;
   background: rgba(255,255,255,.018);
