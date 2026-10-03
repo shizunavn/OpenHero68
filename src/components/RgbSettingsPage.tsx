@@ -16,6 +16,7 @@ import type { AdvancedBinding } from '../protocol/hero68/advanced'
 import './RgbSettingsPage.css'
 import { useI18n } from '../i18n'
 import { TachyonContext } from '../app/TachyonContext'
+import { useRgbServiceState } from '../protocol/rgbServiceState'
 
 const colorHex=(color:RgbColor)=>'#'+color.map(v=>v.toString(16).padStart(2,'0')).join('')
 const hexColor=(hex:string):RgbColor=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)) as RgbColor
@@ -41,9 +42,19 @@ function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,ini
   const [replay,setReplay]=useState(0)
   const [frame,setFrame]=useState<{keys:LightingFrame;side:string[]}>({keys:{},side:Array(18).fill('#35393b')})
   const [error,setError]=useState<string|null>(null)
-  const [tab,setTab]=useState<RgbTab>(()=>initialCustom?'custom':previousRgbTab())
+  const { status } = useRgbServiceState()
+  const [tab,setTab]=useState<RgbTab>(()=>{
+    if(initialCustom) return 'custom'
+    if(status?.mode==='rhythm'||status?.mode==='custom'||status?.mode==='onboard') return status.mode
+    return previousRgbTab()
+  })
   const customMode=tab==='custom',rhythmMode=tab==='rhythm'
   useEffect(()=>{try{sessionStorage.setItem('openhero68:rgb-tab',tab)}catch{}},[tab])
+  useEffect(()=>{
+    if(status?.mode&&['onboard','custom','rhythm'].includes(status.mode)){
+      setTab(status.mode as RgbTab)
+    }
+  },[status?.mode])
   const playback=useCustomRgbPlayback(value,onChange,onSetup)
   const engineRef=useRef<FirmwareRgbPreview|null>(null)
   const replayRef=useRef(replay)

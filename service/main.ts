@@ -49,15 +49,27 @@ export function normalizeProfile(input:unknown):RgbProfile {
 let tachyon=false
 const tachyonFile=path.join(stateDir,'tachyon.json')
 let tachyonSnapshot:import('../src/protocol/hero68/tachyonLighting').TachyonLightingSnapshot|null=null
-try{const saved=JSON.parse(readFileSync(tachyonFile,'utf8'));tachyon=saved.enabled===true;if(validTachyonSnapshot(saved.snapshot))tachyonSnapshot=saved.snapshot}catch{}
-function persistTachyon(){writeFileSync(tachyonFile+'.tmp',JSON.stringify({enabled:tachyon,snapshot:tachyonLighting.snapshot}));renameSync(tachyonFile+'.tmp',tachyonFile)}
+let tachyonPreviousMode:'onboard'|'custom'|'rhythm'='onboard'
+try{
+  const saved=JSON.parse(readFileSync(tachyonFile,'utf8'))
+  tachyon=saved.enabled===true
+  if(validTachyonSnapshot(saved.snapshot))tachyonSnapshot=saved.snapshot
+  if(['onboard','custom','rhythm'].includes(saved.previousMode))tachyonPreviousMode=saved.previousMode
+}catch{}
+function persistTachyon(){
+  writeFileSync(tachyonFile+'.tmp',JSON.stringify({enabled:tachyon,snapshot:tachyonLighting.snapshot,previousMode:tachyonPreviousMode}))
+  renameSync(tachyonFile+'.tmp',tachyonFile)
+}
 const tachyonLighting=new TachyonLighting(tachyonSnapshot, snapshot=>{tachyonLighting.snapshot=snapshot;persistTachyon()})
 let profile:RgbProfile|null=null, mode:'onboard'|'custom'|'rhythm'='onboard', connected=false, closing=false, updating=false
 let rhythmConfig:RhythmConfiguration=defaultRhythm(),savedMode:'onboard'|'custom'|'rhythm'='onboard',configurationBusy=false
 try{rhythmConfig=validateRhythm(JSON.parse(readFileSync(path.join(stateDir,'rhythm-preset.json'),'utf8')))}catch{}
 function persistRhythm(){const file=path.join(stateDir,'rhythm-preset.json');writeFileSync(file+'.tmp',JSON.stringify(rhythmConfig));renameSync(file+'.tmp',file)}
 try{const saved=JSON.parse(readFileSync(path.join(stateDir,'preset.json'),'utf8'));if(saved.profile)profile=normalizeProfile(saved.profile);savedMode=saved.savedMode??saved.mode??(saved.enabled?'custom':'onboard');mode=saved.mode==='rhythm'?'rhythm':saved.mode==='custom'||(saved.mode===undefined&&saved.enabled===true)?'custom':'onboard'}catch{}
-if(tachyon)mode='onboard'
+if(tachyon){
+  if(tachyonPreviousMode==='onboard'&&['custom','rhythm'].includes(savedMode))tachyonPreviousMode=savedMode
+  mode='onboard'
+}
 function persist(){
   const file=path.join(stateDir,'preset.json')
   try{
@@ -249,19 +261,46 @@ async function connect(){
 }
 async function setTachyon(enabled:boolean){
   if(enabled){
-    // Latch before awaiting: concurrent tray/editor requests cannot restart RGB.
+    if(!tachyon)tachyonPreviousMode=mode
     tachyon=true;persistTachyon()
     await stop()
-    // Stop both native schedulers even if the previous mode was already idle.
     await bridge.stopCustom();await bridge.stopRhythm()
     try{if(!connected)await connect();else await tachyonLighting.disable(lightingTransport)}catch(e){connected=false;lastError=String(e);throw e}
+    publishFrame({enabled:false,connected,mode:'onboard',tachyon:true,sessionId})
   }else{
     if(!connected)await connect()
     await tachyonLighting.restore(lightingTransport)
-    tachyon=false;persistTachyon()
-    // Effects stay idle until the user explicitly starts a preset again.
+    tachyon=false
+    const restoreMode=tachyonPreviousMode
+    tachyonPreviousMode='onboard'
+    persistTachyon()
+    if(restoreMode==='rhythm'){
+      const config=validateRhythm(rhythmConfig)
+      nativeRhythmCommand(config)
+      if(!connected){try{await connect()}catch(e){lastError=String(e);connected=false}}
+      await bridge.configureRhythm(config);rhythmConfig=config;mode='rhythm';savedMode='rhythm'
+      engine?.releaseAll();outputHeld.clear();sessionId=randomUUID();frameSequence=0
+      frames=packets=timeouts=maxGapMs=droppedFrames=audioTimestampInvalid=0
+      frameGaps.length=audioLatencies.length=captureLatencies.length=0
+      windowFrames=0;windowStart=performance.now();fps=0;audioState='connecting';audioError=''
+      persistRhythm();persist()
+      publishFrame({enabled:true,connected,mode:'rhythm',sessionId,sequence:frameSequence})
+      log('Rhythm Sync resumed after Tachyon')
+    }else if(restoreMode==='custom'&&profile){
+      if(mode==='rhythm')await bridge.stopRhythm()
+      if(mode!=='custom'){engine=playback.start(profile);outputHeld.clear();pendingInputs.length=0}
+      mode='custom';savedMode='custom';customFrames.clear();reusedFrames=windowRendered=renderFps=0
+      await bridge.startCustom();frameEncoder.reset();sessionId=randomUUID();frameSequence=0
+      publishFrame({enabled:true,connected,sessionId,sequence:0})
+      reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null
+      frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist()
+      log('Custom RGB resumed after Tachyon')
+    }else{
+      mode='onboard';savedMode='onboard';persist()
+      publishFrame({enabled:false,connected,mode:'onboard',tachyon:false,sessionId})
+      log('Onboard RGB restored after Tachyon')
+    }
   }
-  publishFrame({enabled:false,connected,mode:'onboard',tachyon,sessionId})
 }
 async function stop(){
   const previousMode=mode;mode='onboard'
