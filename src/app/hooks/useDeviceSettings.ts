@@ -120,7 +120,9 @@ export function useDeviceSettings({
     try {
       if (hallStream.active || hallStream.starting) await hero68HallStream.stop()
       if (rgbStreamActive) {
-        await hero68DeviceManager.send(liveIdle())
+        if (!hero68DeviceManager.viaService) {
+          await hero68DeviceManager.send(liveIdle()).catch(() => {})
+        }
         setRgbStreamActive(false)
       }
       if (tachyon && rate !== 8000) await setTachyonLighting(false)
@@ -181,8 +183,12 @@ export function useDeviceSettings({
         if (!tachyon) setTachyonPreviousPollingRate(previous)
         await setTachyonLighting(true)
         setTachyon(true)
-        await hero68DeviceManager.send(liveIdle())
-        setRgbStreamActive(false)
+        if (rgbStreamActive) {
+          if (!hero68DeviceManager.viaService) {
+            await hero68DeviceManager.send(liveIdle()).catch(() => {})
+          }
+          setRgbStreamActive(false)
+        }
         if (previous !== 8000) await setDevicePollingRate(8000)
       } else {
         const restoreRate = tachyonPreviousPollingRate ?? 1000

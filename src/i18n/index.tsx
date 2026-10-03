@@ -66,6 +66,8 @@ const VI: Record<string, string> = {
   'Refresh device settings': 'Làm mới cài đặt thiết bị',
   'Reading…': 'Đang đọc…',
   'Connect HERO68 to read device settings.': 'Kết nối HERO68 để đọc cài đặt thiết bị.',
+  'Connect HERO68 before changing Tachyon Mode.': 'Kết nối HERO68 trước khi đổi Chế độ Tachyon.',
+  'Unsupported configuration command': 'Lệnh cấu hình không được hỗ trợ.',
   'Reading settings from HERO68…': 'Đang đọc cài đặt từ HERO68…',
   'Applying and verifying setting…': 'Đang áp dụng và xác minh cài đặt…',
   'A device setting failed. See the device panel for details.': 'Một cài đặt thiết bị đã thất bại. Xem bảng thiết bị để biết chi tiết.',

@@ -716,8 +716,12 @@ function App() {
     try {
       if (deviceConnectionState === 'connected') {
         if (hallStream.active || hallStream.starting) await hero68HallStream.stop()
-        if (rgbStreamActive) await hero68DeviceManager.send(liveIdle())
-        setRgbStreamActive(false)
+        if (rgbStreamActive) {
+          if (!hero68DeviceManager.viaService) {
+            await hero68DeviceManager.send(liveIdle()).catch(() => {})
+          }
+          setRgbStreamActive(false)
+        }
         await hero68DeviceManager.disconnect()
         setLoadedProfileSlot(null)
         setDeviceSettingsState('idle')
@@ -964,7 +968,8 @@ function App() {
         : deviceConnectionState === 'error'
           ? tr('Connection error')
           : tr('Not connected')
-  const deviceFeedback = deviceActionError ?? hero68Device.error
+  const rawFeedback = deviceActionError ?? hero68Device.error
+  const deviceFeedback = (rawFeedback ? tr(rawFeedback) : null)
     ?? (deviceReadState === 'success' ? tr('Profile {slot} loaded from keyboard.', { slot: profileSlot }) : null)
 
   const renderDevicePanel = () => (
