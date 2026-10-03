@@ -1,6 +1,6 @@
 # OpenHero68
 
-An open-source, browser-based configurator for the **AULA HERO68** Hall-effect keyboard, plus an optional **Windows tray service** that keeps custom RGB and Rhythm Sync running after the browser is closed.
+An open-source, browser-based configurator for the **AULA HERO68** Hall-effect keyboard, plus an optional **Windows tray service** that keeps custom RGB, Rhythm Sync and analog Xbox gamepad output running after the browser is closed.
 
 [**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes](https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest)
 ![Openhero68 Main Page](Open-hero68.png)
@@ -33,6 +33,7 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 | Advanced Keys | SOCD, DKS, Mod Tap, Toggle, MPT and END bindings (Main Layer) |
 | Macros | Macro editor with a local library synced to the keyboard |
 | RGB Settings | On-board effects for keys and side light, plus **Custom Effects** and **Rhythm Sync** |
+| Gamepad | Setup & Remap, response curves, per-key travel, Snappy, circle/square, angle adjustment and a live tester with XInput verification |
 | Device settings | Polling rate (125 Hz – 8000 Hz), Tachyon Mode, OS mode, Windows key lock, Hall debounce, auto calibration, switch selector |
 | Interface | English and Vietnamese UI, optional advanced pages (Hall Stream), compact sidebar |
 
@@ -40,6 +41,8 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 
 - **Custom Effects:** an Aurora base with composable effects (Comet, Pressure Wave, Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail, RT Display) and a layer editor.
 - **Rhythm Sync:** seven key modes driven by native system-audio capture, with live preview and a 60 FPS USB scheduler shared with Custom Effects.
+- **Gamepad:** one virtual Xbox controller through ViGEmBus 1.22.0, up to 200 Hz analog output, saved configurations for three HERO68 profiles and tray Start/Stop.
+- **Shared Hall:** one native scheduler polls active source keys only, sharing common samples between Gamepad, RGB, Hall Stream and visual feedback. RGB Hall demand stays 100 Hz; LED output retains its 60 FPS target.
 - **Keeps playing** when the browser is closed; AP, Rapid Trigger and deadzone stay editable while RGB runs.
 - **Try demo:** edit and preview effects locally without the service or a keyboard.
 - No Node.js, Python or administrator rights are needed on the user's PC.
@@ -54,7 +57,7 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 
 Close other keyboard configuration apps (for example the vendor software) while connecting, as only one app can own the HID connection at a time.
 
-For Custom Effects and Rhythm Sync, also install the [tray service](#rgb-tray-service-windows).
+For Custom Effects, Rhythm Sync and Gamepad, also install the [tray service](#rgb-tray-service-windows). Gamepad additionally needs the separately installed official [ViGEmBus 1.22.0 driver](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0); driver installation requires administrator rights. Ordinary keyboard input stays enabled. Enable advanced pages to show Gamepad, bind controls and enable it; release all assigned keys before using the controller.
 
 ### Want to run it from source?
 
@@ -75,7 +78,9 @@ Open the HTTPS URL printed by Vite. WebHID requires a secure context, so Vite cr
 4. Go to **RGB Settings → Custom Effects** or **Rhythm Sync**, pick a preset and click **Apply to keyboard**.
 5. Close the browser if you like — playback continues. Right-click the tray icon for controls.
 
-**Tray menu:** Open web app · Open control panel · Start saved RGB · Stop RGB · Check for updates · Open log folder · Auto-start · Quit.
+**Tray menu:** Open web app · Open control panel · Start saved RGB · Stop RGB · Start saved Gamepad · Stop Gamepad · Check for updates · Open log folder · Auto-start · Quit.
+
+Gamepad starts disabled whenever the service starts. Once enabled, it keeps running when the browser closes. Its independent 50 ms watchdog neutralizes stale input and waits for all assigned keys to rest before rearming.
 
 | | |
 | --- | --- |
@@ -89,6 +94,7 @@ Open the HTTPS URL printed by Vite. WebHID requires a secure context, so Vite cr
 - **Check for updates** in the tray downloads and applies compatible signed core updates automatically.
 - When the native launcher also changes (for example for Rhythm Sync), the tray downloads a checksum-verified ZIP instead. Quit the old app, extract all files over the service folder, then start the new launcher. A core-only update is not enough in that case.
 - Rhythm Sync needs service core 0.3.0, launcher 0.3.0 and API 5 or newer.
+- Gamepad and shared Hall require **core 0.4.0, launcher 0.4.0 and API 6**. Upgrade older installations with the complete Windows ZIP because the native helper also changes.
 - If you are on 0.2.3 or 0.3.0 and see `Unexpected update source`, download the full 0.3.1 (or newer) ZIP manually once. This is caused by the GitHub repository rename.
 - If Auto-start points to an old folder, use **Auto-start: replace old app path** in the new tray menu.
 
@@ -142,6 +148,7 @@ docs/                Reverse-engineering notes, feature docs, release notes
 
 - [Custom RGB and the background service](docs/CUSTOM_RGB.md)
 - [Rhythm Sync](docs/RHYTHM_SYNC.md)
+- [Gamepad and shared Hall](docs/GAMEPAD.md) · [Recorded validation results](docs/GAMEPAD_VALIDATION.md)
 - [Macros UI](docs/MACRO_UI.md) · [Advanced Keys UI](docs/ADVANCED_KEYS_UI.md)
 - [Protocol integration notes](src/protocol/README.md)
 - [All docs, including reverse-engineering notes](docs/README.md)
@@ -151,7 +158,7 @@ docs/                Reverse-engineering notes, feature docs, release notes
 
 The project is under active development.
 
-- **Gamepad output** is unfinished.
+- **Gamepad v1** supports one HERO68 and one Xbox controller on Windows x64. Keyboard suppression, DirectInput and mouse-to-stick are outside v1. Physical unplug/replug and sleep/wake remain unverified; extended testing was canceled at the user's direction.
 - **Rhythm side-light modes** work in the demo only. Live side output stays disabled until the HERO68 LED count, order and protocol are verified; side LEDs keep their on-board effect while key playback runs.
 - **Tachyon Mode** (8000 Hz polling) turns key and side lighting off to minimize latency. Custom Effects, Rhythm Sync and automatic Hall polling are paused while it is on, and your previous lighting is restored when you turn it off.
 - The tray service supports **Windows x64 only**. The web app needs a WebHID browser (Chrome or Edge).

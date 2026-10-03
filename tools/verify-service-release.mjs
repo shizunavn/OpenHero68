@@ -6,7 +6,7 @@ const bundle=await rolldown({input:'service/updatePackage.ts',external:/^node:/}
 const {output}=await bundle.generate({format:'esm',codeSplitting:false})
 await bundle.close()
 const {verifyCore,CORE_VERSION}=await import('data:text/javascript;base64,'+Buffer.from(output[0].code).toString('base64'))
-const folder='service/releases/'
+const folder=(process.argv[2]??'service/releases').replace(/[/\\]$/,'')+'/'
 const manifest=JSON.parse(await readFile(folder+'OpenHero68-RGB-core.json','utf8'))
 const core=await readFile(folder+'OpenHero68-RGB-core.cjs')
 assert.equal(verifyCore(manifest,core),CORE_VERSION)

@@ -29,6 +29,8 @@ export type Hero68PreviewProps = {
   selectedKeys: Set<string>
   highlightedKeys?: ReadonlySet<string>
   onToggleKey: (keyId: string) => void
+  onDropKey?: (keyId:string,event:React.DragEvent<HTMLButtonElement>)=>void
+  onRemoveKey?: (keyId:string)=>void
   keyLabels?: Record<string, string>
   keyDecorations?: Record<string, ReactNode>
   advancedBindings?: AdvancedBinding[]
@@ -49,6 +51,8 @@ export default function Hero68Preview({
   selectedKeys,
   highlightedKeys,
   onToggleKey,
+  onDropKey,
+  onRemoveKey,
   keyLabels,
   keyDecorations,
   advancedBindings = [],
@@ -232,6 +236,9 @@ export default function Hero68Preview({
                           '--stream-travel': `${streamTravelPercent}%`,
                         } as React.CSSProperties}
                         onClick={() => onToggleKey(key.id)}
+                        onDragOver={event=>{if(onDropKey)event.preventDefault()}}
+                        onDrop={event=>onDropKey?.(key.id,event)}
+                        onContextMenu={event=>{if(onRemoveKey){event.preventDefault();onRemoveKey(key.id)}}}
                         onPointerEnter={(event) => showKeyTooltip(key.id, event.currentTarget)}
                         onPointerLeave={hideKeyTooltip}
                         onFocus={(event) => showKeyTooltip(key.id, event.currentTarget, true)}

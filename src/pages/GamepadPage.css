@@ -1,0 +1,316 @@
+.gamepad-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1250px;
+  margin: auto;
+  padding: 8px 16px 24px;
+  color: #dce7ed;
+}
+.gp-heading,
+.gp-tools,
+.gp-tabs,
+.gp-status,
+.gp-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.gp-heading {
+  justify-content: space-between;
+}
+.gp-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.gp-heading small {
+  font-size: 13px;
+  color: #899aa5;
+}
+.gamepad-page button:not(.hero-key) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #282d30;
+  border: 1px solid #454c51;
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: inherit;
+  cursor: pointer;
+}
+.gamepad-page button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.gamepad-page button:focus-visible,
+.gp-curve circle:focus-visible {
+  outline: 2px solid #ffd45a;
+  outline-offset: 3px;
+}
+.gamepad-page button.active,
+.gamepad-page .gp-primary {
+  border-color: #ffcf52;
+}
+.gamepad-page .gp-primary {
+  background: #eac344;
+  color: #15191c;
+  font-weight: 600;
+}
+.gp-tabs {
+  justify-content: center;
+}
+.gp-keyboard {
+  min-width: 0;
+  height: clamp(150px, 25vw, 290px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gp-columns {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.4fr);
+  gap: 16px;
+}
+.gp-card {
+  background: #22272a;
+  border: 1px solid #30383d;
+  border-radius: 10px;
+  padding: 22px;
+  min-width: 0;
+}
+.gp-card h3 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+.gp-card p {
+  line-height: 1.65;
+  font-size: 13px;
+  color: #aebec8;
+}
+.gp-card > label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 20px 0;
+  font-size: 13px;
+}
+.gp-card a {
+  color: #ffd45a;
+}
+.gp-card .gp-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24px 0;
+}
+.gp-switch input {
+  accent-color: #ffd45a;
+  width: 20px;
+  height: 20px;
+}
+.gp-palette {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gp-palette .gp-action {
+  min-width: 47px;
+  height: 45px;
+  padding: 6px;
+  font-weight: 700;
+}
+.gp-action-A {
+  color: #53e884 !important;
+}
+.gp-action-B {
+  color: #ff7070 !important;
+}
+.gp-action-X {
+  color: #69a6ff !important;
+}
+.gp-action-Y {
+  color: #ffd45a !important;
+}
+.gp-binding {
+  margin: 20px 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.gp-binding strong {
+  flex-basis: 100%;
+}
+.gp-binding label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+.gp-binding input {
+  width: 110px;
+  background: #171c20;
+  color: #dce7ed;
+  border: 1px solid #465057;
+  border-radius: 6px;
+  padding: 9px;
+}
+.gp-status {
+  font-size: 12px;
+  color: #a0afb8;
+}
+.gp-status span {
+  padding: 7px 10px;
+  background: #22272a;
+  border-radius: 20px;
+}
+.gp-status .on {
+  color: #77dfac;
+}
+.gp-error {
+  color: #ffa89f;
+  background: #472a29;
+  padding: 12px;
+  border-radius: 7px;
+  line-height: 1.5;
+}
+.gp-curve {
+  width: 100%;
+  max-height: 320px;
+  touch-action: none;
+}
+.gp-curve line {
+  stroke: #4d595f;
+  stroke-width: 1;
+}
+.gp-curve polygon {
+  fill: #eac34433;
+}
+.gp-curve polyline {
+  fill: none;
+  stroke: #ffd45a;
+  stroke-width: 3;
+}
+.gp-curve circle {
+  fill: #ffd45a;
+  cursor: grab;
+}
+.gp-curve text {
+  fill: #aebec8;
+  font-size: 12px;
+}
+.gp-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.gp-card input[type="range"] {
+  accent-color: #ffd45a;
+  width: 100%;
+}
+.gp-test-controls {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.gp-stick {
+  width: 170px;
+  text-align: center;
+  font-size: 12px;
+}
+.gp-stick svg {
+  width: 160px;
+}
+.gp-stick circle {
+  fill: #171c20;
+  stroke: #4d595f;
+}
+.gp-stick line {
+  stroke: #4d595f;
+}
+.gp-stick .gp-dot {
+  fill: #ffd45a;
+  stroke: none;
+}
+.gp-triggers {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.gp-triggers label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gp-triggers meter {
+  width: 140px;
+}
+.gp-test-controls .held {
+  background: #dac03e;
+  color: #15191c;
+}
+.gp-test-controls .gp-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #333c42;
+  border-radius: 6px;
+}
+.gp-demo-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+.gp-consumers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+}
+.gp-samples {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 8px;
+  margin: 15px 0;
+}
+.gp-samples > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px;
+  background: #181e22;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.gp-samples small {
+  color: #9eaeb8;
+}
+.gp-footer {
+  justify-content: space-between;
+}
+.gp-footer span {
+  font-size: 11px;
+  color: #8b9da7;
+}
+@media (max-width: 850px) {
+  .gp-columns {
+    grid-template-columns: 1fr;
+  }
+  .gp-card {
+    padding: 16px;
+  }
+  .gamepad-page {
+    padding: 8px;
+  }
+  .gp-footer span {
+    display: none;
+  }
+}

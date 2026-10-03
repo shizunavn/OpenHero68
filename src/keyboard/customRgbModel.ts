@@ -35,7 +35,17 @@ export const RGB_EFFECT_METADATA: Record<CustomRgbEffect, EffectMetadata> = {
   mixing: { hall: true, semanticColor: true }, trail: { duration: 'Fade duration' }, rt: { duration: 'Fade duration', semanticColor: true },
 }
 export function needsRgbAnalogHall(config?: CustomRgbConfiguration) {
-  return !!config?.layers.some(layer => layer.enabled && RGB_EFFECT_METADATA[layer.effect]?.hall)
+  return rgbHallKeys(config).length>0
+}
+/** Input sources differ from the LEDs affected by a layer. */
+export function rgbHallKeys(config?:CustomRgbConfiguration):string[] {
+  const keys=new Set<string>()
+  for(const layer of config?.layers??[]){
+    if(!layer.enabled||layer.opacity<=0||!layer.keys.length||!RGB_EFFECT_METADATA[layer.effect]?.hall)continue
+    const sources=layer.effect==='pressure-wave'?layer.keys:layer.effect==='mixing'?['ArrowLeft','ArrowDown','ArrowRight']:HERO68_KEY_IDS
+    for(const id of sources)if(HERO68_KEY_IDS.includes(id))keys.add(id)
+  }
+  return [...keys]
 }
 export type CustomRgbLayer = {
   id: string; effect: CustomRgbEffect; enabled: boolean; color: RgbColor
@@ -88,4 +98,3 @@ export function restoreCustomRgb(value: unknown, profile: RgbProfile): CustomRgb
     }]
   }) }
 }
-

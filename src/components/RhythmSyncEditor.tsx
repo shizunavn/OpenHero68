@@ -117,7 +117,7 @@ export default function RhythmSyncEditor({onSetup}:{onSetup:()=>void}) {
     try{
       const fresh=await refreshRgbService()
       if(!fresh||(fresh.apiVersion??0)<5)throw Error(tr('Update the Windows background app to 0.3.0 or later.'))
-      if(hero68HallStream.getSnapshot().active)await hero68HallStream.stop()
+      if(hero68HallStream.getSnapshot().active||hero68HallStream.getSnapshot().starting)await hero68HallStream.stop()
       if(hero68DeviceManager.connected&&!hero68DeviceManager.viaService)await hero68DeviceManager.disconnect()
       if(token!==action.current)return
       const result=await rgbService.rhythmStart(current.current)

@@ -22,7 +22,7 @@ let hallReader,streamAbort,audioTest
 async function openHall(){streamAbort=new AbortController();const response=await fetch(endpoint+'/hall/stream?keys='+encodeURIComponent('Escape,Digit1,Digit2,Digit3,Digit4,Digit5,Digit6,Digit7,Digit8,Digit9'),{signal:streamAbort.signal});hallReader=response.body.getReader();void (async()=>{try{while(!(await hallReader.read()).done){}}catch{}})()}
 async function closeHall(){streamAbort?.abort();await hallReader?.cancel().catch(()=>{});hallReader=undefined}
 try{
-  let ready=false;for(let i=0;i<100;i++){try{const status=await read('/status');assert.equal(status.apiVersion,5);ready=true;break}catch{if(child.exitCode!==null)break;await wait(100)}}
+  let ready=false;for(let i=0;i<100;i++){try{const status=await read('/status');assert.equal(status.apiVersion,6);ready=true;break}catch{if(child.exitCode!==null)break;await wait(100)}}
   assert.ok(ready,'Test service failed to start: '+processError)
   const devices=await read('/audio/devices');assert.ok(Array.isArray(devices.devices))
   const invalid=await post('/rhythm/start',{configuration:{...defaultRhythm(),keyMode:168}});assert.equal(invalid.status,400)

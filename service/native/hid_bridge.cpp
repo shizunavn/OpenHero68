@@ -3,6 +3,8 @@
 #include <setupapi.h>
 #include <hidsdi.h>
 #include <hidpi.h>
+#include <psapi.h>
+#pragma comment(lib,"psapi.lib")
 #include <array>
 #include <vector>
 #include <string>
@@ -17,8 +19,11 @@
 #include <deque>
 #include <sstream>
 #include "rhythm_audio.h"
+#include "gamepad_output.h"
 
 std::mutex outputMutex;
+std::atomic<bool> powerSuspended{false};
+std::atomic<gamepad::Output*> powerGamepad{nullptr};
 void emitLine(const std::string& value) {
     std::lock_guard<std::mutex> guard(outputMutex);
     std::cout << value << std::endl;
@@ -33,6 +38,10 @@ bool heroKeyboard(HANDLE handle) {
     return name.find(L"VID_372E") != std::wstring::npos && name.find(L"PID_103E") != std::wstring::npos;
 }
 LRESULT CALLBACK rawWindow(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if(message==WM_POWERBROADCAST){
+        if(wparam==PBT_APMSUSPEND){powerSuspended=true;if(auto p=powerGamepad.load())p->pause(true);}
+        if(wparam==PBT_APMRESUMEAUTOMATIC||wparam==PBT_APMRESUMESUSPEND)powerSuspended=false;
+    }
     if (message == WM_INPUT) {
         UINT length = 0;
         if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lparam), RID_INPUT, nullptr, &length, sizeof(RAWINPUTHEADER)) == 0 && length >= sizeof(RAWINPUTHEADER)) {
@@ -102,6 +111,7 @@ std::unique_ptr<Device> openDevice() {
     }
     SetupDiDestroyDeviceInfoList(list);
     if (matches != 1) result.reset();
+    else if(result)HidD_FlushQueue(result->h);
     return result;
 }
 bool io(Device& d, std::vector<unsigned char>& buffer, bool write, DWORD timeout, DWORD& count) {
@@ -120,6 +130,13 @@ bool valid(const unsigned char* p, size_t n) {
     unsigned sum = 0; for (size_t i = 0; i < 64 && i < n; ++i) sum += p[i];
     return n >= 64 && p[0] == 9 && p[6] <= 56 && (sum & 255) == 255;
 }
+struct ProcessMetrics {
+    double at=0,cpu=0,rss=0;uint64_t ticks=0;
+    void update(double now){if(now-at<1000)return;FILETIME created,ended,kernel,user;PROCESS_MEMORY_COUNTERS memory{};
+      if(GetProcessTimes(GetCurrentProcess(),&created,&ended,&kernel,&user)){const uint64_t next=(uint64_t(kernel.dwHighDateTime)<<32)+kernel.dwLowDateTime+(uint64_t(user.dwHighDateTime)<<32)+user.dwLowDateTime;if(at)cpu=(next-ticks)/(now-at)/100.;ticks=next;}
+      if(GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory)))rss=memory.WorkingSetSize/1048576.;at=now;
+    }
+};
 // Configuration commands used by OpenHero68, plus volatile RGB and passive Hall.
 // Firmware update, reset and calibration commands remain excluded.
 bool allowed(const std::array<unsigned char,64>& p) {
@@ -147,6 +164,14 @@ int main() {
     std::mutex queueMutex;std::deque<std::string> queue;std::atomic<bool> ended{false};
     std::thread reader([&] { std::string line;while(std::getline(std::cin,line)) { {std::lock_guard<std::mutex> lock(queueMutex);queue.push_back(std::move(line));}SetEvent(ready); }ended=true;SetEvent(ready); });
     rhythm::Capture capture;rhythm::Engine engine;bool rhythmActive=false,rhythmPaused=false,customActive=false;
+    hall::Scheduler hallScheduler;gamepad::Config gamepadConfig;gamepad::Output gamepadOutput;
+    powerGamepad=&gamepadOutput;
+    bool gamepadPaused=false,hallFault=false,ioPaused=false,wasSuspended=false,wasGamepadEnabled=false;
+    auto setGamepadPause=[&]{gamepadOutput.pause(gamepadPaused||rhythmPaused||powerSuspended.load()||hallFault||ioPaused);};
+    std::array<double,hall::Capacity> consumerHz{};std::array<bool,hall::Capacity> hallDirty{};
+    double nextHallPublish=0,nextGamepadPublish=0;
+    ProcessMetrics processMetrics;
+    auto updateHall=[&]{auto hz=consumerHz;if(gamepadOutput.enabled())for(const auto& b:gamepadConfig.bindings)hz[b.pos]=std::max(hz[b.pos],double(gamepad::analog(b.action)?gamepadConfig.rate:100));hallScheduler.configure(hz,rhythm::clockMs());};
     std::vector<rhythm::Report> customBatch;uint64_t submission=0,lastSubmission=0,reusedFrames=0;
     double nextFrame=0,reconnectAt=0,lastFrame=0;uint64_t dropped=0,lastAudioSequence=0;
     auto parseReport=[](const std::string& text,std::array<unsigned char,64>& request) {
@@ -159,20 +184,47 @@ int main() {
         std::vector<unsigned char> output(device->output);std::copy(request.begin(),request.end(),output.begin());DWORD count=0;
         return io(*device,output,true,100,count)&&count==output.size();
     };
+    auto pollSharedHall=[&](double now){
+      auto ids=hallScheduler.batch(now);if(ids.empty())return;
+      hallScheduler.requests++;
+      if(!device)device=openDevice();
+      if(!device){hallScheduler.failed(now);hallFault=true;setGamepadPause();emitLine("hall-error:Device disconnected");return;}
+      std::vector<uint8_t> positions;for(auto id:ids){positions.push_back(uint8_t(id>>8));positions.push_back(uint8_t(id));}
+      auto packet=rhythm::report(0x98,1,1,0,positions);
+      std::vector<unsigned char> output(device->output),input(device->input);std::copy(packet.begin(),packet.end(),output.begin());DWORD count=0;
+      bool okay=io(*device,output,true,20,count)&&count==output.size(),matched=false;
+      const double limit=rhythm::clockMs()+20;
+      while(okay&&rhythm::clockMs()<limit){
+        okay=io(*device,input,false,DWORD(std::max(1.,limit-rhythm::clockMs())),count);
+        if(!okay)break;matched=hall::matchesReply(input.data(),count,ids);if(matched)break;
+      }
+      if(!matched){device.reset();hallScheduler.failed(rhythm::clockMs());hallFault=true;setGamepadPause();emitLine("hall-error:Hall request timed out");return;}
+      const double at=rhythm::clockMs();hallFault=false;setGamepadPause();hallScheduler.success();
+      for(size_t i=0;i<ids.size();i++){size_t o=7+i*6;uint16_t word=uint16_t(input[o+4]*256+input[o+5]);hallScheduler.received(ids[i],uint16_t(input[o+2]*256+input[o+3]),word&0x7fff,!!(word&0x8000),at);hallDirty[ids[i]]=true;gamepadOutput.sample(ids[i],hallScheduler.samples[ids[i]]);}
+    };
     while (!ended) {
       const double now=rhythm::clockMs();
-      if(customActive && !rhythmPaused && now>=nextFrame) {
+      if(wasGamepadEnabled!=gamepadOutput.enabled()){wasGamepadEnabled=gamepadOutput.enabled();updateHall();}
+      if(wasSuspended!=powerSuspended.load()){wasSuspended=powerSuspended.load();for(auto& sample:hallScheduler.samples)sample={};for(auto& due:hallScheduler.due)due=now;setGamepadPause();}
+      if(!rhythmPaused&&!gamepadPaused&&!powerSuspended.load())pollSharedHall(now);
+      if(now>=nextHallPublish&&hallScheduler.active()){
+        std::ostringstream event;event<<std::setprecision(15)<<"hall-snapshot:{\"publishedMs\":"<<rhythm::clockMs()<<",\"requests\":"<<hallScheduler.requests<<",\"timeouts\":"<<hallScheduler.timeouts<<",\"records\":[";bool comma=false;
+        for(size_t pos=0;pos<hall::Capacity;pos++)if(hallDirty[pos]&&hallScheduler.hz[pos]>0){const auto& s=hallScheduler.samples[pos];if(!s.sequence)continue;if(comma)event<<',';comma=true;event<<"{\"pos\":"<<pos<<",\"distanceUnits\":"<<s.distance<<",\"adc\":"<<s.adc<<",\"pressed\":"<<(s.pressed?"true":"false")<<",\"timestampMs\":"<<s.at<<",\"sequence\":"<<s.sequence<<"}";hallDirty[pos]=false;}
+        event<<"]}";if(comma)emitLine(event.str());nextHallPublish=now+10;
+      }
+      if(now>=nextGamepadPublish){emitLine("gamepad-status:"+gamepadOutput.status());processMetrics.update(now);std::ostringstream stats;stats<<"hall-stats:{\"requests\":"<<hallScheduler.requests<<",\"timeouts\":"<<hallScheduler.timeouts<<",\"nativeCpuPercent\":"<<processMetrics.cpu<<",\"nativeRssMB\":"<<processMetrics.rss<<",\"keys\":[";bool comma=false;for(size_t pos=0;pos<hall::Capacity;pos++)if(hallScheduler.hz[pos]){if(comma)stats<<',';comma=true;stats<<"{\"pos\":"<<pos<<",\"requestedHz\":"<<hallScheduler.hz[pos]<<",\"hz\":"<<hallScheduler.measuredHz(pos,now)<<",\"intervalP99Ms\":"<<hallScheduler.lifetimeP99(pos)<<",\"recentIntervalP99Ms\":"<<hallScheduler.p99(pos)<<"}";}stats<<"]}";emitLine(stats.str());nextGamepadPublish=now+250;}
+      if(customActive && !rhythmPaused && !powerSuspended.load() && now>=nextFrame) {
         if(now-nextFrame>=1000./60)dropped+=uint64_t((now-nextFrame)/(1000./60));
         nextFrame+=1000./60;if(nextFrame<=now)nextFrame=now+1000./60;
         if(!customBatch.empty()&&now>=reconnectAt){
           bool okay=true;for(const auto& p:customBatch)if(!writeReport(p)){okay=false;break;}
           if(okay){double completed=rhythm::clockMs();if(submission==lastSubmission)++reusedFrames;lastSubmission=submission;
             std::ostringstream event;event<<"custom-frame:{\"submission\":"<<submission<<",\"packets\":"<<customBatch.size()<<",\"frameMs\":"<<completed-now<<",\"gapMs\":"<<(lastFrame?completed-lastFrame:0)<<",\"droppedFrames\":"<<dropped<<",\"reusedFrames\":"<<reusedFrames<<"}";emitLine(event.str());lastFrame=completed;
-          }else{device.reset();reconnectAt=now+1000;emitLine("custom-error:Device disconnected or RGB write failed");}
+          }else{gamepadOutput.pause(true);hallFault=true;device.reset();hallScheduler.failed(rhythm::clockMs());reconnectAt=now+1000;emitLine("custom-error:Device disconnected or RGB write failed");}
         }
         emitLine("custom-tick:");
       }
-      if(rhythmActive && !rhythmPaused && now>=nextFrame) {
+      if(rhythmActive && !rhythmPaused && !powerSuspended.load() && now>=nextFrame) {
         if(now-nextFrame>=1000./60)dropped+=uint64_t((now-nextFrame)/(1000./60));
         nextFrame+=1000./60;if(nextFrame<=now)nextFrame=now+1000./60;
         if(now>=reconnectAt) {
@@ -192,22 +244,29 @@ int main() {
             event<<",\"captureToWriteMs\":"<<(freshAudio?completed-audio.audio.receivedMs:-1)<<",\"audioTimestampInvalid\":"<<(freshAudio&&sampleLatency<0?"true":"false")<<"}";
             lastAudioSequence=audio.audio.sequence;
             emitLine(event.str());lastFrame=completed;
-          }else{device.reset();reconnectAt=now+1000;emitLine("rhythm-error:Device disconnected or RGB write failed");}
+          }else{gamepadOutput.pause(true);hallFault=true;device.reset();hallScheduler.failed(rhythm::clockMs());reconnectAt=now+1000;emitLine("rhythm-error:Device disconnected or RGB write failed");}
         }
       }
       std::string line;
       {std::lock_guard<std::mutex> lock(queueMutex);if(!queue.empty()){line=std::move(queue.front());queue.pop_front();}}
       if(line.empty()) {
-        if((rhythmActive||customActive)&&!rhythmPaused&&timer){LARGE_INTEGER due{};due.QuadPart=-std::max<LONGLONG>(1,LONGLONG((nextFrame-rhythm::clockMs())*10000));SetWaitableTimer(timer,&due,0,nullptr,nullptr,FALSE);HANDLE handles[]={ready,timer};WaitForMultipleObjects(2,handles,FALSE,1000);}
+        if(timer){double deadline=nextGamepadPublish;if((rhythmActive||customActive)&&!rhythmPaused&&!powerSuspended.load())deadline=std::min(deadline,nextFrame);if(!rhythmPaused&&!gamepadPaused&&!powerSuspended.load())deadline=std::min(deadline,hallScheduler.deadline());LARGE_INTEGER due{};due.QuadPart=-std::max<LONGLONG>(1,LONGLONG((deadline-rhythm::clockMs())*10000));SetWaitableTimer(timer,&due,0,nullptr,nullptr,FALSE);HANDLE handles[]={ready,timer};WaitForMultipleObjects(2,handles,FALSE,1000);}
         else WaitForSingleObject(ready,1000);
         continue;
       }
+      if(line.rfind("hall-config:",0)==0){try{std::array<double,hall::Capacity> hz{};for(auto& p:gamepad::split(line.substr(12),'|')){auto v=gamepad::split(p,',');if(v.size()!=2)throw std::runtime_error("Invalid Hall demand");double pos=gamepad::number(v[0]),rate=gamepad::number(v[1]);if(pos<1||pos>=hall::Capacity||pos!=std::floor(pos)||!hall::heroPosition(unsigned(pos))||rate<1||rate>200)throw std::runtime_error("Invalid Hall rate");hz[size_t(pos)]=std::max(hz[size_t(pos)],rate);}consumerHz=hz;updateHall();emitLine("hall-ready");}catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}continue;}
+      if(line.rfind("gamepad-config:",0)==0){try{auto c=gamepad::parse(line.substr(15));gamepadOutput.configure(c);gamepadConfig=c;updateHall();emitLine("gamepad-configured");}catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}continue;}
+      if(line=="gamepad-start"){if(gamepadOutput.start()){updateHall();emitLine("gamepad-ready");}else emitLine("error:"+gamepadOutput.error());continue;}
+      if(line=="gamepad-stop"){gamepadOutput.stop();updateHall();emitLine("gamepad-stopped");continue;}
+      if(line=="gamepad-status"){emitLine("gamepad-state:"+gamepadOutput.status());continue;}
+      if(line=="gamepad-pause"){gamepadPaused=true;setGamepadPause();emitLine("gamepad-paused");continue;}
+      if(line=="gamepad-resume"){gamepadPaused=false;setGamepadPause();emitLine("gamepad-resumed");continue;}
       if(line=="audio-devices"){emitLine("audio-devices:"+rhythm::audioDevices());continue;}
       if(line=="custom-start"){rhythmActive=false;capture.stop();customActive=true;customBatch.clear();submission=lastSubmission=reusedFrames=dropped=0;lastFrame=0;rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("custom-ready");continue;}
       if(line=="custom-stop"){customActive=false;customBatch.clear();emitLine("custom-stopped");continue;}
       if(line=="rhythm-stop"){rhythmActive=false;rhythmPaused=false;capture.stop();engine.reset();emitLine("rhythm-stopped");continue;}
-      if(line=="rhythm-pause"){rhythmPaused=true;emitLine("rhythm-paused");continue;}
-      if(line=="rhythm-resume"){rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("rhythm-resumed");continue;}
+      if(line=="rhythm-pause"){rhythmPaused=true;setGamepadPause();emitLine("rhythm-paused");continue;}
+      if(line=="rhythm-resume"){rhythmPaused=false;setGamepadPause();nextFrame=rhythm::clockMs();emitLine("rhythm-resumed");continue;}
       if(line.rfind("rhythm:",0)==0) {
         try {
           rhythm::Config c;std::vector<std::string> fields;std::istringstream parts(line.substr(7));std::string part;while(std::getline(parts,part,';'))fields.push_back(part);
@@ -244,7 +303,7 @@ int main() {
             }
             emitLine("waited"); continue;
         }
-        if (line == "close") { device.reset(); reconnectAt=rhythm::clockMs()+1000; emitLine("closed"); continue; }
+        if (line == "close") { hallFault=true;setGamepadPause();device.reset();hallScheduler.failed(rhythm::clockMs());reconnectAt=rhythm::clockMs()+1000; emitLine("closed"); continue; }
         const bool sendOnly=line.rfind("send:",0)==0;
         if(sendOnly)line=line.substr(5);
         std::array<unsigned char,64> request{};
@@ -255,8 +314,9 @@ int main() {
             if (a < 0 || b < 0) parsed = false; else request[i] = static_cast<unsigned char>(a*16+b);
         }
         if (!parsed || !allowed(request) || (sendOnly && !(request[1]==4 && request[2]==23 && request[6]==1 && request[7]<=6))) { emitLine("error:request"); continue; }
+        ioPaused=true;setGamepadPause();
         if (!device) device = openDevice();
-        if (!device) { emitLine("error:disconnected"); continue; }
+        if (!device) { hallFault=true;ioPaused=false;setGamepadPause();hallScheduler.failed(rhythm::clockMs());emitLine("error:disconnected"); continue; }
         std::vector<unsigned char> output(device->output);
         std::copy(request.begin(), request.end(), output.begin());
         DWORD count = 0;
@@ -264,6 +324,7 @@ int main() {
         // Live RGB is fire-and-forget; firmware does not emit a CMD08 ACK.
         // Echo the submitted report after OS write completion to acknowledge IPC.
         if ((request[1] == 8 || sendOnly) && okay) {
+            ioPaused=false;setGamepadPause();
             std::lock_guard<std::mutex> guard(outputMutex);
             for (auto v : request) std::cout << std::hex << std::setw(2) << std::setfill('0') << unsigned(v);
             std::cout << std::endl;
@@ -274,7 +335,8 @@ int main() {
         std::vector<unsigned char> input(device->input);
         bool replied = false;
         while (okay && std::chrono::steady_clock::now() < deadline) {
-            okay = io(*device, input, false, replyTimeout, count);
+            const auto remaining=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-std::chrono::steady_clock::now()).count();
+            okay = io(*device, input, false,DWORD(std::max<int64_t>(1,remaining)), count);
             if (!okay) break;
             if (!valid(input.data(), count) || input[1] != request[1] || input[2] != request[2]) continue;
             if (request[1] == 0x98) {
@@ -286,13 +348,14 @@ int main() {
             }
             replied = true; break;
         }
-        if (!replied) { device.reset(); emitLine("error:timeout"); continue; }
+        if (!replied) { device.reset();hallFault=true;ioPaused=false;setGamepadPause();hallScheduler.failed(rhythm::clockMs());emitLine("error:timeout"); continue; }
+        ioPaused=false;setGamepadPause();
         std::lock_guard<std::mutex> guard(outputMutex);
         for (unsigned i = 0; i < 64; ++i) std::cout << std::hex << std::setw(2) << std::setfill('0') << unsigned(input[i]);
         std::cout << std::endl;
     }
-    capture.stop();reader.join();CloseHandle(ready);
+    powerGamepad=nullptr;gamepadOutput.stop();capture.stop();reader.join();CloseHandle(ready);
     if(scheduling)AvRevertMmThreadCharacteristics(scheduling);
     if (timer) CloseHandle(timer);
-    if (rawWorker) CloseHandle(rawWorker);
+    if (rawWorker) {PostThreadMessageW(GetThreadId(rawWorker),WM_QUIT,0,0);WaitForSingleObject(rawWorker,1000);CloseHandle(rawWorker);}
 }

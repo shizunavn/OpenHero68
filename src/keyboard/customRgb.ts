@@ -43,6 +43,7 @@ export class CustomRgbEngine {
   private releases = new Map<string, number>()
   private transitions = new Map<string, {at:number;pressed:boolean}>()
   private travel: Record<string, number> = {}
+  private hallVersions=new Map<string,{sequence:number;timestampMs:number}>()
   private keyColors = new Map<string, Colors>()
   private analogColors = new Map<string, Colors>()
   private cycleColors = new Map<string, {cycle:number;colors:Colors}>()
@@ -90,15 +91,18 @@ export class CustomRgbEngine {
       if(!this.analogInput)this.strikes.set(id,{mm:3.4,at:this.time,peak:1,hitAt:this.time})
     } else if (!pressed && this.held.delete(id)) { this.releases.set(id, this.time); this.transitions.set(id,{at:this.time,pressed:false}); this.base.event(id, false) }
   }
-  setTravel(values: Record<string, number>) {
+  setTravel(values: Record<string, number>, samples?:Record<string,{sequence:number;timestampMs:number}>) {
     if(!this.analogInput){this.analogInput=true;this.strikes.clear()}
     this.travel = values
     for(const [id,value] of Object.entries(values)) {
       if(!CUSTOM_RGB_COORDINATES[id]||!Number.isFinite(value))continue
+      const sample=samples?.[id],previousSample=this.hallVersions.get(id)
+      if(sample&&previousSample&&sample.sequence<=previousSample.sequence)continue
+      if(sample)this.hallVersions.set(id,sample)
       const mm=clamp(value,0,3.4)
       if(mm<=.08){this.strikes.set(id,{mm:0,at:this.time,peak:0,hitAt:this.time});continue}
       const previous=this.strikes.get(id)??{mm:0,at:this.time-25,peak:0,hitAt:this.time}
-      const delta=mm-previous.mm,dt=clamp(this.time-previous.at,8,80)
+      const delta=mm-previous.mm,dt=sample&&previousSample?clamp(sample.timestampMs-previousSample.timestampMs,1,80):clamp(this.time-previous.at,8,80)
       let peak=previous.peak,hitAt=previous.hitAt
       if(delta>.04){
         // Hall measures position, not force. Velocity is a strike-strength proxy.
@@ -108,12 +112,13 @@ export class CustomRgbEngine {
       this.strikes.set(id,{mm,at:this.time,peak,hitAt})
     }
     for(const id of this.strikes.keys())if(values[id]===undefined)this.strikes.delete(id)
+    for(const id of this.hallVersions.keys())if(values[id]===undefined)this.hallVersions.delete(id)
   }
   private strikeBrightness(id:string) {
     const strike=this.strikes.get(id)
     return strike?strike.peak*(.25+.75*Math.exp(-Math.max(0,this.time-strike.hitAt)/600)):0
   }
-  releaseAll() { for (const id of [...this.held]) this.event(id, false); this.travel = {}; this.strikes.clear() }
+  releaseAll() { for (const id of [...this.held]) this.event(id, false); this.travel = {}; this.strikes.clear();this.hallVersions.clear() }
   private randomColor(colors:Colors, layerId:string, background:RgbColor):RgbColor {
     if (!colors[layerId]) {
       colors[layerId]=pickCustomRgbColor(background,Math.random(),this.previousColors.get(layerId))

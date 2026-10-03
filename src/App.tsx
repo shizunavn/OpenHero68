@@ -75,6 +75,8 @@ import { ActuationPage } from './pages/ActuationPage'
 import { RapidPage } from './pages/RapidPage'
 import { TachyonContext } from './app/TachyonContext'
 import { useDeviceSettings } from './app/hooks/useDeviceSettings'
+import GamepadPage from './pages/GamepadPage'
+import {gamepadService} from './protocol/gamepadService'
 
 const RgbSettingsPage = lazy(() => import('./components/RgbSettingsPage'))
 
@@ -424,6 +426,7 @@ function App() {
     const now = performance.now()
     if (now < profileSwitchAllowedAtRef.current) return
     profileSwitchAllowedAtRef.current = now + 200
+    if(hero68DeviceManager.viaService)await gamepadService.profile(slot).catch(e=>setDeviceActionError(String(e)))
     setProfileDrafts(previous => ({ ...previous, [profileSlot]: currentProfileDraft() }))
     const draft = profileDrafts[slot]
     restoreProfileDraft(draft)
@@ -1307,6 +1310,8 @@ function App() {
               hallStreamActiveSamples={hallStreamActiveSamples}
               hallStreamListKeyIds={hallStreamListKeyIds}
             />
+          ) : activePage === 'gamepad' ? (
+            <GamepadPage key={profileSlot} slot={profileSlot} busy={profileBusy||tachyon} onSetup={()=>{setActiveSettingsPage('background-service');setActiveRail('settings')}}/>
           ) : activePage === 'rgb' ? (
             <RgbPage
               onSetup={() => { setActiveSettingsPage('background-service'); setActiveRail('settings') }}

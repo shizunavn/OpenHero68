@@ -115,6 +115,8 @@ void menu(HWND window) {
     AppendMenuW(popup, MF_STRING, 2, L"Open control panel");
     AppendMenuW(popup, MF_STRING, 3, L"Start saved RGB");
     AppendMenuW(popup, MF_STRING, 4, L"Stop RGB");
+    AppendMenuW(popup, MF_STRING, 9, L"Start saved Gamepad");
+    AppendMenuW(popup, MF_STRING, 10, L"Stop Gamepad");
     AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(popup, MF_STRING, 5, L"Check for updates");
     AppendMenuW(popup, MF_STRING, 6, L"Open log folder");
@@ -132,6 +134,9 @@ void menu(HWND window) {
         if (!command(selected == 3 ? L"/start" : L"/stop")) MessageBoxW(window, L"The RGB command failed. Open the control panel for details; Start requires a saved preset.", L"OpenHero68 RGB", MB_ICONWARNING);
         break;
     case 5: checkUpdates(); break;
+    case 9: case 10:
+        if(!command(selected==9?L"/gamepad/start":L"/gamepad/stop"))MessageBoxW(window,L"Gamepad command failed. Open the control panel for driver and connection details.",L"OpenHero68 Gamepad",MB_ICONWARNING);
+        break;
     case 6: {
         wchar_t local[32768]; DWORD count = GetEnvironmentVariableW(L"LOCALAPPDATA", local, 32768);
         if (count && count < 32768) open((std::wstring(local) + L"\\OpenHero68\\rgb-service").c_str());

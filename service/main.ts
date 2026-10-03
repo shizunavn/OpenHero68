@@ -5,7 +5,10 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync, exi
 import {randomUUID} from 'node:crypto'
 import path from 'node:path'
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
-import { restoreCustomRgb, CUSTOM_RGB_EFFECTS, needsRgbAnalogHall } from '../src/keyboard/customRgb'
+import { restoreCustomRgb, CUSTOM_RGB_EFFECTS, needsRgbAnalogHall, rgbHallKeys } from '../src/keyboard/customRgb'
+import {HallBroker} from './hallBroker'
+import {defaultGamepad,validateGamepad,nativeGamepadCommand,isAnalogAction,type GamepadConfiguration} from '../src/keyboard/gamepad'
+import type {GamepadStatus,SharedHallSample,HallKeyMetric} from '../src/protocol/gamepadService'
 import { defaultRgb, type RgbProfile } from '../src/protocol/hero68/rgb'
 import { buildReport, decodeReport } from '../src/protocol/hero68/codec'
 import { HERO68_KEY_IDS } from '../src/keyboard/hero68Layout'
@@ -85,6 +88,7 @@ const playback=new CustomPlayback(profile)
 let engine=playback.engine, reconnectAt=0
 let lastError:string|null=null, frames=0, packets=0, hallSnapshots=0, timeouts=0, lastFrameAt=0, maxGapMs=0, frameMs=0
 const eventLoopDelay=monitorEventLoopDelay({resolution:5});eventLoopDelay.enable()
+let cpuPrevious=process.cpuUsage(),cpuAt=performance.now(),cpuPercent=0
 const frameGaps:number[]=[]
 let gapsOver100=0,lastLongGapAt:string|null=null
 let sessionId=randomUUID(),frameSequence=0
@@ -128,55 +132,49 @@ function onNativeFrame(value:{colors:string[];packets:number;frameMs:number;gapM
 }
 const frameClients=new Set<ServerResponse>()
 const frameWriters=new WeakMap<ServerResponse,ReturnType<typeof latestSse>>()
-type HallRecord={keyId:string;pos:number;distanceUnits:number;adc:number;pressed:boolean}
-type HallClient={keys:Set<string>;pending:Map<string,HallRecord>;lastSent:number}
+type HallRecord=SharedHallSample
+type HallClient={id:string;keys:Set<string>;pending:Map<string,HallRecord>;lastSent:number}
 const hallClients=new Map<ServerResponse,HallClient>()
 const hallSamples=new Map<string,HallRecord>()
-let nextPriorityAt=0,nextSecondaryAt=0,secondaryIndex=0,hallPolls=0,priorityCount=0,secondaryCount=0
-const priorityHallIntervalMs=10
+const hallBroker=new HallBroker()
+const gamepadClients=new Set<ServerResponse>()
+let hallPolls=0,hallMetrics:{requests:number;timeouts:number;keys:HallKeyMetric[];nativeCpuPercent?:number;nativeRssMB?:number}={requests:0,timeouts:0,keys:[]}
+let gamepadState:Pick<GamepadStatus,'enabled'|'armed'|'stale'|'xinputVerified'|'userIndex'|'neutralCount'|'error'|'report'>={enabled:false,armed:false,stale:true,xinputVerified:false,userIndex:-1,neutralCount:0,error:'',report:{buttons:0,lx:0,ly:0,rx:0,ry:0,lt:0,rt:0}}
+let gamepadSlot=0,gamepadConfigurations:Record<number,GamepadConfiguration>={0:defaultGamepad(),1:defaultGamepad(),2:defaultGamepad()}
+try{const v=JSON.parse(readFileSync(path.join(stateDir,'gamepad.json'),'utf8'));for(const slot of [0,1,2])if(v.profiles?.[slot])gamepadConfigurations[slot]=validateGamepad(v.profiles[slot]);if([0,1,2].includes(v.slot))gamepadSlot=v.slot}catch{}
+function persistGamepad(){const file=path.join(stateDir,'gamepad.json');writeFileSync(file+'.tmp',JSON.stringify({version:1,slot:gamepadSlot,profiles:gamepadConfigurations}));renameSync(file+'.tmp',file)}
+function gamepadStatus():GamepadStatus{return {...gamepadState,backend:'vigem',slot:gamepadSlot,configuration:gamepadConfigurations[gamepadSlot],capabilities:{gamepad:true,keyboardSuppression:false},hall:{...hallMetrics,consumers:hallBroker.consumers.map(s=>({...s,keys:[...s.keys]}))},samples:[...hallSamples.values()].map(s=>({...s,ageMs:performance.now()-(hallReceivedAt.get(s.keyId)??0)}))}}
+const hallReceivedAt=new Map<string,number>()
+function publishGamepad(){const value=`data: ${JSON.stringify(gamepadStatus())}\n\n`;for(const client of gamepadClients){if(client.destroyed||client.writableLength>65536){client.destroy();gamepadClients.delete(client)}else if(!client.writableLength)client.write(value)}}
 function needsAnalogHall(){return !tachyon&&mode==='custom'&&needsRgbAnalogHall(profile?.custom)}
+let lastHallCommand=''
+async function syncHall(){
+  hallBroker.update({id:'rgb',keys:needsAnalogHall()?rgbHallKeys(profile?.custom):[],hz:100})
+  for(const [suffix,analog] of [['analog',true],['digital',false]] as const)hallBroker.update({id:'gamepad:'+suffix,keys:gamepadState.enabled?gamepadConfigurations[gamepadSlot].bindings.filter(b=>isAnalogAction(b.action)===analog).map(b=>b.keyId):[],hz:analog?gamepadConfigurations[gamepadSlot].rate:100})
+  const command=hallBroker.command('gamepad:')
+  if(command!==lastHallCommand){const result=await bridge.line(command);if(result!=='hall-ready')throw Error(result);lastHallCommand=command}
+  for(const key of hallSamples.keys())if(!hallBroker.demands.has(key)){hallSamples.delete(key);hallReceivedAt.delete(key)}
+}
+let hallSyncScheduled=false,hallSyncAgain=false
+function scheduleHallSync(){
+  hallSyncAgain=true;if(hallSyncScheduled||closing)return;hallSyncScheduled=true
+  void exclusive(async()=>{while(hallSyncAgain&&!closing){hallSyncAgain=false;await syncHall()}}).catch(e=>{lastError=String(e);hallSyncAgain=true}).finally(()=>{hallSyncScheduled=false;if(hallSyncAgain&&!closing)setTimeout(scheduleHallSync,100).unref()})
+}
 function publishHall(records:HallRecord[]){
   const now=performance.now()
   for(const [client,subscription] of hallClients){
-    if(client.destroyed||client.writableLength>65536){client.destroy();hallClients.delete(client);continue}
+    if(client.destroyed||client.writableLength>65536){client.destroy();hallClients.delete(client);hallBroker.unsubscribe(subscription.id);scheduleHallSync();continue}
     for(const record of records)if(subscription.keys.has(record.keyId))subscription.pending.set(record.keyId,record)
     if(!subscription.pending.size||now-subscription.lastSent<(subscription.keys.size>10?32:0))continue
     client.write(`data: ${JSON.stringify({records:[...subscription.pending.values()]})}\n\n`)
     subscription.pending.clear();subscription.lastSent=now
   }
 }
-async function pollHall(){
-  if(closing||(!hallClients.size&&!needsAnalogHall()))return
-  if(!connected)await connect()
-  const requested=new Set<string>()
-  for(const subscription of hallClients.values())for(const id of subscription.keys)requested.add(id)
-  const analog=needsAnalogHall()
-  const priority=requested.size>0&&requested.size<=10?[...requested]:[]
-  const secondary=(analog?HERO68_KEY_IDS:[...requested]).filter(id=>!priority.includes(id))
-  priorityCount=priority.length;secondaryCount=secondary.length
-  const now=performance.now()
-  let ids:string[]=[]
-  if(priority.length&&now>=nextPriorityAt){ids=priority;nextPriorityAt=now+priorityHallIntervalMs}
-  else if(secondary.length&&now>=nextSecondaryAt){
-    ids=secondary.slice(secondaryIndex,secondaryIndex+9);secondaryIndex=(secondaryIndex+ids.length)%secondary.length
-    const shortOnBudget=mode!=='onboard'&&(frameMs>4||frameGaps.slice(-16).some(gap=>gap>20))
-    nextSecondaryAt=now+(shortOnBudget?20:priority.length?8:5)
-  }
-  if(!ids.length)return
+const keyByPosition=new Map(Object.entries(HERO68_KEY_POSITIONS).map(([id,pos])=>[pos,id]))
+function onHallSnapshot(value:{publishedMs?:number;requests:number;timeouts:number;records:Omit<HallRecord,'keyId'>[]}){
   const records:HallRecord[]=[]
-  for(let i=0;i<ids.length;i+=9){
-    const batch=ids.slice(i,i+9),positions=batch.map(id=>HERO68_KEY_POSITIONS[id])
-    const reply=await bridge.request(buildReport({command:0x98,zone:1,data:positions.flatMap(p=>[p>>8,p&255])}))
-    if(reply.data.length!==batch.length*6)throw Error('Incomplete Hall snapshot')
-    batch.forEach((keyId,j)=>{
-      const d=reply.data,o=j*6,pos=d[o]*256+d[o+1]
-      if(pos!==positions[j])throw Error('Hall position mismatch')
-      const adcWord=d[o+4]*256+d[o+5]
-      const record={keyId,pos,distanceUnits:d[o+2]*256+d[o+3],adc:adcWord&0x7fff,pressed:!!(adcWord&0x8000)}
-      records.push(record);hallSamples.set(keyId,record)
-    })
-  }
-  hallPolls++;hallSnapshots++;publishHall(records)
+  for(const s of value.records){const keyId=keyByPosition.get(s.pos);if(!keyId||!hallBroker.demands.has(keyId))continue;const record={...s,keyId};hallSamples.set(keyId,record);hallReceivedAt.set(keyId,performance.now()-Math.max(0,(value.publishedMs??s.timestampMs)-s.timestampMs));records.push(record)}
+  hallPolls=value.requests;hallSnapshots+=records.length;publishHall(records)
 }
 let lastPublishedFrame:unknown=null
 function publishFrame(value:unknown){
@@ -199,6 +197,10 @@ class Bridge {
   private gone=false
   constructor(){
     createInterface({input:this.process.stdout}).on('line',line=>{
+      if(line.startsWith('hall-snapshot:')){try{onHallSnapshot(JSON.parse(line.slice(14)))}catch{}return}
+      if(line.startsWith('hall-stats:')){try{const v=JSON.parse(line.slice(11));hallMetrics={...v,keys:v.keys.map((k:HallKeyMetric)=>({...k,keyId:keyByPosition.get(k.pos)??''}))}}catch{}return}
+      if(line.startsWith('hall-error:')){hallSamples.clear();hallReceivedAt.clear();lastError=line.slice(11);timeouts++;return}
+      if(line.startsWith('gamepad-status:')){try{const enabled=gamepadState.enabled;gamepadState=JSON.parse(line.slice(15));if(enabled!==gamepadState.enabled)scheduleHallSync();publishGamepad()}catch{}return}
       if(line==='custom-tick:'){onCustomTick();return}
       if(line.startsWith('custom-frame:')){try{onCustomFrame(JSON.parse(line.slice(13)))}catch{}return}
       if(line.startsWith('custom-error:')){if(mode==='custom'){connected=false;lastError=line.slice(13);timeouts++;publishFrame({enabled:true,connected:false,sessionId})}return}
@@ -219,7 +221,7 @@ class Bridge {
     this.process.stderr.on('data',data=>log(`bridge: ${data}`))
     this.process.on('error',e=>this.fail(e));this.process.on('exit',()=>this.fail(Error('Native HID bridge exited')))
   }
-  private fail(e:Error){this.gone=true;if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(e);this.pending=null}}
+  private fail(e:Error){if(this.gone)return;this.gone=true;gamepadState={...gamepadState,enabled:false,armed:false,stale:true,error:e.message,report:{buttons:0,lx:0,ly:0,rx:0,ry:0,lt:0,rt:0}};hallSamples.clear();hallReceivedAt.clear();publishGamepad();if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(e);this.pending=null}if(!closing)setImmediate(()=>void shutdown(1))}
   async line(value:string){
     if(this.gone)throw Error('Native HID bridge unavailable; restart service')
     if(this.pending)throw Error('Concurrent HID operation')
@@ -312,13 +314,17 @@ async function stop(){
   if(connected){try{await bridge.request(buildReport({command:8,zone:2,data:[0,0,0]}))}catch(e){lastError=String(e)}}
   engine?.releaseAll();outputHeld.clear();pendingInputs.length=0;persist();log('Onboard RGB restored')
   publishFrame({enabled:false,connected:false,sessionId})
+  await syncHall()
 }
 async function tick(){
   if(mode!=='custom'||!profile||!engine||closing)return
   if(!connected){if(performance.now()<reconnectAt)return;await connect()}
   const started=performance.now()
   playback.advance()
-  if(needsAnalogHall())engine!.setTravel(Object.fromEntries([...hallSamples].map(([id,s])=>[id,s.distanceUnits/100])))
+  if(needsAnalogHall()){
+    const ids=new Set(rgbHallKeys(profile?.custom)),samples=[...hallSamples].filter(([id])=>ids.has(id)&&performance.now()-(hallReceivedAt.get(id)??0)<100)
+    engine!.setTravel(Object.fromEntries(samples.map(([id,s])=>[id,s.distanceUnits/100])),Object.fromEntries(samples.map(([id,s])=>[id,{sequence:s.sequence,timestampMs:s.timestampMs}])))
+  }
   const renderedAt=performance.now()
   const frame=frameEncoder.prepare(engine!.frame().keys)
   const encodedAt=performance.now()
@@ -335,24 +341,9 @@ async function loop(){
   if(!closing)timer=setTimeout(loop,250)
 }
 
-let hallTimer:ReturnType<typeof setTimeout>
-async function hallLoop(){
-  try{await exclusive(pollHall)}catch(e){
-    connected=false;lastError=e instanceof Error?e.message:String(e);timeouts++;log(`Hall error: ${lastError}`)
-    for(const client of hallClients.keys())client.end()
-    hallClients.clear();await exclusive(()=>bridge.close()).catch(()=>{})
-  }
-  if(closing)return
-  if(!hallClients.size&&!needsAnalogHall()){hallTimer=setTimeout(hallLoop,50);return}
-  const now=performance.now()
-  const due=Math.min(priorityCount?nextPriorityAt:Infinity,secondaryCount?nextSecondaryAt:Infinity)
-  const delay=Math.max(0,Math.min(5,due-now))
-  if(mode!=='onboard'){hallTimer=setTimeout(hallLoop,Math.max(1,delay));return}
-  if(delay>0.5)await exclusive(()=>bridge.wait(delay)).catch(()=>{})
-  if(!closing)setImmediate(()=>void hallLoop())
-}
+
 function percentile(values:readonly number[],fraction=.95){if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.ceil(sorted.length*fraction)-1]}
-function status(){return {
+function status(){const now=performance.now();if(now-cpuAt>=1000){const next=process.cpuUsage();cpuPercent=((next.user-cpuPrevious.user)+(next.system-cpuPrevious.system))/(now-cpuAt)/10;cpuPrevious=next;cpuAt=now}return {
   service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,
   supportedEffects:CUSTOM_RGB_EFFECTS.map(effect=>effect.id),supportedBaseEffects:['aurora'],
   pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,tachyon,supportsTachyon:true,enabled:mode!=='onboard',connected,
@@ -367,6 +358,7 @@ function status(){return {
   audioState,audioError,audioLevel,audioEndpoint,sampleRate,droppedFrames,
   audioToWriteP95Ms:percentile(audioLatencies),audioTimestampInvalid,
   audioLatencySamples:audioLatencies.length,captureToWriteP95Ms:percentile(captureLatencies)
+  ,supportsGamepad:true,gamepad:gamepadStatus(),sharedHall:true,cpuPercent,rssMB:process.memoryUsage().rss/1048576
 }}
 const {latestCore,downloadFullPackage,stageCoreUpdate}=createServiceUpdater({coreVersion,launcherVersion:LAUNCHER_VERSION,stateDir})
 const panel=`<!doctype html><meta charset="utf-8"><title>Hero68 RGB Service</title><style>body{font:16px system-ui;background:#171a1b;color:#eee;max-width:740px;margin:60px auto;padding:20px}button,input{padding:12px;margin:8px}pre{white-space:pre-wrap}button{cursor:pointer}</style><h1>Hero68 RGB Service</h1><p>Custom RGB continues while the web editor is closed. Import a preset, or use Start service RGB in Open-Hero68.</p><input id="file" type="file" accept=".json"><button onclick="start()">Start saved preset</button><button onclick="post('/mode',{mode:'onboard'})">Use onboard RGB</button><button onclick="checkUpdate()">Check for updates</button><button onclick="post('/shutdown')">Exit service</button><pre id="update"></pre><pre id="status"></pre><script>async function post(url,data={}){try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)alert(result.error);return result}catch(e){alert(e.message)}}async function start(){const f=document.getElementById('file').files[0];if(f){const p=JSON.parse(await f.text());await post('/start',p.profile||p)}else await post('/start')}async function checkUpdate(){try{const r=await fetch('/updates');const v=await r.json();document.getElementById('update').textContent=JSON.stringify(v,null,2);if(v.available&&!v.requiresFullPackage&&confirm('Install signed core update '+v.version+'?'))await post('/updates/apply')}catch(e){document.getElementById('update').textContent=e.message}}setInterval(async()=>{try{document.getElementById('status').textContent=JSON.stringify(await(await fetch('/status')).json(),null,2)}catch{document.getElementById('status').textContent='Service stopped'}},1000)</script>`
@@ -382,6 +374,11 @@ const server=createServer(async(req,res)=>{
   try{
     if(req.method==='GET'&&req.url==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(panel);return}
     if(req.method==='GET'&&req.url==='/status'){json(200,status());return}
+    if(req.method==='GET'&&req.url==='/gamepad/status'){json(200,gamepadStatus());return}
+    if(req.method==='GET'&&req.url==='/gamepad/events'){
+      res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(gamepadStatus())}\n\n`);gamepadClients.add(res)
+      const heartbeat=setInterval(()=>{if(!res.writableLength)res.write(': keepalive\n\n')},15000);heartbeat.unref();req.on('close',()=>{clearInterval(heartbeat);gamepadClients.delete(res)});return
+    }
     if(req.method==='GET'&&req.url==='/audio/devices'){json(200,{devices:await exclusive(()=>bridge.audioDevices())});return}
     if(req.method==='GET'&&req.url==='/updates'){const latest=await latestCore();json(200,{coreVersion,...latest});return}
     if(req.method==='GET'&&req.url==='/frames'){
@@ -397,18 +394,35 @@ const server=createServer(async(req,res)=>{
       if(ids.length<1||ids.length>HERO68_KEY_IDS.length||ids.some(id=>!HERO68_KEY_IDS.includes(id)))throw Error('Expected 1-68 valid Hall keys')
       const keys=new Set(ids)
       res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no'})
-      res.write(': connected\n\n');hallClients.set(res,{keys,pending:new Map(),lastSent:0})
+      const id='web:'+randomUUID()
+      res.write(': connected\n\n');hallClients.set(res,{id,keys,pending:new Map(),lastSent:0});hallBroker.subscribe({id,keys:[...keys],hz:100});scheduleHallSync()
       const initial=[...hallSamples.values()].filter(record=>keys.has(record.keyId))
       if(initial.length)res.write(`data: ${JSON.stringify({records:initial})}\n\n`)
       const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);heartbeat.unref()
-      req.on('close',()=>{clearInterval(heartbeat);hallClients.delete(res)});return
+      req.on('close',()=>{clearInterval(heartbeat);hallClients.delete(res);hallBroker.unsubscribe(id);scheduleHallSync()});return
     }
-    if(req.method!=='POST'||!['/tachyon','/start','/stop','/mode','/preset','/rhythm/start','/rhythm/config','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
+    if(req.method!=='POST'||!['/gamepad/config','/gamepad/profile','/gamepad/start','/gamepad/stop','/tachyon','/start','/stop','/mode','/preset','/rhythm/start','/rhythm/config','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
     if(req.headers['content-type']?.split(';')[0]!=='application/json'){json(415,{error:'Expected application/json'});return}
     let body='',size=0
     for await(const chunk of req){size+=chunk.length;if(size>65536)throw Error('Preset too large');body+=chunk}
     const input=JSON.parse(body||'{}')
     if(updating&&req.url!=='/shutdown')throw Error('Core update in progress')
+    if(req.url?.startsWith('/gamepad/')){
+      const slot=input.slot??gamepadSlot;if(!Number.isInteger(slot)||slot<0||slot>2)throw Error('Expected profile 0-2')
+      const config=input.configuration===undefined?gamepadConfigurations[slot]:validateGamepad(input.configuration)
+      await exclusive(async()=>{
+        if(req.url==='/gamepad/stop'){const r=await bridge.line('gamepad-stop');if(r!=='gamepad-stopped')throw Error(r);const state=await bridge.line('gamepad-status');if(!state.startsWith('gamepad-state:'))throw Error(state);gamepadState=JSON.parse(state.slice(14));await syncHall();return}
+        if(tachyon)throw Error('Turn off Tachyon Mode before starting Hall gamepad output.')
+        if((req.url==='/gamepad/profile'||req.url==='/gamepad/start'||slot===gamepadSlot)){
+          if(req.url==='/gamepad/start'&&!config.bindings.length)throw Error('Add at least one gamepad binding')
+          const r=await bridge.line(nativeGamepadCommand(config));if(r!=='gamepad-configured')throw Error(r)
+          gamepadSlot=slot
+        }
+        gamepadConfigurations[slot]=config;persistGamepad()
+        if(req.url==='/gamepad/start'){if(!connected)await connect();const r=await bridge.line('gamepad-start');if(r!=='gamepad-ready')throw Error(r);gamepadState={...gamepadState,enabled:true,armed:false,stale:true,error:''}}
+        const state=await bridge.line('gamepad-status');if(!state.startsWith('gamepad-state:'))throw Error(state);gamepadState=JSON.parse(state.slice(14));await syncHall()
+      });publishGamepad();json(200,gamepadStatus());return
+    }
     if(req.url==='/updates/tray-check'){
       const release=await latestCore()
       if(!release.available){plain(200,`none|${coreVersion}`);return}
@@ -424,7 +438,7 @@ const server=createServer(async(req,res)=>{
     }
     if(req.url==='/tachyon'){
       if(typeof input.enabled!=='boolean')throw Error('Expected Tachyon enabled boolean')
-      await exclusive(()=>setTachyon(input.enabled));json(200,status());return
+      await exclusive(async()=>{if(input.enabled){await bridge.line('gamepad-stop');gamepadState.enabled=false}await setTachyon(input.enabled);await syncHall()});json(200,status());return
     }
     if(req.url==='/rhythm/start'||req.url==='/rhythm/config'||(req.url==='/start'&&!Object.keys(input).length&&savedMode==='rhythm')){
       await exclusive(async()=>{
@@ -437,6 +451,7 @@ const server=createServer(async(req,res)=>{
         await bridge.configureRhythm(config);rhythmConfig=config;mode='rhythm';savedMode='rhythm'
         if(!editing){engine?.releaseAll();outputHeld.clear();sessionId=randomUUID();frameSequence=0;frames=packets=timeouts=maxGapMs=droppedFrames=audioTimestampInvalid=0;frameGaps.length=audioLatencies.length=captureLatencies.length=0;windowFrames=0;windowStart=performance.now();fps=0;audioState='connecting';audioError=''}
         persistRhythm();persist();publishFrame({enabled:true,connected,mode:'rhythm',sessionId,sequence:frameSequence})
+        await syncHall()
       });json(200,status());return
     }
     if(req.url==='/device/request'||req.url==='/device/batch'){
@@ -445,7 +460,7 @@ const server=createServer(async(req,res)=>{
       if(batch&&requests.some(({reenumerate})=>reenumerate))throw Error('Re-enumeration requires a standalone request')
       const replies=await exclusive(async()=>{
         if(tachyon&&requests.some(({packet})=>isTachyonLightingWrite(packet)))throw Error('Turn off Tachyon Mode before changing RGB lighting.')
-        configurationBusy=true;const resume=mode!=='onboard';if(resume)await bridge.line('rhythm-pause')
+        configurationBusy=true;const resume=mode!=='onboard';await bridge.line('gamepad-pause');if(resume)await bridge.line('rhythm-pause')
         try{
         if(!connected)await connect()
         const replies:string[]=[]
@@ -458,6 +473,7 @@ const server=createServer(async(req,res)=>{
           }
           if(!reply)throw Error('Missing HID reply')
           replies.push(Buffer.from(reply.raw).toString('hex'))
+          if(packet[1]===0x10&&packet[2]===0){gamepadSlot=packet[7];await bridge.line(nativeGamepadCommand(gamepadConfigurations[gamepadSlot]));persistGamepad();await syncHall()}
           if(reenumerate){
             connected=false;await bridge.close()
             const deadline=performance.now()+7000;let recovered=false
@@ -466,7 +482,7 @@ const server=createServer(async(req,res)=>{
           }
         }
         return replies
-        }finally{configurationBusy=false;if(resume)await bridge.line('rhythm-resume')}
+        }finally{configurationBusy=false;if(resume)await bridge.line('rhythm-resume');await bridge.line('gamepad-resume')}
       })
       json(200,batch?{hexes:replies}:{hex:replies[0]});return
     }
@@ -477,14 +493,15 @@ const server=createServer(async(req,res)=>{
       if(req.url==='/preset'&&input.sessionId!==sessionId)throw Error('Stale RGB editor session; preset was not applied')
       if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);if(engine)engine.configure(profile);else engine=playback.start(profile);persist()}
       if(req.url==='/start'||req.url==='/mode'){if(mode==='rhythm')await bridge.stopRhythm();if(!profile)throw Error('Send a preset first');if(mode!=='custom'){engine=playback.start(profile);outputHeld.clear();pendingInputs.length=0}mode='custom';savedMode='custom';customFrames.clear();reusedFrames=windowRendered=renderFps=0;await bridge.startCustom();frameEncoder.reset();sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
+      await syncHall()
     })
     json(200,status())
     if(req.url==='/shutdown')void shutdown()
   }catch(e){json(400,{error:e instanceof Error?e.message:String(e)})}
 })
-async function shutdown(){if(closing)return;closing=true;clearTimeout(timer);clearTimeout(hallTimer);publishFrame({enabled:false,connected:false,shuttingDown:true});await exclusive(stop).catch(e=>log(String(e)));for(const client of frameClients)client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),1000).unref()}
-async function restartForUpdate(){if(closing)return;closing=true;clearTimeout(timer);clearTimeout(hallTimer);publishFrame({enabled:false,connected:false,shuttingDown:true});for(const client of frameClients)client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(73));setTimeout(()=>process.exit(73),1000).unref()}
+async function shutdown(exitCode=0){if(closing)return;closing=true;clearTimeout(timer);publishFrame({enabled:false,connected:false,shuttingDown:true});await exclusive(async()=>{await bridge.line('gamepad-stop');await stop()}).catch(e=>log(String(e)));for(const client of frameClients)client.end();for(const client of gamepadClients)client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(exitCode));setTimeout(()=>process.exit(exitCode),1000).unref()}
+async function restartForUpdate(){if(closing)return;closing=true;clearTimeout(timer);publishFrame({enabled:false,connected:false,shuttingDown:true});for(const client of frameClients)client.end();for(const client of gamepadClients)client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(73));setTimeout(()=>process.exit(73),1000).unref()}
 process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown())
 process.on('uncaughtException',e=>{log(e.stack??e.message);void shutdown()})
 server.on('error',e=>{log(`Server error: ${e.message}`);bridge.end();process.exitCode=1})
-server.listen(port,'127.0.0.1',()=>{log(`Service listening on 127.0.0.1:${port}`);if(mode==='custom')void exclusive(()=>bridge.startCustom()).catch(e=>{lastError=String(e);mode='onboard'});if(mode==='rhythm')void exclusive(()=>bridge.configureRhythm(rhythmConfig)).catch(e=>{lastError=String(e);mode='onboard'});void loop();void hallLoop()})
+server.listen(port,'127.0.0.1',()=>{log(`Service listening on 127.0.0.1:${port}`);void exclusive(async()=>{await bridge.line(nativeGamepadCommand(gamepadConfigurations[gamepadSlot]));if(mode==='custom')await bridge.startCustom();if(mode==='rhythm')await bridge.configureRhythm(rhythmConfig);await syncHall()}).catch(e=>{lastError=String(e);mode='onboard'});void loop()})

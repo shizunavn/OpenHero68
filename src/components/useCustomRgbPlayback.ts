@@ -65,7 +65,7 @@ export function useCustomRgbPlayback(value: RgbProfile, onChange: (value: RgbPro
       if(!fresh)throw Error('Background service is not responding. Run the app and try again.')
       const profile={...current.current,custom:{...restoreCustomRgb(current.current.custom,current.current),enabled:true}}
       if((fresh.apiVersion??0)<3||unsupportedRgbEffects(profile.custom,fresh).length)throw Error('Update the background app to use this preset.')
-      if(hero68HallStream.getSnapshot().active)await hero68HallStream.stop()
+      if(hero68HallStream.getSnapshot().active||hero68HallStream.getSnapshot().starting)await hero68HallStream.stop()
       if(token!==action.current)return false
       if(hero68DeviceManager.connected&&!hero68DeviceManager.viaService)await hero68DeviceManager.disconnect()
       if(token!==action.current)return false

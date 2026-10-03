@@ -5,11 +5,11 @@ import {execFileSync} from 'node:child_process'
 import {createHash} from 'node:crypto'
 import path from 'node:path'
 const root=process.cwd(),distribution=path.resolve(process.argv[2]??'service/dist')
-const release=path.join(root,'service/releases'),temporary=path.join(root,'.refactor')
+const release=path.resolve(process.argv[3]??path.join(root,'service/releases')),temporary=path.join(root,'.refactor')
 await mkdir(release,{recursive:true});await mkdir(temporary,{recursive:true})
 const stage=await mkdtemp(path.join(temporary,'rgb-package-')),folder=path.join(stage,'OpenHero68-RGB')
 await mkdir(folder)
-const files=['Hero68RgbService.exe','hid-bridge.exe','runtime.exe','bootstrap.cjs','service.cjs','NODE-LICENSE.txt','README.txt']
+const files=['Hero68RgbService.exe','hid-bridge.exe','runtime.exe','bootstrap.cjs','service.cjs','NODE-LICENSE.txt','VIGEMCLIENT-LICENSE.txt','README.txt']
 for(const file of files)await copyFile(path.join(distribution,file),path.join(folder,file))
 const archive=path.join(release,'OpenHero68-RGB-Windows-x64.zip'),quote=value=>"'"+value.replaceAll("'","''")+"'"
 await rm(archive,{force:true})
