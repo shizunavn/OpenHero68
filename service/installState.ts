@@ -1,4 +1,4 @@
-import {closeSync,existsSync,fsyncSync,mkdirSync,openSync,readFileSync,renameSync,writeFileSync} from 'node:fs'
+import {closeSync,existsSync,fsyncSync,mkdirSync,openSync,readFileSync,renameSync,rmSync,writeFileSync} from 'node:fs'
 import path from 'node:path'
 import {validVersion} from './updatePackage'
 
@@ -11,7 +11,23 @@ export function writeAtomic(file:string,value:string){
   mkdirSync(path.dirname(file),{recursive:true})
   const tmp=file+'.tmp',fd=openSync(tmp,'w')
   try{writeFileSync(fd,value);fsyncSync(fd)}finally{closeSync(fd)}
-  renameSync(tmp,file)
+  for(let i=0;i<15;i++){
+    try{
+      renameSync(tmp,file)
+      return
+    }catch(error:any){
+      if((error?.code==='EPERM'||error?.code==='EBUSY'||error?.code==='EACCES')&&i<14){
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,25)
+        continue
+      }
+      try{
+        writeFileSync(file,value)
+        rmSync(tmp,{force:true})
+        return
+      }catch{}
+      throw error
+    }
+  }
 }
 export function writeJson(file:string,value:unknown){writeAtomic(file,JSON.stringify(value))}
 export function readJson<T>(file:string):T{return JSON.parse(readFileSync(file,'utf8')) as T}
