@@ -4,10 +4,11 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <winhttp.h>
+#include "install_environment.h"
 #include <atomic>
 #include <string>
 #include <thread>
-#include "version.h"
+#include <version.h>
 
 namespace {
 HANDLE child;
@@ -40,7 +41,7 @@ HttpResult post(const wchar_t* endpoint, int receiveTimeout = 1500) {
     HINTERNET session = WinHttpOpen(L"OpenHero68 RGB/" HERO68_VERSION_W, WINHTTP_ACCESS_TYPE_NO_PROXY, nullptr, nullptr, 0);
     if (!session) return result;
     WinHttpSetTimeouts(session, 500, 500, 1000, receiveTimeout);
-    HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", 16868, 0);
+    HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", servicePort(), 0);
     HINTERNET request = connection ? WinHttpOpenRequest(connection, L"POST", endpoint, nullptr, nullptr, nullptr, 0) : nullptr;
     DWORD status = 0, size = sizeof(status); char body[] = "{}";
     bool ok = request && WinHttpSendRequest(request, L"Content-Type: application/json\r\n", DWORD(-1), body, 2, 2, 0)
@@ -75,7 +76,7 @@ UpdateReply parseUpdateReply(const HttpResult& result) {
     reply.version = wide(result.body.substr(first + 1, second == std::string::npos ? second : second - first - 1));
     if (reply.version.empty()) return {};
     if (reply.kind == "package" && second != std::string::npos) reply.file = wide(result.body.substr(second + 1));
-    reply.valid = ((reply.kind == "none" || reply.kind == "core") && second == std::string::npos)
+    reply.valid = ((reply.kind == "none" || reply.kind == "core" || reply.kind == "started") && second == std::string::npos)
         || (reply.kind == "package" && !reply.file.empty());
     return reply;
 }
@@ -93,6 +94,7 @@ void checkUpdates() {
         if (!exiting) {
             if (!reply.valid) MessageBoxW(nullptr, L"Update check or download failed. Open the service log folder for details.", L"OpenHero68 RGB", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
             else if (reply.kind == "none") MessageBoxW(nullptr, (L"Up to date. Core " + reply.version + L"; launcher " HERO68_VERSION_W L".").c_str(), L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+            else if (reply.kind == "started") notify(L"Updating the app. It will restart automatically; Windows will stay running.");
             else if (reply.kind == "core") MessageBoxW(nullptr, (L"Core update " + reply.version + L" downloaded and verified. The service is restarting to apply it.").c_str(), L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
             else if (reply.kind == "package") {
                 const std::wstring message = L"Windows update " + reply.version + L" downloaded and verified to:\n" + reply.file + L"\n\nQuit the tray app, extract the ZIP over its folder, then restart it. Open the download folder?";
@@ -164,17 +166,21 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wparam, LPARAM lpa
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int) {
-    HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\OpenHero68RgbService");
+    HANDLE mutex = CreateMutexW(nullptr, TRUE, trayMutexName());
     if (!mutex || GetLastError() == ERROR_ALREADY_EXISTS) { if (mutex) { CloseHandle(mutex); open(L"http://127.0.0.1:16868/"); } return 0; }
     wchar_t path[32768]; GetModuleFileNameW(nullptr, path, 32768);
     std::wstring dir(path); dir.resize(dir.find_last_of(L"\\/"));
     launchCommand = L"\"" + std::wstring(path) + L"\"";
-    if (*arguments) launchCommand += L" " + std::wstring(arguments);
+    std::wstring installRoot=dir;
+    for(int i=0;i<2;++i){auto slash=installRoot.find_last_of(L"\\/");if(slash!=std::wstring::npos)installRoot.resize(slash);}
+    if(GetFileAttributesW((installRoot+L"\\installation.json").c_str())!=INVALID_FILE_ATTRIBUTES)
+        launchCommand=L"\""+installRoot+L"\\OpenHero68.exe\"";
+    else if (*arguments) launchCommand += L" " + std::wstring(arguments);
     std::wstring runtime = dir + L"\\runtime.exe";
     std::wstring command = L"\"" + runtime + L"\" \"" + dir + L"\\bootstrap.cjs\" " + arguments;
     HANDLE job = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
     if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) { if (job) CloseHandle(job); CloseHandle(mutex); return 1; }
     STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
     SetEnvironmentVariableW(L"OPENHERO68_LAUNCHER_VERSION", HERO68_VERSION_W);

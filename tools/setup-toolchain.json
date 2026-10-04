@@ -1,0 +1,12 @@
+{
+  "inno": {
+    "version": "6.7.3",
+    "url": "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe",
+    "sha256": "9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732"
+  },
+  "driver": {
+    "version": "1.22.0",
+    "url": "https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe",
+    "sha256": "89220a7865076b342892f98865f3499fb7c4cfd673159e89d352c360fd014c6a"
+  }
+}

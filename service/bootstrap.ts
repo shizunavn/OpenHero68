@@ -4,6 +4,7 @@ import http from 'node:http'
 import path from 'node:path'
 import {CORE_VERSION,CORE_API_VERSION,LAUNCHER_VERSION,validVersion,newer,verifyCore,type CoreManifest} from './updatePackage'
 import {superviseCore} from './coreSupervisor'
+import {installationRoot} from './installState'
 
 const stateIndex=process.argv.indexOf('--state-dir')
 if(stateIndex>=0&&!process.argv[stateIndex+1])throw Error('Missing --state-dir value')
@@ -15,6 +16,7 @@ mkdirSync(coreDir,{recursive:true})
 function verifiedCore(manifest:CoreManifest,filename:string){return verifyCore(manifest,readFileSync(filename))}
 function readManifest(filename:string){return JSON.parse(readFileSync(filename,'utf8')) as CoreManifest}
 function installed(){
+  if(installationRoot(__dirname))return {file:bundled,version:CORE_VERSION}
   if(!existsSync(activeFile))return {file:bundled,version:CORE_VERSION}
   try{
     const record=JSON.parse(readFileSync(activeFile,'utf8')) as {version:string}

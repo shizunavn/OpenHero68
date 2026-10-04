@@ -4,6 +4,7 @@ import { RGB_SERVICE_DOWNLOAD, refreshRgbService, useRgbServiceState } from '../
 import { gamepadService, VIGEMBUS_DOWNLOAD, VIGEMBUS_RELEASE } from '../protocol/gamepadService'
 import { useLocalServiceAccess } from '../protocol/localServiceAccess'
 import { useI18n } from '../i18n'
+import {useServiceUpdate,updateMessage} from '../protocol/serviceUpdates'
 import '../components/RgbSettingsPage.css'
 import './BackgroundServicePage.css'
 
@@ -17,7 +18,7 @@ const VI: Record<string, string> = {
   'Service update needed': 'Cần cập nhật service', 'Windows app': 'Ứng dụng Windows',
   'Required for Custom RGB, Rhythm Sync and Gamepad.': 'Cần cho Custom RGB, Rhythm Sync và Gamepad.',
   'Download Windows app': 'Tải ứng dụng Windows',
-  'Extract the ZIP to a permanent folder.': 'Giải nén ZIP vào một thư mục cố định.',
+  'Run setup and choose Desktop shortcut, Auto-start and optional Gamepad driver.': 'Chạy setup và chọn shortcut Desktop, chạy cùng Windows và driver Gamepad nếu cần.',
   'Run Hero68RgbService.exe; its icon stays in the system tray.': 'Mở Hero68RgbService.exe; biểu tượng sẽ nằm ở khay hệ thống.',
   'Choose Allow if the browser asks to connect to local apps.': 'Chọn Cho phép khi trình duyệt hỏi quyền kết nối ứng dụng trên máy.',
   'Xbox controller driver': 'Driver tay cầm Xbox',
@@ -34,13 +35,13 @@ const VI: Record<string, string> = {
   'Start with Windows': 'Chạy cùng Windows',
   'Enable Auto-start from the service tray menu. Keep the app folder in the same location.': 'Bật Auto-start trong menu khay hệ thống của service. Giữ nguyên vị trí thư mục ứng dụng.',
   'Update the app': 'Cập nhật ứng dụng',
-  'Stop Gamepad, quit the tray app, replace its folder with the new package and run it again.': 'Tắt Gamepad, thoát ứng dụng ở khay hệ thống, thay thư mục bằng gói mới rồi mở lại.',
+  'Press Update once. The app installs the update and restarts itself; Windows stays running.': 'Bấm Cập nhật một lần. App tự cài bản mới và mở lại; Windows không khởi động lại.',
   'Keyboard not detected': 'Không tìm thấy bàn phím',
   'Close other keyboard configuration apps and reconnect HERO68.': 'Đóng ứng dụng cấu hình bàn phím khác và kết nối lại HERO68.',
   'Driver installed but Gamepad unavailable': 'Đã cài driver nhưng chưa dùng được Gamepad',
   'Check again after restarting the service. If Xbox creation still fails, restart Windows.': 'Kiểm tra lại sau khi khởi động lại service. Nếu vẫn lỗi tạo Xbox controller, khởi động lại Windows.',
 }
-type DriverState = 'checking' | 'ready' | 'missing' | 'update' | 'unknown'
+type DriverState = 'checking' | 'ready' | 'missing' | 'update' | 'unknown' | 'error'
 
 export default function BackgroundServicePage({ onOpenCustom, onOpenGamepad }: { onOpenCustom: () => void; onOpenGamepad: () => void }) {
   const { language, tr } = useI18n(), t = (text: string) => language === 'vi' ? VI[text] ?? tr(text) : text
@@ -48,13 +49,14 @@ export default function BackgroundServicePage({ onOpenCustom, onOpenGamepad }: {
   const { permission } = useLocalServiceAccess()
   const [driver, setDriver] = useState<DriverState>('checking')
   const [attempt, setAttempt] = useState(0)
+  const serviceUpdate=useServiceUpdate(status?.supportsFullUpdate===true)
   const online = !!status && !reconnecting, blocked = permission === 'denied'
   useEffect(() => {
     if (!online) { setDriver('unknown'); return }
     let active = true, revision = 0
     setDriver('checking')
     const accept = (value: Awaited<ReturnType<typeof gamepadService.status>>) => {
-      if (active) setDriver(value.capabilities?.gamepad !== true ? 'update' : value.driverAvailable === true ? 'ready' : 'missing')
+      if (active) setDriver(value.capabilities?.gamepad !== true ? 'update' : value.driverAvailable === true ? 'ready' : status?.driverInstalled ? 'error' : 'missing')
     }
     const close = gamepadService.stream(value => { revision++; accept(value) }, () => { revision++; if (active) setDriver('unknown') })
     void gamepadService.status().then(value => { if (!revision) accept(value) }).catch(() => { if (active && !revision) setDriver('unknown') })
@@ -64,7 +66,7 @@ export default function BackgroundServicePage({ onOpenCustom, onOpenGamepad }: {
   const rows = [
     { icon: Cpu, name: t('Windows service'), value: t(blocked ? 'Permission blocked' : checking ? 'Checking' : online ? 'Running' : 'Not running'), ready: online && !blocked },
     { icon: Keyboard, name: 'HERO68', value: t(online && status?.connected ? 'Connected' : 'Not connected'), ready: online && !!status?.connected },
-    { icon: Gamepad2, name: 'ViGEmBus', value: t(driver === 'ready' ? 'Installed' : driver === 'missing' ? 'Not installed' : driver === 'update' ? 'Service update needed' : driver === 'checking' ? 'Checking' : 'Not checked'), ready: online && driver === 'ready' },
+    { icon: Gamepad2, name: 'ViGEmBus', value: t(driver === 'ready' ? 'Installed' : driver === 'error' ? 'Driver installed but Gamepad unavailable' : driver === 'missing' ? 'Not installed' : driver === 'update' ? 'Service update needed' : driver === 'checking' ? 'Checking' : 'Not checked'), ready: online && driver === 'ready' },
   ]
   return <div className="page settings-page background-service-page page-enter">
     <header className="bs-heading"><h1>{tr('Background Service')}</h1><p>{t('Custom RGB, Rhythm Sync and Gamepad keep running when you close the browser.')}</p></header>
@@ -76,20 +78,29 @@ export default function BackgroundServicePage({ onOpenCustom, onOpenGamepad }: {
     <div className="bs-install-grid">
       <section className="bs-install-card">
         <div className="bs-install-heading"><span className="bs-install-icon"><Cpu size={25}/></span><div><h2>{t('Windows app')}</h2><p>{t('Required for Custom RGB, Rhythm Sync and Gamepad.')}</p></div></div>
-        <a className="apply-button bs-download" href={RGB_SERVICE_DOWNLOAD}><ArrowDownToLine size={17}/>{t('Download Windows app')}<span>Windows x64 · ZIP</span></a>
-        <ol className="bs-steps"><li>{t('Extract the ZIP to a permanent folder.')}</li><li>{t('Run Hero68RgbService.exe; its icon stays in the system tray.')}</li><li>{t('Choose Allow if the browser asks to connect to local apps.')}</li></ol>
+        <a className="apply-button bs-download" href={RGB_SERVICE_DOWNLOAD}><ArrowDownToLine size={17}/>{t('Download Windows app')}<span>Windows x64 · EXE</span></a>
+        <ol className="bs-steps"><li>{t('Run setup and choose Desktop shortcut, Auto-start and optional Gamepad driver.')}</li><li>{t('Run Hero68RgbService.exe; its icon stays in the system tray.')}</li><li>{t('Choose Allow if the browser asks to connect to local apps.')}</li></ol>
       </section>
-      <section className="bs-install-card">
+      {driver === 'missing' && <section className="bs-install-card">
         <div className="bs-install-heading"><span className="bs-install-icon"><Gamepad2 size={25}/></span><div><h2>{t('Xbox controller driver')}</h2><p>{t('Only needed for Gamepad. RGB works without this driver.')}</p></div></div>
         <a className="apply-button bs-download" href={VIGEMBUS_DOWNLOAD}><ArrowDownToLine size={17}/>{t('Download ViGEmBus')}<span>v1.22.0 · EXE</span></a>
         <ol className="bs-steps"><li>{t('Open the installer and follow its instructions. Windows may ask for administrator permission.')}</li><li>{t('Restart Windows if requested, reopen the service, then check the connection here.')}</li></ol>
         <a className="bs-official" href={VIGEMBUS_RELEASE} target="_blank" rel="noreferrer">{t('Official release')}<ExternalLink size={12}/></a>
-      </section>
+      </section>}
     </div>
+    <section className="bs-connection" aria-label={t('Update the app')}>
+      <h2>{t('Update the app')}</h2>
+      {status?.supportsFullUpdate || serviceUpdate.busy ? <>
+        <button className="apply-button" disabled={serviceUpdate.busy} onClick={()=>void serviceUpdate.apply()}><RefreshCw size={16}/>{t('Update the app')}</button>
+        <p role="status">{updateMessage(serviceUpdate.update,language==='vi')}</p>
+        {serviceUpdate.update.phase==='downloading'&&<progress max={serviceUpdate.update.total||1} value={serviceUpdate.update.downloaded||0}/>}
+        <p>{t('Press Update once. The app installs the update and restarts itself; Windows stays running.')}</p>
+      </> : <p>{language==='vi'?'Chạy setup một lần để bật cập nhật tự động.':'Run setup once to enable automatic updates.'}</p>}
+    </section>
     <div className="bs-actions"><button className="secondary-button" disabled={!online} onClick={onOpenCustom}>{tr('Open Custom Effects')}<ArrowRight size={15}/></button><button className="secondary-button" disabled={!online || driver !== 'ready'} onClick={onOpenGamepad}>{t('Open Gamepad')}<ArrowRight size={15}/></button>{online && <a className="bs-text-button" href="http://127.0.0.1:16868/" target="_blank" rel="noreferrer">{tr('Service panel')}<ExternalLink size={13}/></a>}</div>
     <details className="bs-help"><summary><CircleHelp size={17}/>{t('Need help?')}<ChevronRight size={16}/></summary><div className="bs-help-grid">{[
       ['Start with Windows', 'Enable Auto-start from the service tray menu. Keep the app folder in the same location.'],
-      ['Update the app', 'Stop Gamepad, quit the tray app, replace its folder with the new package and run it again.'],
+      ['Update the app', 'Press Update once. The app installs the update and restarts itself; Windows stays running.'],
       ['Keyboard not detected', 'Close other keyboard configuration apps and reconnect HERO68.'],
       ['Driver installed but Gamepad unavailable', 'Check again after restarting the service. If Xbox creation still fails, restart Windows.'],
     ].map(([title, text]) => <div key={title}><h3>{t(title)}</h3><p>{t(text)}</p></div>)}</div></details>

@@ -1,0 +1,90 @@
+name: Windows setup
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+      - name: Read pinned toolchain
+        shell: pwsh
+        run: |
+          $releaseVersion = Get-Content service/version.json | ConvertFrom-Json
+          "node=$($releaseVersion.nodeVersion)" >> $env:GITHUB_OUTPUT
+          "version=$($releaseVersion.version)" >> $env:GITHUB_OUTPUT
+        id: toolchain
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ steps.toolchain.outputs.node }}
+          architecture: x64
+          cache: npm
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -ne 'v${{ steps.toolchain.outputs.version }}') { throw 'Tag/version mismatch' }
+          if (!(Test-Path 'docs/releases/v${{ steps.toolchain.outputs.version }}.md')) { throw 'Missing release notes' }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run prepare:setup
+      - run: npm run build:setup
+      - run: npm run test:setup
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-setup
+          path: service/releases/OpenHero68-Setup-Windows-x64.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: setup-test-logs
+          path: .refactor/setup-smoke/**/*.log
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    if: github.repository == 'shizunavn/OpenHero68' && startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-2025
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Read pinned Node version
+        id: toolchain
+        shell: pwsh
+        run: |
+          $releaseVersion = Get-Content service/version.json | ConvertFrom-Json
+          "node=$($releaseVersion.nodeVersion)" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ steps.toolchain.outputs.node }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-setup
+          path: service/releases
+      - run: npm run sign:setup
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+      - run: npm run verify:setup
+      - run: node tools/publish-service-setup.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}

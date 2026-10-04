@@ -33,13 +33,12 @@ Save to profile. Saving RGB in the Onboard editor returns to firmware lighting
 before writing and verifying the changes. Saving AP/RT on other pages keeps
 background playback running.
 
-The executable is a Windows background application, not an installed Windows
-SCM service. It runs in the Windows system tray, without administrator rights
+The executable is a Windows tray application, not a Windows SCM service. It runs in the Windows system tray, without administrator rights
 or driver installation. Its menu opens the editor, control panel, logs and
 latest release page, starts/stops RGB, and exits gracefully. Optional Auto-start
 uses HKCU's Windows Run key and is disabled by default. Extract to a permanent
 folder before enabling it; disable it before moving/removing the folder.
-Keep the whole `service/dist` folder together: the native launcher starts
+For development builds, keep the whole `service/dist` folder together: the native launcher starts
 the bundled Node runtime and existing TypeScript color engine; the native C++
 bridge owns Windows HID. Node/Python need not be installed on the user's PC.
 A Windows job object makes the helper processes end with the launcher.
@@ -151,15 +150,7 @@ No persistent `06`/`04` writes are used for animation.
 The known live protocol addresses main keys only. The 18 side LEDs retain their
 onboard effect; the preview's side frame is not streamed. Rhythm Sync is described
 in [RHYTHM_SYNC.md](RHYTHM_SYNC.md). Gamepad shares the native Hall pipeline;
-Spiral/Noise host FX remain outside this service. The tray Check for updates
-checks GitHub Releases through the local service and shows a window message
-when current, without opening the control panel. Compatible signed core
-updates are applied and restarted automatically. A release requiring a newer
-native launcher downloads a checksum-verified ZIP into the local service
-downloads folder and asks whether to open it; quit the old tray app and
-extract the ZIP over its folder before restarting. The native launcher
-verifies the Ed25519 manifest and SHA-256 hash for core updates and rolls back
-if its health check fails. The private signing key stays outside the repository.
+Spiral/Noise host FX remain outside this service. Installed apps use a one-click full setup update from the tray, control panel or Background Service page. The updater verifies the Ed25519 manifest and SHA-256 before running setup. An independent worker closes the app safely, installs a versioned payload and restarts the app; Windows is never restarted automatically. A failed health check rolls back the application and saved data. Portable users run setup once to migrate. The signing key stays outside the repository.
 
 ## Build and verification
 
@@ -194,6 +185,4 @@ The service timeout starts after granting permission, with a bounded 90-second
 wait for an unanswered prompt. Browsers without the permission API retain the
 ordinary service check. See [Microsoft's LNA guidance](https://learn.microsoft.com/en-us/deployedge/ms-edge-local-network-access).
 
-Core 0.2.3 includes support for the Pages origin. Quit the tray app before
-extracting the complete updated Windows package. A newer bundled core takes
-precedence over an older downloaded core when the updated app starts.
+Installed builds retain support for the Pages origin. Updates install a complete versioned payload; legacy downloaded cores are ignored.

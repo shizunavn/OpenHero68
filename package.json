@@ -10,7 +10,12 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:profile-remap": "node --test tests/profile-remap.test.mjs"
+    "test:profile-remap": "node --test tests/profile-remap.test.mjs",
+    "prepare:setup": "node tools/prepare-setup-tools.mjs",
+    "build:setup": "npm run build:service && node tools/package-service-setup.mjs",
+    "sign:setup": "node tools/sign-service-setup.mjs",
+    "verify:setup": "node tools/verify-service-setup.mjs",
+    "test:setup": "node tools/smoke-service-setup.mjs"
   },
   "dependencies": {
     "lucide-react": "1.47.0",

@@ -4,6 +4,7 @@ import { fetchLocalService, LocalServicePermissionError } from './localServiceAc
 import type { RhythmConfiguration } from '../keyboard/rhythm'
 import { serviceHealth } from './serviceHealth'
 export type RgbServiceStatus={
+  supportsFullUpdate?:boolean;coreVersion?:string;launcherVersion?:string;driverInstalled?:boolean
   tachyon?:boolean;supportsTachyon?:boolean;apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom'|'rhythm';sessionId?:string
   enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number
   customConfiguration?:RgbProfile;customRevision?:number

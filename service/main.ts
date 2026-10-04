@@ -1,5 +1,5 @@
 import { createServer, type ServerResponse } from 'node:http'
-import { spawn } from 'node:child_process'
+import { spawn,spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync, existsSync,unlinkSync,openSync,fsyncSync,closeSync } from 'node:fs'
 import {randomUUID,createHash} from 'node:crypto'
@@ -18,7 +18,9 @@ import { validateDeviceRequest } from './deviceRequests'
 import { decodeHero68Input } from './keyInput'
 import { serviceOrigins, isAllowedServiceRequest } from './origins'
 import {LAUNCHER_VERSION,CORE_VERSION,CORE_API_VERSION} from './updatePackage'
-import {createServiceUpdater} from './updater'
+import {createSetupUpdater} from './setupUpdater'
+import {serviceControlPanel} from './controlPanel'
+import {readUpdateStatus,terminal} from './installState'
 import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SIDE_VERIFIED,type RhythmConfiguration} from './rhythm'
 import {latestSse} from './latestSse'
 import {profileRequest} from './profileSelection'
@@ -37,6 +39,8 @@ const stateDir=option('--state-dir')?path.resolve(option('--state-dir')!):path.j
 const coreVersion=process.env.OPENHERO68_CORE_VERSION??CORE_VERSION
 mkdirSync(stateDir,{recursive:true})
 const log=(message:string)=>appendFileSync(path.join(stateDir,'service.log'),`${new Date().toISOString()} ${message}\n`)
+const driverProbe=spawnSync(path.join(__dirname,'update-host.exe'),['--probe-driver'],{windowsHide:true,stdio:'ignore',timeout:3000})
+const driverInstalled=driverProbe.status===0||driverProbe.status===2
 const origins=serviceOrigins(port)
 for(let i=2;i<process.argv.length;i++)if(process.argv[i]==='--allow-origin'&&process.argv[i+1])origins.add(new URL(process.argv[++i]).origin)
 
@@ -411,7 +415,7 @@ function percentile(values:readonly number[],fraction=.95){if(!values.length)ret
 function status(){const now=performance.now();if(now-cpuAt>=1000){const next=process.cpuUsage();cpuPercent=((next.user-cpuPrevious.user)+(next.system-cpuPrevious.system))/(now-cpuAt)/10;cpuPrevious=next;cpuAt=now}return {
   service:'OpenHero68 RGB',version:2,apiVersion:CORE_API_VERSION,
   supportedEffects:CUSTOM_RGB_EFFECTS.map(effect=>effect.id),supportedBaseEffects:['aurora'],
-  pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,tachyon,supportsTachyon:true,enabled:mode!=='onboard',connected,
+  pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,supportsFullUpdate:setupUpdater.supported,driverInstalled,updateOperation:option('--update-operation'),mode,tachyon,supportsTachyon:true,enabled:mode!=='onboard',connected,
   preset:!!profile||savedMode==='rhythm',savedMode,configurationBusy,pendingRequests,sessionId,
   customConfiguration:profile??undefined,customRevision,
   fps,frameMs,renderMs,encodeMs,writeMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,
@@ -426,8 +430,8 @@ function status(){const now=performance.now();if(now-cpuAt>=1000){const next=pro
   audioLatencySamples:audioLatencies.length,captureToWriteP95Ms:percentile(captureLatencies)
   ,supportsGamepad:true,gamepad:gamepadStatus(),sharedHall:true,cpuPercent,rssMB:process.memoryUsage().rss/1048576
 }}
-const {latestCore,downloadFullPackage,stageCoreUpdate}=createServiceUpdater({coreVersion,launcherVersion:LAUNCHER_VERSION,stateDir})
-const panel=`<!doctype html><meta charset="utf-8"><title>Hero68 RGB Service</title><style>body{font:16px system-ui;background:#171a1b;color:#eee;max-width:740px;margin:60px auto;padding:20px}button,input{padding:12px;margin:8px}pre{white-space:pre-wrap}button{cursor:pointer}</style><h1>Hero68 RGB Service</h1><p>Custom RGB continues while the web editor is closed. Import a preset, or use Start service RGB in Open-Hero68.</p><input id="file" type="file" accept=".json"><button onclick="start()">Start saved preset</button><button onclick="post('/mode',{mode:'onboard'})">Use onboard RGB</button><button onclick="checkUpdate()">Check for updates</button><button onclick="post('/shutdown')">Exit service</button><pre id="update"></pre><pre id="status"></pre><script>async function post(url,data={}){try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)alert(result.error);return result}catch(e){alert(e.message)}}async function start(){const f=document.getElementById('file').files[0];if(f){const p=JSON.parse(await f.text());await post('/start',p.profile||p)}else await post('/start')}async function checkUpdate(){try{const r=await fetch('/updates');const v=await r.json();document.getElementById('update').textContent=JSON.stringify(v,null,2);if(v.available&&!v.requiresFullPackage&&confirm('Install signed core update '+v.version+'?'))await post('/updates/apply')}catch(e){document.getElementById('update').textContent=e.message}}setInterval(async()=>{try{document.getElementById('status').textContent=JSON.stringify(await(await fetch('/status')).json(),null,2)}catch{document.getElementById('status').textContent='Service stopped'}},1000)</script>`
+const setupUpdater=createSetupUpdater({version:coreVersion,stateDir,directory:__dirname})
+const panel=serviceControlPanel
 const server=createServer(async(req,res)=>{
   const origin=req.headers.origin
   res.setHeader('Cache-Control','no-store');res.setHeader('Vary','Origin')
@@ -452,7 +456,7 @@ const server=createServer(async(req,res)=>{
       const heartbeat=setInterval(()=>{if(!res.writableLength)res.write(': keepalive\n\n')},15000);heartbeat.unref();req.on('close',()=>{clearInterval(heartbeat);gamepadClients.delete(res)});return
     }
     if(req.method==='GET'&&req.url==='/audio/devices'){json(200,{devices:await exclusive(()=>bridge.audioDevices())});return}
-    if(req.method==='GET'&&req.url==='/updates'){const latest=await latestCore();json(200,{coreVersion,...latest});return}
+    if(req.method==='GET'&&req.url==='/updates'){json(200,{coreVersion,supportsFullUpdate:setupUpdater.supported,...setupUpdater.status()});return}
     if(req.method==='GET'&&req.url==='/frames'){
       res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no'})
       res.write(': connected\n\n');frameClients.add(res)
@@ -473,12 +477,12 @@ const server=createServer(async(req,res)=>{
       const heartbeat=setInterval(()=>res.write(': keepalive\n\n'),15000);heartbeat.unref()
       req.on('close',()=>{clearInterval(heartbeat);hallClients.delete(res);hallBroker.unsubscribe(id);scheduleHallSync()});return
     }
-    if(req.method!=='POST'||!['/gamepad/config','/gamepad/profile','/gamepad/start','/gamepad/stop','/tachyon','/start','/stop','/mode','/preset','/rhythm/start','/rhythm/config','/shutdown','/updates/apply','/updates/tray-check','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
+    if(req.method!=='POST'||!['/gamepad/config','/gamepad/profile','/gamepad/start','/gamepad/stop','/tachyon','/start','/stop','/mode','/preset','/rhythm/start','/rhythm/config','/shutdown','/updates/apply','/updates/tray-check','/updates/prepare','/device/request','/device/batch'].includes(req.url??'')){json(404,{error:'Unknown endpoint'});return}
     if(req.headers['content-type']?.split(';')[0]!=='application/json'){json(415,{error:'Expected application/json'});return}
     let body='',size=0
     for await(const chunk of req){size+=chunk.length;if(size>65536)throw Error('Preset too large');body+=chunk}
     const input=JSON.parse(body||'{}')
-    if(updating&&req.url!=='/shutdown')throw Error('Core update in progress')
+    if(updating&&!['/shutdown','/updates/apply','/updates/tray-check','/updates/prepare'].includes(req.url??''))throw Error('App update in progress')
     if(req.url?.startsWith('/gamepad/')){
       const slot=input.slot??gamepadSlot;if(!Number.isInteger(slot)||slot<0||slot>2)throw Error('Expected profile 0-2')
       const config=input.configuration===undefined?gamepadConfigurations[slot]:validateGamepad(input.configuration)
@@ -542,18 +546,16 @@ const server=createServer(async(req,res)=>{
         finally{if(active&&resume)await bridge.line('rhythm-resume')}
       });publishGamepad();json(200,gamepadStatus());return
     }
-    if(req.url==='/updates/tray-check'){
-      const release=await latestCore()
-      if(!release.available){plain(200,`none|${coreVersion}`);return}
-      if(release.requiresFullPackage){const file=await downloadFullPackage(release);plain(200,`package|${release.version}|${file}`);return}
-      updating=true
-      try{const version=await stageCoreUpdate(release);plain(200,`core|${version}`);setTimeout(()=>void restartForUpdate(),250).unref();return}
-      catch(e){updating=false;throw e}
+    if(req.url==='/updates/prepare'){
+      const update=readUpdateStatus(stateDir)
+      if(!input.operationId||input.operationId!==update.operationId||terminal(update.phase))throw Error('Invalid update operation')
+      updating=true;await exclusive(async()=>{});json(200,{ready:true});return
     }
-    if(req.url==='/updates/apply'){
-      updating=true
-      try{await exclusive(async()=>{});const version=await stageCoreUpdate();json(200,{staged:true,version});setImmediate(()=>void restartForUpdate());return}
-      catch(e){updating=false;throw e}
+    if(req.url==='/updates/tray-check'||req.url==='/updates/apply'){
+      const update=setupUpdater.start()
+      if(req.url==='/updates/tray-check')plain(200,'started|'+(update.operationId??coreVersion))
+      else json(202,update)
+      return
     }
     if(req.url==='/tachyon'){
       if(typeof input.enabled!=='boolean')throw Error('Expected Tachyon enabled boolean')
@@ -631,7 +633,6 @@ const server=createServer(async(req,res)=>{
   }catch(e){json((e as {status?:number}).status===409?409:400,{error:e instanceof Error?e.message:String(e)})}
 })
 async function shutdown(exitCode=0){if(closing)return;closing=true;clearTimeout(timer);clearTimeout(firmwareRecoveryTimer);publishFrame({enabled:false,connected:false,shuttingDown:true});await exclusive(async()=>{await stopGamepad();await stop()}).catch(e=>log(String(e)));for(const client of frameClients)client.end();for(const client of gamepadClients)client.end();for(const client of gamepadInputClients.keys())client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(exitCode));setTimeout(()=>process.exit(exitCode),1000).unref()}
-async function restartForUpdate(){await shutdown(73)}
 process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown())
 process.on('uncaughtException',e=>{log(e.stack??e.message);void shutdown()})
 server.on('error',e=>{log(`Server error: ${e.message}`);bridge.end();process.exitCode=1})

@@ -2,7 +2,7 @@
 
 An open-source, browser-based configurator for the **AULA HERO68** Hall-effect keyboard, plus an optional **Windows tray service** that keeps custom RGB, Rhythm Sync and analog Xbox gamepad output running after the browser is closed.
 
-[**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes](https://github.com/shizunavn/OpenHero68/releases/latest)
+[**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-Setup-Windows-x64.exe) · [Release notes](https://github.com/shizunavn/OpenHero68/releases/latest)
 ![Openhero68 Main Page](docs/images/Open-hero68.png)
 ![OpenHero68 RGB Settings page](docs/images/RGB-Setting-Page.png)
 
@@ -37,7 +37,7 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 | Device settings | Polling rate (125 Hz – 8000 Hz), Tachyon Mode, OS mode, Windows key lock, Hall debounce, auto calibration, switch selector |
 | Interface | English and Vietnamese UI, optional advanced pages (Hall Stream), compact sidebar |
 
-**RGB tray service** (Windows x64, portable)
+**RGB tray service** (Windows x64, installed)
 
 - **Custom Effects:** an Aurora base with composable effects (Comet, Pressure Wave, Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail, RT Display) and a layer editor. Start/Stop controls with automatic live updates, session recovery and preserved drafts.
 - **Rhythm Sync:** seven key modes driven by native system-audio capture, with live preview and a 60 FPS USB scheduler shared with Custom Effects.
@@ -72,8 +72,8 @@ Open the HTTPS URL printed by Vite. WebHID requires a secure context, so Vite cr
 
 ## RGB tray service (Windows)
 
-1. Download the Windows x64 ZIP from [Releases](https://github.com/shizunavn/OpenHero68/releases/latest) and extract it to a **permanent folder**. Keep all included files together.
-2. Run `Hero68RgbService.exe`. An **H** icon appears in the system tray.
+1. Download and run the Windows x64 setup EXE from [Releases](https://github.com/shizunavn/OpenHero68/releases/latest). Choose Desktop shortcut (on by default) and optional Auto-start (off by default). The optional Gamepad driver task appears only when the driver is not installed.
+2. Open OpenHero68 from Start Menu or the Desktop shortcut. An **H** icon appears in the system tray.
 3. Open the web app and choose **Allow** if the browser asks for access to apps and services on this device.
 4. Go to **RGB Settings → Custom Effects** or **Rhythm Sync**, pick a preset and click **Start Custom** or **Start Rhythm Sync**. Running edits sync automatically; returning to the editor joins existing playback.
 5. Close the browser if you like — playback continues. Right-click the tray icon for controls.
@@ -86,16 +86,16 @@ Gamepad starts disabled whenever the service starts. Once enabled, it keeps runn
 | --- | --- |
 | Control panel | <http://127.0.0.1:16868/> |
 | Presets and logs | `%LOCALAPPDATA%\OpenHero68\rgb-service` |
-| Auto-start | Optional, per Windows account, off by default. Disable it before moving or deleting the folder. |
+| Auto-start | Optional, per Windows account, off by default. Uses the installed stable launcher. |
 | Allowed origins | The deployed web app and `localhost:5173`. For another host, start the service with `--allow-origin https://your-host:port`. |
 
 ### Updating
 
-- **Check for updates** in the tray downloads and applies compatible signed core updates automatically.
-- When the native launcher/helper changes, install the **complete Windows ZIP**: quit the old app, extract all files over its folder, then start the new launcher. A core-only update is insufficient for native changes.
-- The current digital Gamepad AP/Rapid Trigger behavior requires **core 0.4.6, launcher 0.4.6 and API 6**. Install the complete package when upgrading an older service.
-- If an older installation reports `Unexpected update source`, download a current complete ZIP from [Releases](https://github.com/shizunavn/OpenHero68/releases/latest). See the [changelog](CHANGELOG.md) for version-specific migration notes.
-- If Auto-start points to an old folder, use **Auto-start: replace old app path** in the new tray menu.
+Click **Check for updates** in the tray, **Update app** in the control panel, or **Update the app** in Settings > Background Service. One click checks the stable GitHub release, downloads and verifies the signed setup, closes the app safely, installs the full payload and restarts **the app only**. Windows is never restarted automatically. A failed health check restores the previous app and saved data.
+
+Portable users must run setup once to migrate. Settings stay in the same LocalAppData folder; the old portable directory is not deleted. Installed builds use their bundled core and do not activate legacy downloaded cores.
+
+The installer keeps shortcut and Auto-start choices during automatic updates. Gamepad starts disabled after every app restart. RGB/Rhythm retain their saved configuration. Driver installation is optional and may ask for administrator permission; any Windows restart required by the driver is left to the user.
 
 ## Development
 
@@ -143,10 +143,13 @@ Requires Windows with **Visual Studio Build Tools** (C++ desktop workload and Wi
 $env:HERO68_VCVARS = 'C:\path\to\VC\Auxiliary\Build\vcvars64.bat'
 npm ci
 npm run build:service
-node tools/package-rgb-service.mjs
+npm run prepare:setup
+npm run build:setup
 ```
 
-The launcher and HID bridge are compiled with MSVC. The TypeScript RGB engine and the Node runtime are bundled into `service/dist/`. Packaging writes a ZIP and a SHA256 checksum to `service/releases/`. A locally built ZIP does not change the GitHub "latest" download until it is published.
+The launcher and HID bridge are compiled with MSVC. The TypeScript RGB engine and the Node runtime are bundled into `service/dist/`. Packaging writes `OpenHero68-Setup-Windows-x64.exe` to `service/releases/`. `service/version.json` controls the service version, API and pinned toolchain. MSVC is discovered using vswhere; `HERO68_VCVARS` remains an override.
+
+Run `npm run test:setup` for isolated installer/update/rollback smoke tests. See [Setup and release operations](docs/SETUP_UPDATES.md) for release signing and GitHub Actions.
 
 Helper scripts in `tools/` cover verification (`verify-service-package.mjs`, `verify-service-live.mjs`, …), benchmarking, signing and release publishing.
 
@@ -185,7 +188,7 @@ docs/                Reverse-engineering notes, feature docs, release notes
 
 The project is under active development.
 
-- **Gamepad v1** supports one HERO68 and one Xbox controller on Windows x64. Firmware blocking saves exact original remaps before writing zero and recovers them after service restart. Advanced Keys on assigned keys must be removed first. Windows hook fallback affects matching keys on other keyboards, may not block Raw Input, and displays an anti-cheat warning when selected. No suppression method guarantees anti-cheat approval. DirectInput, mouse-to-stick and kernel keyboard filters are outside v1. Physical unplug/replug and sleep/wake remain unverified
+- **Gamepad v1** supports one HERO68 and one Xbox controller on Windows x64. Firmware blocking saves exact original remaps before writing zero and recovers them after service restart. Advanced Keys on assigned keys must be removed first. Windows hook fallback affects matching keys on other keyboards, may not block Raw Input, and displays an anti-cheat warning when selected. No suppression method guarantees anti-cheat approval. DirectInput, mouse-to-stick and kernel keyboard filters are outside v1. Physical unplug/replug and sleep/wake remain unverified; extended testing was canceled at the user's direction.
 - **Rhythm side-light modes** work in the demo only. Live side output stays disabled until the HERO68 LED count, order and protocol are verified; side LEDs keep their on-board effect while key playback runs.
 - **Tachyon Mode** (8000 Hz polling) turns key and side lighting off to minimize latency. Custom Effects, Rhythm Sync and automatic Hall polling are paused while it is on, and your previous lighting is restored when you turn it off.
 - The tray service supports **Windows x64 only**. The web app needs a WebHID browser (Chrome or Edge).
