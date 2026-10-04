@@ -19,10 +19,11 @@ const bounds = [0,1].map(axis => {
   const values = Object.values(CUSTOM_RGB_COORDINATES).map(p=>p[axis])
   return { min: Math.min(...values), max: Math.max(...values) }
 })
+const gradientStops = Object.fromEntries(Object.entries(RGB_GRADIENT_PALETTES).map(([id,palette])=>
+  [id,palette.colors.map(hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16))) ]))
 function gradient(layer: CustomRgbLayer, phase: number): RgbColor {
   if (!layer.multicolor) return layer.color
-  const stops = RGB_GRADIENT_PALETTES[layer.palette ?? (layer.effect==='comet'?'ice':'aurora')].colors
-    .map(hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)))
+  const stops = gradientStops[layer.palette ?? (layer.effect==='comet'?'ice':'aurora')]
   const position = clamp(phase,0,1)*(stops.length-1), index = Math.min(stops.length-2,Math.floor(position)), mix = position-index
   return stops[index].map((v,i)=>v+(stops[index+1][i]-v)*mix) as RgbColor
 }
@@ -57,11 +58,16 @@ export class CustomRgbEngine {
   private strikes = new Map<string, {mm:number;at:number;peak:number;hitAt:number}>()
   constructor(private profile: RgbProfile) {
     this.config = restoreCustomRgb(profile.custom, profile)
-    this.base = new FirmwareRgbPreview({ ...profile, keys: this.config.base })
+    this.base = new FirmwareRgbPreview(this.baseProfile())
+  }
+  private baseProfile(): RgbProfile {
+    // Aurora replaces every main-key pixel. Keep the firmware timeline and side
+    // output, but do not emulate an invisible onboard effect on each 0.5 ms tick.
+    return {...this.profile,keys:this.config.baseEffect?{...this.config.base,mode:20}:this.config.base}
   }
   configure(profile: RgbProfile) {
     this.profile = profile; this.config = restoreCustomRgb(profile.custom, profile)
-    this.base.configure({ ...profile, keys: this.config.base })
+    this.base.configure(this.baseProfile())
     const pressureIds = new Set(this.config.layers.filter(l=>l.enabled&&l.effect==='pressure-wave').map(l=>l.id))
     this.pressureWaves = this.pressureWaves.filter(w=>pressureIds.has(w.layerId))
     for (const key of this.emissions.keys()) if (!pressureIds.has(key.slice(0,key.lastIndexOf(':')))) this.emissions.delete(key)
@@ -172,8 +178,8 @@ export class CustomRgbEngine {
     const cycleTints=new Map<string,RgbColor>()
     for(const layer of this.config.layers){
       if(!layer.enabled||!layer.multicolor||!['scan','breath'].includes(layer.effect))continue
-      const all=Object.values(CUSTOM_RGB_COORDINATES).map(p=>p[layer.direction==='horizontal'?0:1])
-      const period=layer.effect==='breath'?6/layer.speed:2*(Math.max(...all)-Math.min(...all))/layer.speed
+      const {min,max}=bounds[layer.direction==='horizontal'?0:1]
+      const period=layer.effect==='breath'?6/layer.speed:2*(max-min)/layer.speed
       const cycle=Math.floor(this.time/1000/period)
       let entry=this.cycleColors.get(layer.id)
       if(!entry||entry.cycle!==cycle){entry={cycle,colors:{}};this.cycleColors.set(layer.id,entry)}
@@ -222,8 +228,7 @@ export class CustomRgbEngine {
             if(power>strength){strength=power;if(layer.multicolor)tint=randomTint(wave.colors,wave.id)}
           }
         } else if (layer.effect === 'scan') {
-          const all=Object.values(CUSTOM_RGB_COORDINATES).map(p=>p[layer.direction==='horizontal'?0:1])
-          const min=Math.min(...all),length=Math.max(...all)-min
+          const {min,max}=bounds[layer.direction==='horizontal'?0:1],length=max-min
           const phase=(seconds*layer.speed)%(2*length),center=min+(phase<=length?phase:2*length-phase)
           strength = smooth(1 - Math.abs(axis-center)/layer.width)
         } else if (layer.effect === 'breath') strength = (.5-.5*Math.cos(seconds*layer.speed*Math.PI/3))

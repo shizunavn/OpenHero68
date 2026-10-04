@@ -124,6 +124,30 @@ on simultaneous LED traffic. For comparison, an older 40 FPS build's 60-second l
 sequential Hall requests per snapshot, so the UI must not claim an achieved
 100 Hz rate during concurrent playback. This measures telemetry throughput,
 not end-to-end game input latency.
+Native IPC writes run on a separate writer thread. A blocked Node stdout reader
+does not block the USB scheduler. Telemetry uses one latest-value slot per
+channel; Hall snapshots include all subscribed keys so coalescing retains each
+key's latest sample. Command replies retain FIFO order (256 pending replies),
+and raw key edges retain FIFO order in a separate 1024-event queue. A full reply
+queue defers commands while USB deadlines continue; a full key queue waits only
+on the raw-input thread. Native frame/packet/render counters and worst-gap totals
+survive coalescing; `/status.ipc` reports queue sizes and coalesced telemetry.
+Delayed Node rendering can still cause repeated colors; IPC decoupling prevents
+the native output loop from also stopping behind telemetry.
+`node tools/probe-rgb-ipc.mjs <hid-bridge.exe> <report.json> --check` verifies
+native timer cadence during a 350 ms blocked reader and preserves 2000 command
+replies, without opening HID. `node tools/check-native-ipc.mjs` tests queue bounds,
+key-edge order and frame totals; `node tools/probe-rgb-ipc-shutdown.mjs <hid-bridge.exe>`
+checks shutdown while stdout remains unread.
+Aurora bypasses emulation of the replaced onboard main-key effect while keeping
+the firmware clock and side output. Gradient palettes and Scan bounds are reused
+instead of recalculated per key. `/status` separates effect rendering from palette
+encoding and updates `lastLongGapAt` for every output gap over 100 ms. These gaps
+also write throttled diagnostic entries in `service.log`, including render,
+encode, write, reused/dropped frame and Hall timeout counters.
+`node tools/benchmark-custom-rgb.mjs` runs an offline Aurora + Scan + Pressure Wave
+benchmark with idle, single-key spam and full-board spam; it never changes live
+playback and writes `reports/custom-rgb-benchmark.json`.
 Firmware live RGB `08/01`
 is fire-and-forget: IPC acknowledges OS write completion, not a firmware ACK.
 Hall and identity replies still validate checksum, command, zone and positions.

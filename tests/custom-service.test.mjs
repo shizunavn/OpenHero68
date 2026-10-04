@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import {test} from 'node:test'
 import {rolldown} from 'rolldown'
 import {spawn} from 'node:child_process'
-import {mkdtemp,readFile,mkdir} from 'node:fs/promises'
+import {mkdtemp,readFile,writeFile,mkdir} from 'node:fs/promises'
 import path from 'node:path'
 async function load(input){const b=await rolldown({input});try{const {output}=await b.generate({format:'esm',codeSplitting:false});return import('data:text/javascript;base64,'+Buffer.from(output[0].code).toString('base64'))}finally{await b.close()}}
 const {defaultRgb}=await load('src/protocol/hero68/rgb.ts'),{defaultCustomRgb}=await load('src/keyboard/customRgbModel.ts'),{defaultRhythm}=await load('src/keyboard/rhythm.ts')
@@ -24,6 +24,38 @@ test('Custom service revisions, persistence and unchanged onboard restoration us
   assert.equal(active.customRevision,1);assert.equal(active.customConfiguration.custom.base.mode,19)
   for(let i=0;i<3;i++)assert.equal((await readStatus()).sharedHall,true)
   assert.equal((await readStatus()).gamepad.hall.consumers.length,0)
+ })
+ await t.test('intermittent native frame stalls retain their timestamp and log bounded diagnostics',async()=>{
+  const event=gapMs=>'custom-frame:'+JSON.stringify({submission:0,packets:4,frameMs:7,gapMs,droppedFrames:2,reusedFrames:1})
+  await writeFile(path.join(state,'fixture-events.json'),JSON.stringify([event(160),event(180)]))
+  let status
+  for(let i=0;i<30;i++){status=await readStatus();if(status.gapsOver100===2)break;await wait(50)}
+  assert.equal(status.gapsOver100,2);assert.equal(status.maxGapMs,180)
+  assert.ok(Number.isFinite(Date.parse(status.lastLongGapAt)))
+  await wait(50)
+  const log=await readFile(path.join(state,'service.log'),'utf8')
+  assert.match(log,/RGB frame gap 160\.0ms mode=custom .*hallTimeouts=0 eventLoopP99=/)
+  assert.equal(log.match(/RGB frame gap/g).length,1,'repeated stalls must not cause synchronous log spam')
+ })
+ await t.test('coalesced frame telemetry retains native output totals, hidden gaps and IPC statistics',async()=>{
+  const before=await readStatus()
+  const events=[
+   'bridge-stats:'+JSON.stringify({customTicks:73,queuedReplies:0,queuedKeys:0,queuedTelemetry:2,coalescedTelemetry:24}),
+   'custom-frame:'+JSON.stringify({submission:0,packets:4,frameMs:1,gapMs:17,droppedFrames:2,reusedFrames:19,outputFrames:20,outputPackets:80,renderedFrames:1,outputMaxGapMs:180,outputLongGaps:2}),
+   'custom-frame:'+JSON.stringify({submission:0,packets:4,frameMs:1,gapMs:17,droppedFrames:2,reusedFrames:19,outputFrames:20,outputPackets:80,renderedFrames:1,outputMaxGapMs:180,outputLongGaps:2}),
+  ]
+  await writeFile(path.join(state,'fixture-events.json'),JSON.stringify(events))
+  let status
+  for(let i=0;i<30;i++){status=await readStatus();if(status.ipc?.coalescedTelemetry===24&&status.frames===before.frames+20)break;await wait(50)}
+  assert.equal(status.frames,before.frames+20);assert.equal(status.packets,before.packets+80)
+  assert.equal(status.gapsOver100,2);assert.equal(status.maxGapMs,180);assert.equal(status.writeMs,1)
+  assert.equal(status.ipc.coalescedTelemetry,24)
+  // A long gap can disappear from the latest frame while its native total remains.
+  await writeFile(path.join(state,'fixture-events.json'),JSON.stringify([
+   'custom-frame:'+JSON.stringify({submission:0,packets:4,frameMs:1,gapMs:17,droppedFrames:3,reusedFrames:20,outputFrames:21,outputPackets:84,renderedFrames:1,outputMaxGapMs:220,outputLongGaps:3}),
+  ]))
+  for(let i=0;i<30;i++){status=await readStatus();if(status.gapsOver100===3)break;await wait(50)}
+  assert.equal(status.frames,before.frames+21);assert.equal(status.gapsOver100,3);assert.equal(status.maxGapMs,220)
  })
  await t.test('live edits retain session/target and defer disk persistence',async()=>{
   const stored=await readFile(path.join(state,'preset.json'),'utf8')
@@ -49,6 +81,14 @@ test('Custom service revisions, persistence and unchanged onboard restoration us
  })
  await t.test('Rhythm to unchanged onboard and shutdown retain saved Custom draft',async()=>{
   const start=await post('/rhythm/start',{configuration:defaultRhythm()});assert.equal(start.code,200,start.value.error)
+  const before=await readStatus()
+  await writeFile(path.join(state,'fixture-events.json'),JSON.stringify([
+   'rhythm-frame:'+JSON.stringify({colors:Array(68).fill('#123456'),packets:4,frameMs:1,gapMs:17,droppedFrames:0,audioLevel:0,audioState:'stopped',audioError:'',audioEndpoint:'',sampleRate:48000,audioToWriteMs:-1,captureToWriteMs:-1,audioTimestampInvalid:false,renderMs:.2,encodeMs:.3,writeMs:.5,outputFrames:1,outputPackets:4,renderedFrames:0,outputMaxGapMs:150,outputLongGaps:1}),
+  ]))
+  let status
+  for(let i=0;i<30;i++){status=await readStatus();if(status.frames===1)break;await wait(50)}
+  assert.equal(status.frames,1);assert.equal(status.gapsOver100,before.gapsOver100+1)
+  assert.equal(status.maxGapMs,150,'a fresh Rhythm counter must preserve its first coalesced long gap')
   const stop=await post('/mode',{mode:'onboard'});assert.equal(stop.code,200);assert.equal(stop.value.mode,'onboard')
   assert.equal(stop.value.customConfiguration.custom.base.brightness,8)
   const shutdown=await post('/shutdown');assert.equal(shutdown.code,200);await new Promise(r=>service.once('exit',r))

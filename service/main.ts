@@ -25,6 +25,7 @@ import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SID
 import {latestSse} from './latestSse'
 import {profileRequest} from './profileSelection'
 import {CustomPlayback} from './customPlayback'
+import {FrameDelivery,type NativeFrameTotals} from './frameTelemetry'
 import {deferredSave} from './deferredSave'
 import {GamepadFirmware} from './gamepadFirmware'
 import {digitalSettingsCommand} from './gamepadDigital'
@@ -103,6 +104,26 @@ const eventLoopDelay=monitorEventLoopDelay({resolution:5});eventLoopDelay.enable
 let cpuPrevious=process.cpuUsage(),cpuAt=performance.now(),cpuPercent=0
 const frameGaps:number[]=[]
 let gapsOver100=0,lastLongGapAt:string|null=null
+let gapLogAt=-Infinity
+let gapSession='',previousNativeLongGaps=0
+function recordFrameGap(gapMs:number,totals?:NativeFrameTotals){
+  const nativeMax=totals?.outputMaxGapMs,nativeLong=totals?.outputLongGaps
+  if(nativeMax!==undefined&&Number.isFinite(nativeMax)&&nativeMax>=0)maxGapMs=Math.max(maxGapMs,nativeMax)
+  const previousLong=gapsOver100
+  const hasNativeLong=nativeLong!==undefined&&Number.isSafeInteger(nativeLong)&&nativeLong>=0
+  if(gapSession!==sessionId){gapSession=sessionId;previousNativeLongGaps=0}
+  if(hasNativeLong){if(nativeLong<previousNativeLongGaps)previousNativeLongGaps=0;gapsOver100+=nativeLong-previousNativeLongGaps;previousNativeLongGaps=nativeLong}
+  if(gapMs<=0)return
+  maxGapMs=Math.max(maxGapMs,gapMs);frameGaps.push(gapMs);if(frameGaps.length>512)frameGaps.shift()
+  if(gapMs<=100&&gapsOver100===previousLong)return
+  if(!hasNativeLong){gapsOver100++;previousNativeLongGaps++}
+  lastLongGapAt=new Date().toISOString()
+  const now=performance.now()
+  if(now-gapLogAt<10000)return
+  gapLogAt=now
+  const message=`RGB frame gap ${(gapMs>100?gapMs:maxGapMs).toFixed(1)}ms mode=${mode} render=${renderMs.toFixed(1)}ms encode=${encodeMs.toFixed(1)}ms write=${writeMs.toFixed(1)}ms reused=${reusedFrames} dropped=${droppedFrames} hallTimeouts=${timeouts} eventLoopP99=${(eventLoopDelay.percentile(99)/1e6).toFixed(1)}ms ipcCoalesced=${bridgeIpc?.coalescedTelemetry??0}`
+  setImmediate(()=>log(message))
+}
 let sessionId=randomUUID(),frameSequence=0
 let rawInputReady=false, inputTransitions=0
 const outputHeld=new Set<string>(),inputLatencies:number[]=[]
@@ -110,34 +131,38 @@ const pendingInputs:number[]=[]
 let windowStart=performance.now(), windowFrames=0, fps=0
 let customSubmission=0,lastCustomSubmission=0,reusedFrames=0,windowRendered=0,renderFps=0,customJob=false,customTickPending=false
 const customFrames=new Map<number,{keys:Record<string,string>;started:number;renderMs:number;encodeMs:number}>()
+const customDelivery=new FrameDelivery(),rhythmDelivery=new FrameDelivery()
+let bridgeIpc:{customTicks:number;customTickMaxGapMs?:number;queuedReplies:number;queuedKeys:number;queuedTelemetry:number;coalescedTelemetry:number}|undefined
 function onCustomTick(){
   if(mode!=='custom'||closing)return
   if(customJob){customTickPending=true;return}
   customJob=true
   void exclusive(tick).catch(e=>{connected=false;lastError=String(e);reconnectAt=performance.now()+1000;publishFrame({enabled:mode!=='onboard',connected:false,sessionId})}).finally(()=>{customJob=false;if(customTickPending){customTickPending=false;onCustomTick()}})
 }
-function onCustomFrame(value:{submission:number;packets:number;frameMs:number;gapMs:number;droppedFrames:number;reusedFrames:number}){
+function onCustomFrame(value:NativeFrameTotals&{submission:number;frameMs:number;gapMs:number;droppedFrames:number;reusedFrames:number}){
   if(mode!=='custom')return
   const frame=customFrames.get(value.submission),now=performance.now()
   audioState='stopped';audioError='';audioLevel=0
-  connected=true;lastError=null;frames++;windowFrames++;packets+=value.packets;frameMs=value.frameMs;droppedFrames=value.droppedFrames;reusedFrames=value.reusedFrames
-  if(value.submission!==lastCustomSubmission){windowRendered++;lastCustomSubmission=value.submission}
-  if(frame){renderMs=frame.renderMs;encodeMs=frame.encodeMs;writeMs=value.frameMs}
-  if(value.gapMs>0){maxGapMs=Math.max(maxGapMs,value.gapMs);frameGaps.push(value.gapMs);if(frameGaps.length>512)frameGaps.shift();if(value.gapMs>100)gapsOver100++}
+  const delta=customDelivery.observe(value,value.submission!==lastCustomSubmission)
+  connected=true;lastError=null;frames+=delta.frames;windowFrames+=delta.frames;packets+=delta.packets;frameMs=value.frameMs;droppedFrames=value.droppedFrames;reusedFrames=value.reusedFrames
+  windowRendered+=delta.rendered;lastCustomSubmission=value.submission
+  writeMs=value.frameMs;if(frame){renderMs=frame.renderMs;encodeMs=frame.encodeMs}
+  recordFrameGap(value.gapMs,value)
   if(frame){while(pendingInputs.length&&pendingInputs[0]<=frame.started){inputLatencies.push(now-pendingInputs.shift()!);if(inputLatencies.length>256)inputLatencies.shift()}if(frameClients.size)publishFrame({enabled:true,connected:true,mode:'custom',keys:frame.keys,sequence:++frameSequence,sessionId})}
   if(!frameClients.size)frameSequence++
 }
 let audioState='stopped',audioError='',audioLevel=0,audioEndpoint='',sampleRate=0,droppedFrames=0,audioTimestampInvalid=0,renderMs=0,encodeMs=0,writeMs=0
 const audioLatencies:number[]=[],captureLatencies:number[]=[]
-function onNativeFrame(value:{colors:string[];packets:number;frameMs:number;gapMs:number;droppedFrames:number;audioLevel:number;audioState:string;audioError:string;audioEndpoint:string;sampleRate:number;audioToWriteMs:number;captureToWriteMs:number;audioTimestampInvalid:boolean;renderMs:number;encodeMs:number;writeMs:number}){
+function onNativeFrame(value:NativeFrameTotals&{colors:string[];frameMs:number;gapMs:number;droppedFrames:number;audioLevel:number;audioState:string;audioError:string;audioEndpoint:string;sampleRate:number;audioToWriteMs:number;captureToWriteMs:number;audioTimestampInvalid:boolean;renderMs:number;encodeMs:number;writeMs:number}){
   if(mode!=='rhythm'||value.colors?.length!==68)return
-  connected=true;lastError=null;frames++;windowFrames++;packets+=value.packets;frameMs=value.frameMs;droppedFrames=value.droppedFrames
+  const delta=rhythmDelivery.observe(value)
+  connected=true;lastError=null;frames+=delta.frames;windowFrames+=delta.frames;packets+=delta.packets;frameMs=value.frameMs;droppedFrames=value.droppedFrames
   audioState=value.audioState;audioError=value.audioError;audioLevel=value.audioLevel;audioEndpoint=value.audioEndpoint;sampleRate=value.sampleRate
-  if(value.gapMs>0){maxGapMs=Math.max(maxGapMs,value.gapMs);frameGaps.push(value.gapMs);if(frameGaps.length>512)frameGaps.shift();if(value.gapMs>100)gapsOver100++}
   if(value.audioToWriteMs>=0){audioLatencies.push(value.audioToWriteMs);if(audioLatencies.length>512)audioLatencies.shift()}
   if(value.captureToWriteMs>=0){captureLatencies.push(value.captureToWriteMs);if(captureLatencies.length>512)captureLatencies.shift()}
   if(value.audioTimestampInvalid)audioTimestampInvalid++
   renderMs=value.renderMs;encodeMs=value.encodeMs;writeMs=value.writeMs
+  recordFrameGap(value.gapMs,value)
   const now=performance.now();if(now-windowStart>=1000){fps=windowFrames*1000/(now-windowStart);windowFrames=0;windowStart=now}
   if(frameClients.size)publishFrame({enabled:true,connected:true,mode:'rhythm',keys:Object.fromEntries(HERO68_KEY_IDS.map((id,i)=>[id,value.colors[i]])),audioLevel,sequence:++frameSequence,sessionId,sideOutput:false})
   else frameSequence++
@@ -237,6 +262,7 @@ class Bridge {
       if(line.startsWith('gamepad-input:')){try{publishGamepadInput(JSON.parse(line.slice(14)))}catch{}return}
       if(line.startsWith('hall-snapshot:')){try{onHallSnapshot(JSON.parse(line.slice(14)))}catch{}return}
       if(line.startsWith('hall-stats:')){try{const v=JSON.parse(line.slice(11));hallMetrics={...v,keys:v.keys.map((k:HallKeyMetric)=>({...k,keyId:keyByPosition.get(k.pos)??''}))}}catch{}return}
+      if(line.startsWith('bridge-stats:')){try{bridgeIpc=JSON.parse(line.slice(13))}catch{}return}
       if(line==='power:suspend'||line==='power:resume'){if(firmware.active||firmware.pendingRecovery)scheduleFirmwareRecovery();return}
       if(line.startsWith('hall-error:')){hallSamples.clear();hallReceivedAt.clear();lastError=line.slice(11);timeouts++;if(firmware.active)scheduleFirmwareRecovery();return}
       if(line.startsWith('gamepad-status:')){try{const enabled=gamepadState.enabled;gamepadState=JSON.parse(line.slice(15));if(enabled!==gamepadState.enabled)scheduleHallSync();publishGamepad()}catch{}return}
@@ -279,11 +305,11 @@ class Bridge {
     if(!reply.checksumValid||reply.command!==packet[1]||reply.zone!==packet[2])throw Error('Unexpected HID response')
     packets++;return reply
   }
-  async startCustom(){const result=await this.line('custom-start');if(result!=='custom-ready')throw Error('Native custom scheduler did not start')}
+  async startCustom(){const result=await this.line('custom-start');if(result!=='custom-ready')throw Error('Native custom scheduler did not start');customDelivery.reset()}
   async stopCustom(){const result=await this.line('custom-stop');if(result!=='custom-stopped')throw Error('Native custom scheduler did not stop')}
   async queueFrame(id:number,values:Uint8Array[]){const result=await this.line('frame:'+id+':'+values.map(p=>Buffer.from(p).toString('hex')).join(','));if(result!=='frame-queued')throw Error(result.startsWith('error:')?result.slice(6):'Invalid frame queue acknowledgement')}
   async batch(values:Uint8Array[]){const result=await this.line('batch:'+values.map(p=>Buffer.from(p).toString('hex')).join(','));if(result!=='batch-written')throw Error(result.startsWith('error:')?result.slice(6):'Invalid RGB batch acknowledgement');packets+=values.length}
-  async configureRhythm(value:RhythmConfiguration){const result=await this.line(nativeRhythmCommand(value));if(result!=='rhythm-ready')throw Error(result.startsWith('error:')?result.slice(6):'Native rhythm did not start')}
+  async configureRhythm(value:RhythmConfiguration){const result=await this.line(nativeRhythmCommand(value));if(result!=='rhythm-ready')throw Error(result.startsWith('error:')?result.slice(6):'Native rhythm did not start');if(mode!=='rhythm')rhythmDelivery.reset()}
   async stopRhythm(){const result=await this.line('rhythm-stop');if(result!=='rhythm-stopped')throw Error('Native rhythm did not stop')}
   async audioDevices(){const result=await this.line('audio-devices');if(!result.startsWith('audio-devices:'))throw Error('Audio enumeration failed');return JSON.parse(result.slice(14))}
   async close(){await this.line('close')}
@@ -394,8 +420,9 @@ async function tick(){
     const ids=new Set(rgbHallKeys(profile?.custom)),samples=[...hallSamples].filter(([id])=>ids.has(id)&&performance.now()-(hallReceivedAt.get(id)??0)<100)
     engine!.setTravel(Object.fromEntries(samples.map(([id,s])=>[id,s.distanceUnits/100])),Object.fromEntries(samples.map(([id,s])=>[id,{sequence:s.sequence,timestampMs:s.timestampMs}])))
   }
+  const keys=engine!.frame().keys
   const renderedAt=performance.now()
-  const frame=frameEncoder.prepare(engine!.frame().keys)
+  const frame=frameEncoder.prepare(keys)
   const encodedAt=performance.now()
   const submission=++customSubmission
   customFrames.set(submission,{keys:frame.keys,started,renderMs:renderedAt-started,encodeMs:encodedAt-renderedAt})
@@ -418,7 +445,7 @@ function status(){const now=performance.now();if(now-cpuAt>=1000){const next=pro
   pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,supportsFullUpdate:setupUpdater.supported,driverInstalled,updateOperation:option('--update-operation'),mode,tachyon,supportsTachyon:true,enabled:mode!=='onboard',connected,
   preset:!!profile||savedMode==='rhythm',savedMode,configurationBusy,pendingRequests,sessionId,
   customConfiguration:profile??undefined,customRevision,
-  fps,frameMs,renderMs,encodeMs,writeMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,
+  fps,frameMs,renderMs,encodeMs,writeMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,ipc:bridgeIpc,
   frameGapP95Ms:percentile(frameGaps),frameGapP99Ms:percentile(frameGaps,.99),gapsOver100,lastLongGapAt,
   eventLoopDelayP99Ms:eventLoopDelay.percentile(99)/1e6,eventLoopDelayMaxMs:eventLoopDelay.max/1e6,
   lastError,rawInputReady,inputTransitions,inputToLedP95Ms:percentile(inputLatencies),targetFps:60,

@@ -37,6 +37,41 @@ test('Aurora base restores, dims monotonically to off and keeps FX independent o
   const malformed=structuredClone(p.custom);malformed.baseEffect.palette='bad';malformed.baseEffect.width=Infinity
   assert.equal(custom.restoreCustomRgb(malformed,p).baseEffect.palette,'aurora');assert.equal(custom.restoreCustomRgb(malformed,p).baseEffect.width,2.5)
 })
+
+test('Aurora skips the hidden firmware key effect, retains side output and can return to an onboard base',()=>{
+  const p=profile();p.custom.layers=[];p.custom.base.mode=10;p.side.mode=2
+  p.custom.baseEffect={effect:'aurora',palette:'aurora',width:2.5,speed:.5};p.custom.base.mix=true
+  const e=new custom.CustomRgbEngine(p),side=new FirmwareRgbPreview({...p,keys:{...p.custom.base,mode:20}})
+  let keyTicks=0
+  const call=e.base.cpu.call.bind(e.base.cpu)
+  e.base.cpu.call=(address,...args)=>{if(address===0x080208b8)keyTicks++;return call(address,...args)}
+  e.advance(1000);side.advance(1000)
+  assert.equal(keyTicks,0,'Aurora must not spend render time emulating a replaced key effect')
+  assert.deepEqual(e.frame().side,side.frame().side)
+  const aurora=e.frame().keys
+  delete p.custom.baseEffect;p.custom.base.mode=1;p.custom.base.rgb=[255,0,0];p.custom.base.brightness=20;p.custom.base.mix=false
+  e.configure(p);e.advance(1030)
+  assert.ok(keyTicks>0,'switching away from Aurora resumes the firmware key effect')
+  assert.notDeepEqual(e.frame().keys,aurora)
+  assert.ok(Object.values(e.frame().keys).every(hex=>hex==='#ff0000'))
+})
+
+test('Aurora, Scan and Pressure Wave keep advancing during repeated strikes of one key',()=>{
+  const p=profile('pressure-wave');p.custom.baseEffect={effect:'aurora',palette:'aurora',width:2.5,speed:1.5};p.custom.base.mix=true
+  p.custom.layers.push(custom.createRgbLayer('scan','scan'))
+  const e=new custom.CustomRgbEngine(p);let previous,changed=0,maxWaves=0
+  for(let i=0;i<600;i++){
+    const time=110+i*1000/60,down=i%6<3
+    e.advance(time);e.event('KeyW',down);e.setTravel({KeyW:down?3.4:0},{KeyW:{sequence:i+1,timestampMs:time}})
+    const frame=e.frame().keys
+    assert.ok(Object.values(frame).every(c=>/^#[0-9a-f]{6}$/.test(c)))
+    if(previous&&Object.keys(frame).some(id=>frame[id]!==previous[id]))changed++
+    previous=frame;maxWaves=Math.max(maxWaves,e.activeWaveCount)
+  }
+  assert.ok(changed>590,'the animation clock cannot stall under repeated input')
+  assert.ok(maxWaves>1&&maxWaves<=64)
+  e.setTravel({KeyW:0});e.advance(12000);e.frame();assert.equal(e.activeWaveCount,0)
+})
 test('Aurora and Comet animate deterministically with palettes, direction and a fading tail',()=>{
   for(const effect of ['aurora','comet']){
     const p=profile(effect),a=new custom.CustomRgbEngine(p),b=new custom.CustomRgbEngine(p)

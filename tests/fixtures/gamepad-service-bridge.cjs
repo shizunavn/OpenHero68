@@ -44,7 +44,11 @@ child.spawn=function(file,...args){
   emit('error:Unknown fixture command '+line);
  };
  let pending='';p.stdin=new Writable({write(chunk,encoding,done){pending+=chunk;let i;while((i=pending.indexOf('\n'))>=0){const line=pending.slice(0,i);pending=pending.slice(i+1);setImmediate(()=>command(line))}done()}});
- const statistics=setInterval(()=>emit('gamepad-status:'+JSON.stringify(status())),250);
+ const statistics=setInterval(()=>{
+  emit('gamepad-status:'+JSON.stringify(status()));
+  const eventsFile=path.join(dir,'fixture-events.json');
+  if(fs.existsSync(eventsFile)){const events=JSON.parse(fs.readFileSync(eventsFile,'utf8'));fs.unlinkSync(eventsFile);for(const event of events)emit(event)}
+ },250);
  const fast=setInterval(()=>{if(streaming)emit('gamepad-input:'+JSON.stringify({...status(),sequence:++sequence}))},1000/60);
  p.kill=()=>{clearInterval(statistics);clearInterval(fast);p.stdout.end();p.emit('exit',0)};
  p.stdin.on('finish',p.kill);return p;
