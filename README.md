@@ -178,4 +178,4 @@ When reporting a bug, please include your browser, Windows version, service vers
 
 ## License
 
-No license file is included in this repository yet. Add a `LICENSE` file to state the terms under which others may use and contribute to the code.
+APACHE 2.0
