@@ -275,7 +275,10 @@ export default function GamepadPage({
     };
   }, [connectionAttempt]);
   const access = gamepadAccess(status, loading, serviceConnected),
-    locked = access !== "ready";
+    locked = access !== "ready",
+    // Keep controls inert while checking, without flashing the missing-service
+    // overlay on every mount. A retry keeps an already confirmed gate visible.
+    showGate = locked && (access !== "checking" || connectionAttempt > 0);
   const refreshConnection = () => {
     setLoading(true);
     setStatus(null);
@@ -399,8 +402,9 @@ export default function GamepadPage({
   return (
     <div className="gp-gate page-enter">
       <div
-        className={`gamepad-page ${locked ? "gp-locked" : ""}`}
+        className={`gamepad-page ${showGate ? "gp-locked" : ""}`}
         inert={locked}
+        aria-busy={loading}
       >
         <div className="gp-heading">
           <h2>
@@ -1031,7 +1035,7 @@ export default function GamepadPage({
           </div>
         </div>
       </div>
-      {locked && (
+      {showGate && (
         <div className="gp-lock-overlay">
           <section className="gp-lock-card" role="status" aria-live="polite">
             <span className="gp-lock-icon">

@@ -95,6 +95,7 @@ Gamepad starts disabled whenever the service starts. Once enabled, it keeps runn
 - When the native launcher also changes (for example for Rhythm Sync), the tray downloads a checksum-verified ZIP instead. Quit the old app, extract all files over the service folder, then start the new launcher. A core-only update is not enough in that case.
 - Rhythm Sync needs service core 0.3.0, launcher 0.3.0 and API 5 or newer.
 - Firmware keyboard blocking and the fast Gamepad tester require **core 0.4.1, launcher 0.4.1 and API 6**. Upgrade older installations with the complete Windows ZIP because the native helper also changes. Keyboard input stays enabled until Mapped-key override is applied; firmware empty action is its default method. Windows hooking is an optional fallback, disabled by default in Configuration.
+- **0.4.2** fixes ViGEm startup cleanup and preserves the original Windows initialization error. Install the complete Windows package for this native fix. Opening Gamepad also avoids a brief blur during the initial check, while still requiring a live service and confirmed ViGEmBus before controls become active.
 - If you are on 0.2.3 or 0.3.0 and see `Unexpected update source`, download the full 0.3.1 (or newer) ZIP manually once. This is caused by the GitHub repository rename.
 - If Auto-start points to an old folder, use **Auto-start: replace old app path** in the new tray menu.
 

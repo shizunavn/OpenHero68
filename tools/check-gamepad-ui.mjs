@@ -62,7 +62,8 @@ let enabled = false,
   slot = 0,
   offline = false,
   driverAvailable = true,
-  compatible = true;
+  compatible = true,
+  responseDelayMs = 0;
 const status = () => ({
   keyboardHookSupported:true,fastInputSupported:true,
   driverAvailable,
@@ -120,6 +121,8 @@ createServer(async (req, res) => {
     requests.push({ path: url.pathname, input });
   }
   if (url.pathname === "/test/state") {
+    if (input.responseDelayMs !== undefined)
+      responseDelayMs = Math.max(0, Math.min(30000, Number(input.responseDelayMs) || 0));
     if (input.offline !== undefined) offline = input.offline;
     if (input.driverAvailable !== undefined)
       driverAvailable = input.driverAvailable;
@@ -130,7 +133,7 @@ createServer(async (req, res) => {
       inputClients.clear();
       clients.clear();
     } else publish();
-    json({ requests, offline, driverAvailable, compatible,inputClients:inputClients.size });
+    json({ requests, offline, driverAvailable, compatible, responseDelayMs, inputClients:inputClients.size });
     return;
   }
   if (
@@ -142,6 +145,8 @@ createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/gamepad/status") {
+      if (responseDelayMs) await new Promise(resolve => setTimeout(resolve, responseDelayMs));
+      if (res.destroyed) return;
       json(status());
       return;
     }
@@ -149,6 +154,8 @@ createServer(async (req, res) => {
       res.writeHead(200,{'Content-Type':'text/event-stream'});res.flushHeaders();inputClients.add(res);req.on('close',()=>inputClients.delete(res));return;
     }
     if (url.pathname === "/gamepad/events") {
+      if (responseDelayMs) await new Promise(resolve => setTimeout(resolve, responseDelayMs));
+      if (res.destroyed) return;
       res.writeHead(200, { "Content-Type": "text/event-stream" });
       res.write(`data: ${JSON.stringify(status())}\n\n`);
       clients.add(res);

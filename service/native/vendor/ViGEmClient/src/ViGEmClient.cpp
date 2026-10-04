@@ -516,6 +516,7 @@ void vigem_target_free(PVIGEM_TARGET target)
 VIGEM_ERROR vigem_target_add(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
 {
 	VIGEM_ERROR error = VIGEM_ERROR_NO_FREE_SLOT;
+	DWORD waitReadyError = ERROR_SUCCESS;
 	DWORD transferred = 0;
 	VIGEM_PLUGIN_TARGET plugin;
 	VIGEM_WAIT_DEVICE_READY devReady;
@@ -628,7 +629,8 @@ VIGEM_ERROR vigem_target_add(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
 				//
 				// Backwards compatibility with version pre-1.17, where this IOCTL doesn't exist
 				// 
-				if (GetLastError() == ERROR_INVALID_PARAMETER)
+				waitReadyError = GetLastError();
+				if (waitReadyError == ERROR_INVALID_PARAMETER)
 				{
 					target->State = VIGEM_TARGET_CONNECTED;
 					target->IsWaitReadyUnsupported = true;
@@ -640,7 +642,12 @@ VIGEM_ERROR vigem_target_add(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
 				//
 				// Don't leave device connected if the wait call failed
 				// 
-				error = vigem_target_remove(vigem, target);
+				// Plugin succeeded, so the bus owns a child even though readiness
+				// failed. remove() rejects targets still marked INITIALIZED; mark
+				// this one connected so cleanup actually issues the unplug IOCTL.
+				target->State = VIGEM_TARGET_CONNECTED;
+				vigem_target_remove(vigem, target);
+				error = VIGEM_ERROR_WINAPI;
 				break;
 			}
 		}
@@ -656,6 +663,10 @@ VIGEM_ERROR vigem_target_add(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
 
 	if (olWait.hEvent)
 		CloseHandle(olWait.hEvent);
+
+	// Cleanup must not replace the original Windows readiness failure.
+	if (waitReadyError != ERROR_SUCCESS && error == VIGEM_ERROR_WINAPI)
+		SetLastError(waitReadyError);
 
 	return error;
 }

@@ -1,5 +1,25 @@
 # Recorded Gamepad / shared Hall validation
 
+## 0.4.2 follow-up — 2026-10-04
+
+- Full JavaScript regression: 510 passed in 58.3 seconds. Production web,
+  service TypeScript and full Windows builds passed. Signed core and all eight
+  Windows ZIP entries were checked against the isolated build; Pages ZIP
+  assets and region routing were also verified.
+- Browser fixture delayed both status and SSE replies by three seconds: the
+  initial page had no blur/overlay, remained inert and became interactive only
+  after explicit service/driver confirmation. Missing driver still blurred and
+  blocked the page. Retrying retained that gate throughout the pending check.
+- Compiled the actual vendored ViGEm client with fake DeviceIoControl and
+  GetOverlappedResult. A readiness failure with Windows error 483 issued an
+  unplug request and preserved 483, including when that cleanup also failed.
+  Successful startup and pre-1.17 ERROR_INVALID_PARAMETER compatibility passed.
+- The existing live service reported enabled=true and XInput error 0 after the
+  user reported a startup failure. No live controller lifecycle, device restart
+  or keyboard input was triggered by these checks. The native fix repairs
+  cleanup/error reporting; persistent Windows driver failures may still require
+  a Windows restart or driver repair.
+
 ## 0.4.1 follow-up — 2026-10-04
 
 - Full JavaScript regression run: 508 passed. Subsequently added hook-remap and
