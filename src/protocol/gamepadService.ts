@@ -21,6 +21,11 @@ export type HallKeyMetric = {
   recentIntervalP99Ms?: number;
 };
 export type GamepadStatus = {
+  firmwareRecoveryPending?: boolean;
+  keyboardHookSupported?: boolean;
+  fastInputSupported?: boolean;
+  keyboardSuppressionActive?: boolean;
+  keyboardSuppressionError?: string;
   driverAvailable?: boolean;
   xinputError?: number;
   actualReport?: GamepadReport;
@@ -37,7 +42,7 @@ export type GamepadStatus = {
   backend: "vigem";
   slot: number;
   configuration: GamepadConfiguration;
-  capabilities: { gamepad: boolean; keyboardSuppression: false };
+  capabilities: { gamepad: boolean; keyboardSuppression: boolean; keyboardHook?: boolean; fastInput?: boolean };
   hall: {
     consumers: { id: string; keys: string[]; hz: number }[];
     requests: number;
@@ -48,6 +53,7 @@ export type GamepadStatus = {
   };
   samples: SharedHallSample[];
 };
+export type GamepadInputFrame = Pick<GamepadStatus, "enabled" | "armed" | "stale" | "xinputVerified" | "report" | "samples"> & { sequence: number };
 const endpoint = "http://127.0.0.1:16868";
 async function request(path: string, value?: unknown): Promise<GamepadStatus> {
   const r = await fetchLocalService(
@@ -78,6 +84,12 @@ export async function useSharedHallService() {
   await hero68DeviceManager.connectViaService();
 }
 export const gamepadService = {
+  inputStream(onFrame: (frame: GamepadInputFrame) => void, onError: () => void) {
+    const stream = new EventSource(endpoint + "/gamepad/input/events");
+    stream.onmessage = e => { try { onFrame(JSON.parse(e.data)); } catch { /* ignore invalid frame */ } };
+    stream.onerror = onError;
+    return () => stream.close();
+  },
   status: () => request("/gamepad/status"),
   configure: (slot: number, configuration: GamepadConfiguration) =>
     request("/gamepad/config", { slot, configuration }),

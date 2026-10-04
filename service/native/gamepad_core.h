@@ -3,16 +3,18 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include "keyboard_hook_core.h"
 namespace gamepad {
 struct Point {double x,y;};
 struct Binding {uint16_t pos;int action;double start,end;};
-struct Config {int rate=200;bool snappy=true,square=false,angleEnabled=false;double angle=45;std::vector<Point> curve{{0,0},{1,1}};std::vector<Binding> bindings;};
+struct Config {int rate=200;bool snappy=true,square=false,angleEnabled=false,suppressMappedKeys=false;double angle=45;std::vector<Point> curve{{0,0},{1,1}};std::vector<Binding> bindings;keyboard::Mask keyboardScans;};
 struct Report {uint16_t buttons=0;int16_t lx=0,ly=0,rx=0,ry=0;uint8_t lt=0,rt=0;};
 inline bool analog(int action){return action>=15&&action<25;}
 inline std::vector<std::string> split(const std::string& value,char sep){std::vector<std::string> out;std::istringstream in(value);std::string p;while(std::getline(in,p,sep))out.push_back(p);return out;}
 inline double number(const std::string& value){size_t used=0;double n=std::stod(value,&used);if(used!=value.size()||!std::isfinite(n))throw std::runtime_error("Invalid number");return n;}
 inline Config parse(const std::string& payload){
-  auto f=split(payload,';');if(f.size()==6&&payload.back()==';')f.push_back("");if(f.size()!=7)throw std::runtime_error("Invalid gamepad fields");Config c;
+  auto f=split(payload,';');if(!payload.empty()&&payload.back()==';')f.push_back("");if(f.size()!=7&&f.size()!=9)throw std::runtime_error("Invalid gamepad fields");Config c;
+  if(f.size()==9){if(f[7]!="0"&&f[7]!="1")throw std::runtime_error("Invalid keyboard toggle");c.suppressMappedKeys=f[7]=="1";for(const auto& s:split(f[8],',')){double scan=number(s);if(scan<1||scan>=512||scan!=std::floor(scan)||(unsigned(scan)&255)==0||c.keyboardScans[unsigned(scan)])throw std::runtime_error("Invalid Windows scan code");c.keyboardScans.set(unsigned(scan));}}
   const double rate=number(f[0]);if(rate!=50&&rate!=100&&rate!=200)throw std::runtime_error("Invalid rate");c.rate=int(rate);
   for(int i=1;i<=3;i++)if(f[i]!="0"&&f[i]!="1")throw std::runtime_error("Invalid toggle");c.snappy=f[1]=="1";c.square=f[2]=="1";c.angleEnabled=f[3]=="1";c.angle=number(f[4]);if(c.angle<30||c.angle>60)throw std::runtime_error("Invalid angle");
   c.curve.clear();for(auto& p:split(f[5],'|')){auto v=split(p,',');if(v.size()!=2)throw std::runtime_error("Invalid curve");Point point{number(v[0]),number(v[1])};if(point.x<0||point.x>1||point.y<0||point.y>1||(!c.curve.empty()&&(point.x<=c.curve.back().x||point.y<c.curve.back().y)))throw std::runtime_error("Non-monotonic curve");c.curve.push_back(point);}

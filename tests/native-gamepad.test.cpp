@@ -2,6 +2,12 @@
 #include <cassert>
 #include <iostream>
 int main(){
+  keyboard::Policy policy;keyboard::Mask mask;mask.set(30);mask.set(0x148);
+  assert(policy.event(30,true,true,mask));assert(policy.event(30,true,true,mask));assert(policy.event(30,false,false,mask));
+  assert(!policy.event(30,true,false,mask));assert(!policy.event(30,true,true,mask));assert(!policy.event(30,false,true,mask));
+  assert(policy.event(0x148,true,true,mask));assert(!policy.event(0x48,true,true,mask));assert(!policy.event(30,true,true,mask,true));
+  auto released=policy.release();assert(released.count()==1&&released[0x148]);assert(!policy.release().any());
+  auto hook=gamepad::parse("200;1;0;0;45;0,0|1,1;30,15,0.1,3.4;1;30,328");assert(hook.suppressMappedKeys&&hook.keyboardScans[30]&&hook.keyboardScans[328]);
   std::array<uint8_t,64> packet{};packet[0]=9;packet[1]=0x98;packet[2]=1;packet[6]=6;packet[8]=30;
   auto checksum=[&]{unsigned sum=0;for(size_t i=0;i<63;i++)sum+=packet[i];packet[63]=uint8_t(255-sum);};checksum();
   assert(hall::matchesReply(packet.data(),64,{30}));assert(!hall::matchesReply(packet.data(),63,{30}));assert(!hall::matchesReply(packet.data(),64,{43}));

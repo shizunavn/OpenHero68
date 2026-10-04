@@ -1,5 +1,6 @@
 import { HERO68_KEY_IDS } from "./hero68Layout";
 import { HERO68_KEY_POSITIONS } from "../protocol/hero68/keyPositions";
+import { WINDOWS_SCANS } from "./windowsScans";
 
 export const GAMEPAD_ACTIONS = [
   "A",
@@ -35,6 +36,7 @@ export type GamepadBinding = {
   action: GamepadAction;
   startMm: number;
   endMm: number;
+  keyboardKeyId?: string;
 };
 export type GamepadConfiguration = {
   version: 1;
@@ -45,6 +47,8 @@ export type GamepadConfiguration = {
   square: boolean;
   angleEnabled: boolean;
   angle: number;
+  suppressMappedKeys: boolean;
+  keyboardSuppressionMode: "firmware" | "hook";
 };
 export const CURVE_PRESETS: Record<string, CurvePoint[]> = {
   Linear: [
@@ -114,12 +118,15 @@ export function defaultGamepad(): GamepadConfiguration {
     square: false,
     angleEnabled: false,
     angle: 45,
+    suppressMappedKeys: false,
+    keyboardSuppressionMode: "firmware",
   };
 }
 export function validateGamepad(input: unknown): GamepadConfiguration {
   const v = input as GamepadConfiguration;
   if (
     !v ||
+    (v.keyboardSuppressionMode !== undefined && !["firmware", "hook"].includes(v.keyboardSuppressionMode)) ||
     v.version !== 1 ||
     ![50, 100, 200].includes(v.rate) ||
     !Array.isArray(v.bindings) ||
@@ -140,6 +147,8 @@ export function validateGamepad(input: unknown): GamepadConfiguration {
       b.endMm - b.startMm < 0.01 - 1e-9
     )
       throw Error("Invalid gamepad binding");
+    if (b.keyboardKeyId !== undefined && b.keyboardKeyId !== "None" && WINDOWS_SCANS[b.keyboardKeyId] === undefined)
+      throw Error("Invalid Windows keyboard key");
     seen.add(b.keyId);
     return { ...b };
   });
@@ -163,6 +172,7 @@ export function validateGamepad(input: unknown): GamepadConfiguration {
   )
     throw Error("Curve endpoints must be 0 and 1");
   if (
+    (v.suppressMappedKeys !== undefined && typeof v.suppressMappedKeys !== "boolean") ||
     ["snappy", "square", "angleEnabled"].some(
       (k) => typeof v[k as keyof GamepadConfiguration] !== "boolean",
     ) ||
@@ -180,6 +190,8 @@ export function validateGamepad(input: unknown): GamepadConfiguration {
     square: v.square,
     angleEnabled: v.angleEnabled,
     angle: v.angle,
+    suppressMappedKeys: v.suppressMappedKeys ?? false,
+    keyboardSuppressionMode: v.keyboardSuppressionMode ?? "firmware",
   };
 }
 export function restoreGamepad(value: unknown) {
@@ -299,6 +311,9 @@ export function nativeGamepadCommand(config: GamepadConfiguration) {
           b.endMm,
         ].join(","),
       )
-      .join("|")
+      .join("|") + (v.suppressMappedKeys && v.keyboardSuppressionMode === "hook" ? ";1;" + gamepadSuppressionScans(v).join(",") : "")
   );
+}
+export function gamepadSuppressionScans(config: GamepadConfiguration) {
+  return [...new Set(config.bindings.map(b => WINDOWS_SCANS[b.keyboardKeyId ?? b.keyId]).filter((s): s is number => s !== undefined))];
 }

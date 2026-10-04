@@ -1,11 +1,18 @@
-# Gamepad and shared Hall — service 0.4.0 / API 6
+# Gamepad and shared Hall — service 0.4.1 / API 6
 
 ## Using gamepad
 
 Windows x64, one AULA HERO68 and the separately installed official ViGEmBus
 1.22.0 driver are required for live output. The portable service includes the
 statically linked MIT ViGEmClient adapter and its license; it does not install
-or change drivers. The web editor and tester include a local demo.
+or change drivers. The entire Gamepad page stays blurred and inert until a live,
+compatible service explicitly reports `driverAvailable: true`. Being enabled
+does not substitute for driver confirmation. Missing service, an incompatible
+service, and missing ViGEmBus each show an appropriate setup prompt. A lost
+service stream locks the page again, even if a previous status was ready.
+After installing ViGEmBus, restart the service and use **Check again**.
+The tester's local demo is available after this same access check and never
+starts hardware polling.
 
 - **Setup & Remap:** select or drag a control onto a keyboard key. Right-click
   removes its binding. Each physical key has one binding; several keys may use
@@ -31,9 +38,42 @@ Selecting a physical HERO68 profile through the service also selects its gamepad
 configuration. A fresh editor loads the service configuration when there is no
 local draft for the current slot.
 
-Keyboard input stays enabled. Suppression is unavailable until a verified HERO68
-mechanism and restoration path exist. DirectInput, mouse-to-stick, keyboard
-filtering and multiple keyboards/controllers are outside v1.
+Keyboard input stays enabled unless **Mapped-key override** is applied. Its
+default backend writes the verified empty remap action `0x00000000` for assigned
+keys on all three layers. Before any write, the service flushes a recovery journal
+to disk with the exact original actions. Stop, changing profile/configuration,
+shutdown, disconnect and suspend restore those actions. A restarted service
+recovers the journal with Gamepad disabled. An unplugged device retains its
+pending journal and reconnect recovery retries at 250/500/1000/2000 ms. Recovery
+checks the HID device path and serial when available; use the original keyboard
+and USB port. With firmware that exposes no unique serial, replacing a keyboard
+with another identical unit at the same port cannot be distinguished. External
+nonzero remap edits are preserved; settings reads see original actions while
+Gamepad owns temporary empty remaps. Assigned Advanced Keys are rejected because
+emptying a normal remap cannot guarantee blocking their separate actions.
+
+**Windows hook fallback** in Configuration is off by default. Selecting it uses
+an independent `WH_KEYBOARD_LL` message thread; the callback never waits for HID,
+Xbox output or the service queue. It follows verified standard main-layer remaps,
+preserves matching releases for keys pressed before activation and injects only
+marked `SendInput` key-up cleanup outside the callback. It affects matching keys
+on other keyboards too and cannot promise suppression in games using Raw Input
+or higher integrity levels. The anti-cheat warning appears only when this
+fallback is selected. Firmware blocking avoids installing this hook; it does
+not establish approval from any game's anti-cheat. DirectInput, mouse-to-stick,
+kernel keyboard filters and multiple keyboards/controllers remain outside v1.
+
+The full Windows **0.4.1** package is required for keyboard blocking and fast
+input streaming; a JavaScript core update alone cannot replace its native helper.
+Tester input uses a demand-driven lightweight SSE stream near 60 Hz and separate
+animation consumers for the keyboard and controller. Full diagnostics remain
+at 4 Hz. An unambiguous standard Xbox browser Gamepad API report may update on
+animation frames when it agrees with the native report; otherwise the native
+stream is used. The tester adds no Hall subscription and closes its input stream
+when leaving the tab, hiding the document or losing service access. Analog
+measured Hz excludes the separate 100 Hz digital-button demand.
+RGB receives transitions for firmware-blocked keys from the already shared
+Gamepad Hall samples, preserving reactive effects without requesting more keys.
 
 ## Hall ownership and demand
 

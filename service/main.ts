@@ -1,8 +1,8 @@
 import { createServer, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync, existsSync } from 'node:fs'
-import {randomUUID} from 'node:crypto'
+import { mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync, existsSync,unlinkSync,openSync,fsyncSync,closeSync } from 'node:fs'
+import {randomUUID,createHash} from 'node:crypto'
 import path from 'node:path'
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
 import { restoreCustomRgb, CUSTOM_RGB_EFFECTS, needsRgbAnalogHall, rgbHallKeys } from '../src/keyboard/customRgb'
@@ -23,6 +23,9 @@ import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SID
 import {latestSse} from './latestSse'
 import {profileRequest} from './profileSelection'
 import {CustomPlayback} from './customPlayback'
+import {GamepadFirmware} from './gamepadFirmware'
+import {hookConfiguration} from './gamepadKeyboard'
+import {selectProfile} from '../src/protocol/hero68/commands'
 import {TachyonLighting,validTachyonSnapshot,isTachyonLightingWrite} from '../src/protocol/hero68/tachyonLighting'
 
 function option(name:string){const index=process.argv.indexOf(name);if(index>=0&&!process.argv[index+1])throw Error(`Missing ${name} value`);return index>=0?process.argv[index+1]:undefined}
@@ -138,12 +141,32 @@ const hallClients=new Map<ServerResponse,HallClient>()
 const hallSamples=new Map<string,HallRecord>()
 const hallBroker=new HallBroker()
 const gamepadClients=new Set<ServerResponse>()
+const gamepadInputClients=new Map<ServerResponse,ReturnType<typeof latestSse>>()
+let inputStreamScheduled=false,inputStreamApplied=false
+function scheduleInputStream(){
+  if(inputStreamScheduled||closing)return;inputStreamScheduled=true
+  void exclusive(async()=>{
+    while(!closing&&inputStreamApplied!==(gamepadInputClients.size>0)){
+      const wanted=gamepadInputClients.size>0
+      const result=await bridge.line(wanted?'gamepad-input-on':'gamepad-input-off')
+      if(result!=='gamepad-input-ready')throw Error('Fast gamepad input unavailable')
+      inputStreamApplied=wanted
+    }
+  }).catch(()=>{inputStreamApplied=false;for(const client of gamepadInputClients.keys())client.destroy();gamepadInputClients.clear()}).finally(()=>{inputStreamScheduled=false;if(!closing&&inputStreamApplied!==(gamepadInputClients.size>0))scheduleInputStream()})
+}
+function publishGamepadInput(value: {enabled:boolean;report:unknown;sequence:number}){
+  if(!gamepadInputClients.size)return
+  const now=performance.now(),keys=new Set(gamepadConfigurations[gamepadSlot].bindings.map(b=>b.keyId))
+  const samples=value.enabled?[...hallSamples.values()].filter(s=>keys.has(s.keyId)).map(s=>({...s,ageMs:now-(hallReceivedAt.get(s.keyId)??0)})):[]
+  const text=`data: ${JSON.stringify({...value,samples})}\n\n`
+  for(const [client,send] of gamepadInputClients){if(client.destroyed||client.writableLength>65536)client.destroy();else send(text)}
+}
 let hallPolls=0,hallMetrics:{requests:number;timeouts:number;keys:HallKeyMetric[];nativeCpuPercent?:number;nativeRssMB?:number}={requests:0,timeouts:0,keys:[]}
-let gamepadState:Pick<GamepadStatus,'enabled'|'armed'|'stale'|'xinputVerified'|'userIndex'|'neutralCount'|'error'|'report'>={enabled:false,armed:false,stale:true,xinputVerified:false,userIndex:-1,neutralCount:0,error:'',report:{buttons:0,lx:0,ly:0,rx:0,ry:0,lt:0,rt:0}}
+let gamepadState:Pick<GamepadStatus,'enabled'|'armed'|'stale'|'xinputVerified'|'userIndex'|'neutralCount'|'error'|'report'|'keyboardHookSupported'|'fastInputSupported'>={enabled:false,armed:false,stale:true,xinputVerified:false,userIndex:-1,neutralCount:0,error:'',report:{buttons:0,lx:0,ly:0,rx:0,ry:0,lt:0,rt:0}}
 let gamepadSlot=0,gamepadConfigurations:Record<number,GamepadConfiguration>={0:defaultGamepad(),1:defaultGamepad(),2:defaultGamepad()}
 try{const v=JSON.parse(readFileSync(path.join(stateDir,'gamepad.json'),'utf8'));for(const slot of [0,1,2])if(v.profiles?.[slot])gamepadConfigurations[slot]=validateGamepad(v.profiles[slot]);if([0,1,2].includes(v.slot))gamepadSlot=v.slot}catch{}
 function persistGamepad(){const file=path.join(stateDir,'gamepad.json');writeFileSync(file+'.tmp',JSON.stringify({version:1,slot:gamepadSlot,profiles:gamepadConfigurations}));renameSync(file+'.tmp',file)}
-function gamepadStatus():GamepadStatus{return {...gamepadState,backend:'vigem',slot:gamepadSlot,configuration:gamepadConfigurations[gamepadSlot],capabilities:{gamepad:true,keyboardSuppression:false},hall:{...hallMetrics,consumers:hallBroker.consumers.map(s=>({...s,keys:[...s.keys]}))},samples:[...hallSamples.values()].map(s=>({...s,ageMs:performance.now()-(hallReceivedAt.get(s.keyId)??0)}))}}
+function gamepadStatus():GamepadStatus{return {...gamepadState,keyboardSuppressionActive:firmware.active||!!(gamepadState as GamepadStatus).keyboardSuppressionActive,keyboardSuppressionError:firmware.error||(gamepadState as GamepadStatus).keyboardSuppressionError,firmwareRecoveryPending:firmware.pendingRecovery,backend:'vigem',slot:gamepadSlot,configuration:gamepadConfigurations[gamepadSlot],capabilities:{gamepad:true,keyboardSuppression:gamepadState.fastInputSupported===true,keyboardHook:gamepadState.keyboardHookSupported===true,fastInput:gamepadState.fastInputSupported===true},hall:{...hallMetrics,consumers:hallBroker.consumers.map(s=>({...s,keys:[...s.keys]}))},samples:[...hallSamples.values()].map(s=>({...s,ageMs:performance.now()-(hallReceivedAt.get(s.keyId)??0)}))}}
 const hallReceivedAt=new Map<string,number>()
 function publishGamepad(){const value=`data: ${JSON.stringify(gamepadStatus())}\n\n`;for(const client of gamepadClients){if(client.destroyed||client.writableLength>65536){client.destroy();gamepadClients.delete(client)}else if(!client.writableLength)client.write(value)}}
 function needsAnalogHall(){return !tachyon&&mode==='custom'&&needsRgbAnalogHall(profile?.custom)}
@@ -173,8 +196,13 @@ function publishHall(records:HallRecord[]){
 const keyByPosition=new Map(Object.entries(HERO68_KEY_POSITIONS).map(([id,pos])=>[pos,id]))
 function onHallSnapshot(value:{publishedMs?:number;requests:number;timeouts:number;records:Omit<HallRecord,'keyId'>[]}){
   const records:HallRecord[]=[]
-  for(const s of value.records){const keyId=keyByPosition.get(s.pos);if(!keyId||!hallBroker.demands.has(keyId))continue;const record={...s,keyId};hallSamples.set(keyId,record);hallReceivedAt.set(keyId,performance.now()-Math.max(0,(value.publishedMs??s.timestampMs)-s.timestampMs));records.push(record)}
+  for(const s of value.records){const keyId=keyByPosition.get(s.pos);if(!keyId||!hallBroker.demands.has(keyId))continue;const record={...s,keyId};hallSamples.set(keyId,record);hallReceivedAt.set(keyId,performance.now()-Math.max(0,(value.publishedMs??s.timestampMs)-s.timestampMs));records.push(record);if(firmware.active&&gamepadState.enabled&&gamepadConfigurations[gamepadSlot].bindings.some(b=>b.keyId===keyId))onRgbKey(keyId,s.pressed)}
   hallPolls=value.requests;hallSnapshots+=records.length;publishHall(records)
+}
+function onRgbKey(id:string,pressed:boolean){
+  if(mode!=='custom'||!engine||(pressed?outputHeld.has(id):!outputHeld.has(id)))return
+  if(pressed)outputHeld.add(id);else outputHeld.delete(id)
+  const at=performance.now();pendingInputs.push(at);playback.advance();engine.event(id,pressed);inputTransitions++
 }
 let lastPublishedFrame:unknown=null
 function publishFrame(value:unknown){
@@ -197,9 +225,11 @@ class Bridge {
   private gone=false
   constructor(){
     createInterface({input:this.process.stdout}).on('line',line=>{
+      if(line.startsWith('gamepad-input:')){try{publishGamepadInput(JSON.parse(line.slice(14)))}catch{}return}
       if(line.startsWith('hall-snapshot:')){try{onHallSnapshot(JSON.parse(line.slice(14)))}catch{}return}
       if(line.startsWith('hall-stats:')){try{const v=JSON.parse(line.slice(11));hallMetrics={...v,keys:v.keys.map((k:HallKeyMetric)=>({...k,keyId:keyByPosition.get(k.pos)??''}))}}catch{}return}
-      if(line.startsWith('hall-error:')){hallSamples.clear();hallReceivedAt.clear();lastError=line.slice(11);timeouts++;return}
+      if(line==='power:suspend'||line==='power:resume'){if(firmware.active||firmware.pendingRecovery)scheduleFirmwareRecovery();return}
+      if(line.startsWith('hall-error:')){hallSamples.clear();hallReceivedAt.clear();lastError=line.slice(11);timeouts++;if(firmware.active)scheduleFirmwareRecovery();return}
       if(line.startsWith('gamepad-status:')){try{const enabled=gamepadState.enabled;gamepadState=JSON.parse(line.slice(15));if(enabled!==gamepadState.enabled)scheduleHallSync();publishGamepad()}catch{}return}
       if(line==='custom-tick:'){onCustomTick();return}
       if(line.startsWith('custom-frame:')){try{onCustomFrame(JSON.parse(line.slice(13)))}catch{}return}
@@ -209,11 +239,7 @@ class Bridge {
       if(line==='raw:ready'||line==='raw:unavailable'){rawInputReady=line==='raw:ready';return}
       if(line.startsWith('key:')){
         const input=decodeHero68Input(line)
-        if(input&&mode==='custom'&&engine){
-          if(input.pressed?outputHeld.has(input.id):!outputHeld.has(input.id))return
-          if(input.pressed)outputHeld.add(input.id);else outputHeld.delete(input.id)
-          const at=performance.now();pendingInputs.push(at);playback.advance();engine.event(input.id,input.pressed);inputTransitions++
-        }
+        if(input)onRgbKey(input.id,input.pressed)
         return
       }
       const p=this.pending;if(p){this.pending=null;clearTimeout(p.timer);p.resolve(line)}
@@ -253,6 +279,32 @@ class Bridge {
   end(){this.process.stdin.end()}
 }
 const bridge=new Bridge()
+const recoveryFile=path.join(stateDir,'gamepad-remap-recovery.json')
+const firmware=new GamepadFirmware(packet=>bridge.request(packet),async()=>{
+  const result=await bridge.line('device-identity');if(!/^device-identity:[0-9a-f]+$/.test(result))throw Error('Cannot identify HERO68 for remap recovery')
+  return createHash('sha256').update(result).digest('hex')
+},{
+  load:()=>existsSync(recoveryFile)?JSON.parse(readFileSync(recoveryFile,'utf8')):null,
+  save:j=>{const fd=openSync(recoveryFile+'.tmp','w');try{writeFileSync(fd,JSON.stringify(j));fsyncSync(fd)}finally{closeSync(fd)}renameSync(recoveryFile+'.tmp',recoveryFile)},
+  clear:()=>{if(existsSync(recoveryFile))unlinkSync(recoveryFile)},
+})
+let firmwareRecoveryScheduled=false,firmwareRecoveryTimer:ReturnType<typeof setTimeout>|undefined,firmwareRecoveryAttempt=0
+async function stopGamepad(){const result=await bridge.line('gamepad-stop');if(result!=='gamepad-stopped')throw Error(result);if(firmware.active)for(const binding of gamepadConfigurations[gamepadSlot].bindings)onRgbKey(binding.keyId,false);gamepadState={...gamepadState,enabled:false,armed:false,stale:true,report:{buttons:0,lx:0,ly:0,rx:0,ry:0,lt:0,rt:0}};await syncHall();await firmware.restore()}
+function scheduleFirmwareRecovery(){
+  if(closing||firmwareRecoveryScheduled||firmwareRecoveryTimer)return
+  firmwareRecoveryScheduled=true
+  void exclusive(async()=>{await stopGamepad();firmwareRecoveryAttempt=0;publishGamepad()}).catch(e=>{
+    log('Gamepad remap recovery pending: '+String(e));publishGamepad()
+    if(!closing)firmwareRecoveryTimer=setTimeout(()=>{firmwareRecoveryTimer=undefined;scheduleFirmwareRecovery()},[250,500,1000,2000][Math.min(firmwareRecoveryAttempt++,3)])
+  }).finally(()=>{firmwareRecoveryScheduled=false})
+}
+async function applyFirmware(config:GamepadConfiguration){
+  if(config.suppressMappedKeys&&config.keyboardSuppressionMode==='firmware')await firmware.apply(gamepadSlot as 0|1|2,config.bindings.map(b=>b.keyId))
+}
+async function configureNativeGamepad(config:GamepadConfiguration,running:boolean){
+  const actual=running&&config.suppressMappedKeys&&config.keyboardSuppressionMode==='hook'?await hookConfiguration(config,packet=>bridge.request(packet)):config
+  const r=await bridge.line(nativeGamepadCommand(actual));if(r!=='gamepad-configured')throw Error(r)
+}
 const lightingTransport={request:(packet:Uint8Array)=>bridge.request(packet)}
 async function connect(){
   const identity=await bridge.request(buildReport({command:0x82,zone:1}))
@@ -375,6 +427,12 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&req.url==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(panel);return}
     if(req.method==='GET'&&req.url==='/status'){json(200,status());return}
     if(req.method==='GET'&&req.url==='/gamepad/status'){json(200,gamepadStatus());return}
+    if(req.method==='GET'&&req.url==='/gamepad/input/events'){
+      if(!gamepadState.fastInputSupported){json(409,{error:'Update the full Windows service package to 0.4.1 or later'});return}
+      res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no','Cache-Control':'no-store'});res.write(': connected\n\n')
+      gamepadInputClients.set(res,latestSse(res));scheduleInputStream()
+      req.on('close',()=>{gamepadInputClients.delete(res);scheduleInputStream()});return
+    }
     if(req.method==='GET'&&req.url==='/gamepad/events'){
       res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(gamepadStatus())}\n\n`);gamepadClients.add(res)
       const heartbeat=setInterval(()=>{if(!res.writableLength)res.write(': keepalive\n\n')},15000);heartbeat.unref();req.on('close',()=>{clearInterval(heartbeat);gamepadClients.delete(res)});return
@@ -410,17 +468,37 @@ const server=createServer(async(req,res)=>{
     if(req.url?.startsWith('/gamepad/')){
       const slot=input.slot??gamepadSlot;if(!Number.isInteger(slot)||slot<0||slot>2)throw Error('Expected profile 0-2')
       const config=input.configuration===undefined?gamepadConfigurations[slot]:validateGamepad(input.configuration)
+      if(req.url!=='/gamepad/stop'&&config.suppressMappedKeys&&!(config.keyboardSuppressionMode==='hook'?gamepadState.keyboardHookSupported:gamepadState.fastInputSupported))throw Error('Mapped-key blocking requires the full Windows service 0.4.1 package or later')
       await exclusive(async()=>{
-        if(req.url==='/gamepad/stop'){const r=await bridge.line('gamepad-stop');if(r!=='gamepad-stopped')throw Error(r);const state=await bridge.line('gamepad-status');if(!state.startsWith('gamepad-state:'))throw Error(state);gamepadState=JSON.parse(state.slice(14));await syncHall();return}
+        clearTimeout(firmwareRecoveryTimer);firmwareRecoveryTimer=undefined
+        if(req.url==='/gamepad/stop'){await stopGamepad();return}
         if(tachyon)throw Error('Turn off Tachyon Mode before starting Hall gamepad output.')
-        if((req.url==='/gamepad/profile'||req.url==='/gamepad/start'||slot===gamepadSlot)){
+        const active=req.url==='/gamepad/profile'||req.url==='/gamepad/start'||slot===gamepadSlot
+        const run=active&&(gamepadState.enabled||req.url==='/gamepad/start')
+        const resume=mode!=='onboard'
+        if(active){
           if(req.url==='/gamepad/start'&&!config.bindings.length)throw Error('Add at least one gamepad binding')
-          const r=await bridge.line(nativeGamepadCommand(config));if(r!=='gamepad-configured')throw Error(r)
-          gamepadSlot=slot
         }
-        gamepadConfigurations[slot]=config;persistGamepad()
-        if(req.url==='/gamepad/start'){if(!connected)await connect();const r=await bridge.line('gamepad-start');if(r!=='gamepad-ready')throw Error(r);gamepadState={...gamepadState,enabled:true,armed:false,stale:true,error:''}}
-        const state=await bridge.line('gamepad-status');if(!state.startsWith('gamepad-state:'))throw Error(state);gamepadState=JSON.parse(state.slice(14));await syncHall()
+        if(active&&resume)await bridge.line('rhythm-pause')
+        try{
+          if(active){
+            await stopGamepad()
+            if(run){if(!connected)await connect();await bridge.request(selectProfile(slot as 0|1|2))}
+            await configureNativeGamepad(config,run)
+            gamepadSlot=slot
+          }
+          gamepadConfigurations[slot]=config;persistGamepad()
+          if(run){
+            if(!connected)await connect()
+            // Check the driver before mutating firmware. Output remains neutral
+            // until Hall subscriptions are installed and every bound key rests.
+            const r=await bridge.line(gamepadState.fastInputSupported?'gamepad-start-paused':'gamepad-start');if(r!=='gamepad-ready')throw Error(r)
+            gamepadState={...gamepadState,enabled:true,armed:false,stale:true,error:''}
+            await bridge.line('gamepad-pause');await applyFirmware(config);await bridge.line('gamepad-resume')
+          }
+          const state=await bridge.line('gamepad-status');if(!state.startsWith('gamepad-state:'))throw Error(state);gamepadState=JSON.parse(state.slice(14));await syncHall()
+        }catch(e){if(active)await stopGamepad().catch(()=>{});publishGamepad();throw e}
+        finally{if(active&&resume)await bridge.line('rhythm-resume')}
       });publishGamepad();json(200,gamepadStatus());return
     }
     if(req.url==='/updates/tray-check'){
@@ -438,7 +516,7 @@ const server=createServer(async(req,res)=>{
     }
     if(req.url==='/tachyon'){
       if(typeof input.enabled!=='boolean')throw Error('Expected Tachyon enabled boolean')
-      await exclusive(async()=>{if(input.enabled){await bridge.line('gamepad-stop');gamepadState.enabled=false}await setTachyon(input.enabled);await syncHall()});json(200,status());return
+      await exclusive(async()=>{if(input.enabled)await stopGamepad();await setTachyon(input.enabled);await syncHall()});json(200,status());return
     }
     if(req.url==='/rhythm/start'||req.url==='/rhythm/config'||(req.url==='/start'&&!Object.keys(input).length&&savedMode==='rhythm')){
       await exclusive(async()=>{
@@ -461,8 +539,11 @@ const server=createServer(async(req,res)=>{
       const replies=await exclusive(async()=>{
         if(tachyon&&requests.some(({packet})=>isTachyonLightingWrite(packet)))throw Error('Turn off Tachyon Mode before changing RGB lighting.')
         configurationBusy=true;const resume=mode!=='onboard';await bridge.line('gamepad-pause');if(resume)await bridge.line('rhythm-pause')
+        const mutatesRemaps=requests.some(({packet,reenumerate})=>reenumerate||[0x03,0x10,0x12,0x05].includes(packet[1]))
+        const run=gamepadState.enabled
         try{
         if(!connected)await connect()
+        if(mutatesRemaps&&(firmware.active||firmware.pendingRecovery))await firmware.restore()
         const replies:string[]=[]
         for(const {packet,reenumerate} of requests){
           let reply:Awaited<ReturnType<Bridge['request']>>|undefined
@@ -472,8 +553,8 @@ const server=createServer(async(req,res)=>{
             catch(e){if(i===attempts-1)throw e;await new Promise(resolve=>setTimeout(resolve,100))}
           }
           if(!reply)throw Error('Missing HID reply')
-          replies.push(Buffer.from(reply.raw).toString('hex'))
-          if(packet[1]===0x10&&packet[2]===0){gamepadSlot=packet[7];await bridge.line(nativeGamepadCommand(gamepadConfigurations[gamepadSlot]));persistGamepad();await syncHall()}
+          replies.push(Buffer.from(firmware.projectRead(reply).raw).toString('hex'))
+          if(packet[1]===0x10&&packet[2]===0){gamepadSlot=packet[7];await configureNativeGamepad(gamepadConfigurations[gamepadSlot],run);persistGamepad();await syncHall()}
           if(reenumerate){
             connected=false;await bridge.close()
             const deadline=performance.now()+7000;let recovered=false
@@ -481,8 +562,10 @@ const server=createServer(async(req,res)=>{
             if(!recovered)throw Error('HERO68 did not return after polling-rate change')
           }
         }
+        if(mutatesRemaps&&run){await configureNativeGamepad(gamepadConfigurations[gamepadSlot],run);await applyFirmware(gamepadConfigurations[gamepadSlot])}
         return replies
-        }finally{configurationBusy=false;if(resume)await bridge.line('rhythm-resume');await bridge.line('gamepad-resume')}
+        }catch(e){if(run)await stopGamepad().catch(()=>{});throw e}
+        finally{configurationBusy=false;if(resume)await bridge.line('rhythm-resume');await bridge.line('gamepad-resume')}
       })
       json(200,batch?{hexes:replies}:{hex:replies[0]});return
     }
@@ -499,9 +582,9 @@ const server=createServer(async(req,res)=>{
     if(req.url==='/shutdown')void shutdown()
   }catch(e){json(400,{error:e instanceof Error?e.message:String(e)})}
 })
-async function shutdown(exitCode=0){if(closing)return;closing=true;clearTimeout(timer);publishFrame({enabled:false,connected:false,shuttingDown:true});await exclusive(async()=>{await bridge.line('gamepad-stop');await stop()}).catch(e=>log(String(e)));for(const client of frameClients)client.end();for(const client of gamepadClients)client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(exitCode));setTimeout(()=>process.exit(exitCode),1000).unref()}
-async function restartForUpdate(){if(closing)return;closing=true;clearTimeout(timer);publishFrame({enabled:false,connected:false,shuttingDown:true});for(const client of frameClients)client.end();for(const client of gamepadClients)client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(73));setTimeout(()=>process.exit(73),1000).unref()}
+async function shutdown(exitCode=0){if(closing)return;closing=true;clearTimeout(timer);clearTimeout(firmwareRecoveryTimer);publishFrame({enabled:false,connected:false,shuttingDown:true});await exclusive(async()=>{await stopGamepad();await stop()}).catch(e=>log(String(e)));for(const client of frameClients)client.end();for(const client of gamepadClients)client.end();for(const client of gamepadInputClients.keys())client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(exitCode));setTimeout(()=>process.exit(exitCode),1000).unref()}
+async function restartForUpdate(){await shutdown(73)}
 process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown())
 process.on('uncaughtException',e=>{log(e.stack??e.message);void shutdown()})
 server.on('error',e=>{log(`Server error: ${e.message}`);bridge.end();process.exitCode=1})
-server.listen(port,'127.0.0.1',()=>{log(`Service listening on 127.0.0.1:${port}`);void exclusive(async()=>{await bridge.line(nativeGamepadCommand(gamepadConfigurations[gamepadSlot]));if(mode==='custom')await bridge.startCustom();if(mode==='rhythm')await bridge.configureRhythm(rhythmConfig);await syncHall()}).catch(e=>{lastError=String(e);mode='onboard'});void loop()})
+server.listen(port,'127.0.0.1',()=>{log(`Service listening on 127.0.0.1:${port}`);void exclusive(async()=>{await bridge.line(nativeGamepadCommand(gamepadConfigurations[gamepadSlot]));if(firmware.pendingRecovery)try{await firmware.restore()}catch{setImmediate(scheduleFirmwareRecovery)}if(mode==='custom')await bridge.startCustom();if(mode==='rhythm')await bridge.configureRhythm(rhythmConfig);await syncHall()}).catch(e=>{lastError=String(e);mode='onboard'});void loop()})

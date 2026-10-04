@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { rgbService, confirmRgbServiceAvailable, isRgbServiceAvailable, type RgbServiceStatus } from './rgbService'
 import { LEGACY_RGB_EFFECTS, type CustomRgbConfiguration } from '../keyboard/customRgbModel'
 
-export const RGB_SERVICE_DOWNLOAD = 'https://github.com/shizunavn/OpenHero68-RGB-Service/releases/latest/download/OpenHero68-RGB-Windows-x64.zip'
+export const RGB_SERVICE_DOWNLOAD = 'https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-RGB-Windows-x64.zip'
 type ServiceState = { checking: boolean; status: RgbServiceStatus | null; reconnecting: boolean }
 let state: ServiceState = { checking: true, status: null, reconnecting: false }
 const listeners = new Set<()=>void>()
