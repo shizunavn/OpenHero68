@@ -4,7 +4,7 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 
 [**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes](https://github.com/shizunavn/OpenHero68/releases/latest)
 ![Openhero68 Main Page](Open-hero68.png)
-![OpenHero68 RGB Settings page](RGB-Setting-Preview.png)
+![OpenHero68 RGB Settings page](RGB-Setting-Page.png)
 
 > **Unofficial project.** OpenHero68 is a community effort based on reverse engineering. It is not affiliated with or endorsed by AULA or the makers of Wootility.
 
