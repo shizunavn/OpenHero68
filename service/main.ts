@@ -256,7 +256,10 @@ class Bridge {
     if(this.gone)throw Error('Native HID bridge unavailable; restart service')
     if(this.pending)throw Error('Concurrent HID operation')
     return new Promise<string>((resolve,reject)=>{
-      const timer=setTimeout(()=>{this.fail(Error('Native HID bridge stalled'));this.process.kill()},2000)
+      // A cold Xbox device can need Windows driver enumeration beyond ViGEm's
+      // one-second ready wait. Ordinary HID commands retain their short watchdog.
+      const timeout=value==='gamepad-start'||value==='gamepad-start-paused'?15000:2000
+      const timer=setTimeout(()=>{this.fail(Error('Native HID bridge stalled'));this.process.kill()},timeout)
       this.pending={resolve,reject,timer};this.process.stdin.write(value+'\n',e=>{if(e)this.fail(e)})
     })
   }

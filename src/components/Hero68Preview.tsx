@@ -32,11 +32,15 @@ export type Hero68PreviewProps = {
   onDropKey?: (keyId:string,event:React.DragEvent<HTMLButtonElement>)=>void
   onDragOverKey?: (keyId:string,event:React.DragEvent<HTMLButtonElement>)=>void
   onDragLeaveKey?: (keyId:string)=>void
+  draggableKeys?: ReadonlySet<string>
+  onDragStartKey?: (keyId:string,event:React.DragEvent<HTMLButtonElement>)=>void
+  onDragEndKey?: (keyId:string,event:React.DragEvent<HTMLButtonElement>)=>void
   onRemoveKey?: (keyId:string)=>void
   keyLabels?: Record<string, string>
   keyDecorations?: Record<string, ReactNode>
   keyClassNames?: Record<string, string>
   advancedBindings?: AdvancedBinding[]
+  showAdvancedIcons?: boolean
   keyTooltips?: Record<string, { title: string; detail?: string; raw?: string }>
   lightingFrame?: LightingFrame
   lightingSource?: 'auto' | 'local'
@@ -57,11 +61,15 @@ export default function Hero68Preview({
   onDropKey,
   onDragOverKey,
   onDragLeaveKey,
+  draggableKeys,
+  onDragStartKey,
+  onDragEndKey,
   onRemoveKey,
   keyLabels,
   keyDecorations,
   keyClassNames,
   advancedBindings = [],
+  showAdvancedIcons = true,
   keyTooltips = {},
   lightingFrame,
   lightingSource = 'auto',
@@ -200,7 +208,7 @@ export default function Hero68Preview({
               {row.map((key, keyIndex) => {
                 const selected = selectedKeys.has(key.id)
                 const advanced = overlayMode === 'deadzone' ? undefined : advancedByKey.get(key.id)
-                const advancedIcon = advanced && !(overlayMode==='rapid'&&rapidPreviewValues[key.id]?.active&&rapidPreviewValues[key.id]?.secondary) && <span className="hero-key-advanced-icon"><AdvancedKeyIcon kind={advanced.kind} /></span>
+                const advancedIcon = showAdvancedIcons && advanced && !(overlayMode==='rapid'&&rapidPreviewValues[key.id]?.active&&rapidPreviewValues[key.id]?.secondary) && <span className="hero-key-advanced-icon"><AdvancedKeyIcon kind={advanced.kind} /></span>
                 const keyColor = (displayedLighting ?? lighting)[key.id] ?? '#35393b'
                 const channels = /^#[0-9a-f]{6}$/i.test(keyColor) ? [1,3,5].map(i=>parseInt(keyColor.slice(i,i+2),16)) : undefined
                 const rgbTextColor = displayedLighting && channels && channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722 > 155 ? '#172022' : undefined
@@ -242,6 +250,9 @@ export default function Hero68Preview({
                           '--stream-travel': `${streamTravelPercent}%`,
                         } as React.CSSProperties}
                         onClick={() => onToggleKey(key.id)}
+                        draggable={draggableKeys?.has(key.id) ?? false}
+                        onDragStart={event=>{hideKeyTooltip();onDragStartKey?.(key.id,event)}}
+                        onDragEnd={event=>onDragEndKey?.(key.id,event)}
                         onDragOver={event=>{if(onDropKey)event.preventDefault();onDragOverKey?.(key.id,event)}}
                         onDragLeave={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))onDragLeaveKey?.(key.id)}}
                         onDrop={event=>onDropKey?.(key.id,event)}
@@ -280,7 +291,7 @@ export default function Hero68Preview({
                             </span>
                           ) : (
                             <>
-                              {!advanced && <span className="hero-key-label">{keyLabels?.[key.id] ?? key.label}</span>}
+                              {(!advanced || !showAdvancedIcons) && <span className="hero-key-label">{keyLabels?.[key.id] ?? key.label}</span>}
                               {key.indicator && <span className={`hero-key-indicator is-${key.indicator}`} aria-hidden="true" />}
                             </>
                           )}

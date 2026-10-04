@@ -68,7 +68,7 @@ async function request(path: string, value?: unknown): Promise<GamepadStatus> {
           : { "Content-Type": "application/json" },
       body: value === undefined ? undefined : JSON.stringify(value),
     },
-    5000,
+    path === "/gamepad/start" ? 30000 : 5000,
   );
   const v = await r.json();
   if (!r.ok) throw Error(v.error ?? "Gamepad service unavailable");

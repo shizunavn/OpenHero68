@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto'
 import path from 'node:path'
 
 // Run after signed package verification. Never replace a published release.
-const root=process.cwd(),version=process.argv[2],sourceRepo=path.resolve(process.argv[3]??root),assetFolder=path.resolve(process.argv[4]??'service/releases')
+const root=process.cwd(),version=process.argv[2],sourceRepo=path.resolve(process.argv[3]??root),assetFolder=path.resolve(process.argv[4]??'service/releases'),minLauncher=process.env.HERO68_RELEASE_MIN_LAUNCHER??'0.4.5'
 if(!/^\d+\.\d+\.\d+$/.test(version??''))throw Error('Usage: node tools/publish-service-release.mjs VERSION [SOURCE_REPO] [ASSET_FOLDER]')
 const repositories=['https://github.com/shizunavn/OpenHero68-RGB-Service.git','https://github.com/shizunavn/OpenHero68.git']
 const git=(...args)=>execFileSync('git',args,{cwd:sourceRepo,encoding:'utf8',windowsHide:true}).trim()
@@ -19,7 +19,7 @@ const names=['OpenHero68-RGB-Windows-x64.zip','SHA256SUMS.txt','OpenHero68-RGB-c
 const payloads=new Map(await Promise.all(names.map(async name=>[name,await readFile(path.join(assetFolder,name))])))
 const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex')
 const manifest=JSON.parse(payloads.get('OpenHero68-RGB-core.json').toString())
-if(manifest.payload.version!==version||manifest.payload.apiVersion!==6||manifest.payload.minLauncher!=='0.4.2')throw Error('Manifest release identity mismatch')
+if(manifest.payload.version!==version||manifest.payload.apiVersion!==6||manifest.payload.minLauncher!==minLauncher)throw Error('Manifest release identity mismatch')
 if(digest(payloads.get('OpenHero68-RGB-core.cjs'))!=='sha256:'+manifest.payload.sha256)throw Error('Core digest mismatch')
 if(!payloads.get('SHA256SUMS.txt').toString().startsWith(digest(payloads.get(names[0])).slice(7)+'  '+names[0]))throw Error('ZIP checksum mismatch')
 const credentials=execFileSync('git',['credential','fill'],{input:'protocol=https\nhost=github.com\n\n',encoding:'utf8',windowsHide:true,stdio:['pipe','pipe','pipe']})

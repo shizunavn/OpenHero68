@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { AudioLines, Play, Square, RotateCcw, SlidersHorizontal, Radio, Layers, Download } from 'lucide-react'
+import { AudioLines, Play, Square, RotateCcw, SlidersHorizontal, Layers, Download } from 'lucide-react'
 import Hero68Preview from './Hero68Preview'
 import RgbColorPicker from './RgbColorPicker'
+import { RgbPreviewPanel, RgbToolbarSlot } from './RgbWorkspace'
 import { defaultRhythm, validateRhythm, rhythmDemo, RHYTHM_MODES, RHYTHM_SIDE_MODES, type RhythmConfiguration } from '../keyboard/rhythm'
 import { HERO68_KEY_IDS } from '../keyboard/hero68Layout'
+import type { AdvancedBinding } from '../protocol/hero68/advanced'
 import { rgbService, type AudioEndpoint, type RgbServiceFrame } from '../protocol/rgbService'
 import { publishRgbServiceStatus, useRgbServiceState, refreshRgbService, getRgbServiceState } from '../protocol/rgbServiceState'
 import { latestUpdates } from '../protocol/latestUpdates'
@@ -25,11 +27,12 @@ function Thumbnail({shape}:{shape:string}) {
       Array.from({length:12},(_,i)=><rect key={i} x={10+i*7} y={40-(shape==='spectrum'?8+Math.sin(i*.8)*12+16:10+Math.sin(i*.6)*9+12)} width="4" height={shape==='spectrum'?8+Math.sin(i*.8)*12+16:10+Math.sin(i*.6)*9+12} rx="2" fill="currentColor" opacity={.4+i*.05}/>)}
   </svg>
 }
-function RhythmPreview({configuration,demo,live,paused,sessionId}:{configuration:RhythmConfiguration;demo:boolean;live:boolean;paused:boolean;sessionId?:string}) {
+function RhythmPreview({configuration,demo,live,paused,sessionId,advancedBindings}:{configuration:RhythmConfiguration;demo:boolean;live:boolean;paused:boolean;sessionId?:string;advancedBindings:AdvancedBinding[]}) {
   const { tr } = useI18n()
   const [frame,setFrame]=useState<RgbServiceFrame>({enabled:false,connected:false,keys:darkKeys})
   const latest=useRef<RgbServiceFrame|null>(null)
   const currentConfig=useRef(configuration);currentConfig.current=configuration
+  const simulate=demo||!live
   useEffect(()=>{
     let handle=0,close:(()=>void)|undefined,disposed=false
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -38,26 +41,23 @@ function RhythmPreview({configuration,demo,live,paused,sessionId}:{configuration
     const render=(now:number)=>{
       if(disposed)return
       if(!document.hidden){
-        if(demo){const sample=rhythmDemo(currentConfig.current,reduced.matches?0:now-start);setFrame({enabled:false,connected:false,keys:sample.keys,side:sample.side,audioLevel:sample.level})}
+        if(simulate){const sample=rhythmDemo(currentConfig.current,reduced.matches?0:now-start);setFrame({enabled:false,connected:false,keys:sample.keys,side:sample.side,audioLevel:sample.level})}
         else if(latest.current){setFrame(latest.current);latest.current=null}
       }
       handle=requestAnimationFrame(render)
     }
-    if(!paused&&!demo&&live)close=rgbService.frames(value=>{if(!disposed&&accept(value))latest.current={...value,keys:value.enabled&&value.connected&&value.keys?value.keys:darkKeys}})
-    if(!demo)setFrame({enabled:false,connected:false,keys:darkKeys})
-    if(!paused&&(demo||live))handle=requestAnimationFrame(render)
+    if(!paused&&!simulate&&live)close=rgbService.frames(value=>{if(!disposed&&accept(value))latest.current={...value,keys:value.enabled&&value.connected&&value.keys?value.keys:darkKeys}})
+    if(!simulate)setFrame({enabled:false,connected:false,keys:darkKeys})
+    if(!paused&&(simulate||live))handle=requestAnimationFrame(render)
     return()=>{disposed=true;cancelAnimationFrame(handle);close?.();latest.current=null}
-  },[demo,live,paused,sessionId])
-  return <div className="rhythm-preview">
-    {!demo&&<div className="rhythm-preview-top"><span className="rhythm-source"><Radio size={13}/>{tr(live?'Live · USB output':'Preview · start to play')}</span><span>{tr(frame.connected?'Keyboard connected':'Waiting for keyboard')}</span></div>}
-    <Hero68Preview selectedKeys={new Set()} onToggleKey={()=>{}} selectionEnabled={false} lightingSource="local" lightingFrame={frame.keys}/>
+  },[simulate,live,paused,sessionId])
+  return <RgbPreviewPanel source={tr(demo?'Simulation':live?'Live · USB output':'Draft preview')} hint={tr(live?(frame.connected?'Keyboard connected':'Waiting for keyboard'):'Side LEDs retain onboard lighting')} footer={<div className="rhythm-meter"><AudioLines size={16}/><meter aria-label={tr('Audio level')} min={0} max={1} value={Math.min(1,frame.audioLevel??0)}/><span>{Math.round((frame.audioLevel??0)*100)}%</span></div>}>
+    <Hero68Preview advancedBindings={advancedBindings} selectedKeys={new Set()} onToggleKey={()=>{}} showAdvancedIcons={false} selectionEnabled={false} lightingSource="local" lightingFrame={frame.keys}/>
     <div className="rgb-side-preview" aria-label={demo?tr('18 illustrative side LEDs'):tr('Side LED output')}>{(frame.side??Array(18).fill('#20262b')).map((color,i)=><span key={i} style={{background:color,color}}/>)}</div>
-    {!demo&&!frame.side&&<span className="rhythm-side-label">{tr('Side LEDs retain onboard lighting')}</span>}
-    <div className="rhythm-meter"><AudioLines size={16}/><meter aria-label={tr('Audio level')} min={0} max={1} value={Math.min(1,frame.audioLevel??0)}/><span>{Math.round((frame.audioLevel??0)*100)}%</span></div>
-  </div>
+  </RgbPreviewPanel>
 }
 
-export default function RhythmSyncEditor({onSetup}:{onSetup:()=>void}) {
+export default function RhythmSyncEditor({onSetup,visible=true,advancedBindings=[]}:{onSetup:()=>void;visible?:boolean;advancedBindings?:AdvancedBinding[]}) {
   const { tr } = useI18n()
   const {status,checking,reconnecting}=useRgbServiceState()
   const [config,setConfig]=useState<RhythmConfiguration>(readDraft)
@@ -134,19 +134,21 @@ export default function RhythmSyncEditor({onSetup}:{onSetup:()=>void}) {
     finally{if(token===action.current)setBusy(false)}
   }
   const selected=RHYTHM_MODES.find(mode=>mode.id===config.keyMode)!
-  return <div className="custom-rgb-gate"><section className={`rhythm-editor custom-rgb-content${locked?' is-locked':''}`} inert={locked} aria-label="Rhythm Sync">
-    <div className="rhythm-heading"><div><h2><AudioLines size={22}/> {tr('Rhythm Sync')}</h2><p>{tr('Let your music light up the keyboard.')}</p></div><span className="rhythm-fps">{live?`${(status?.fps??0).toFixed(1)} FPS`:tr('60 FPS target')}</span></div>
-    <RhythmPreview configuration={config} demo={demo} live={!!live} paused={locked} sessionId={status?.sessionId}/>
-    <div className="rhythm-actions">{!applied&&<button type="button" className="apply-button" onClick={()=>void apply()} disabled={busy||checking||compatible&&!sideSupported}><Play size={15}/>{busy?tr('Working…'):tr('Start Rhythm')}</button>}
-      <button type="button" className="secondary-button" disabled={busy||!status?.enabled} onClick={()=>void stop()}><Square size={14}/> {tr('Return to onboard')}</button>
-      <span className="rhythm-apply-note" role="status">{reconnecting?tr('Reconnecting to background app…'):applied?tr('Running · changes sync automatically'):live?tr('Joining running Rhythm…'):tr('Choose a mode, then start once')}</span>
-    </div>
-    {live&&status?.configurationBusy&&<p className="rgb-inline-note" role="status">{tr('Saving keyboard configuration · lighting paused')}</p>}
-    {!status?.sideOutput&&<p className="rgb-inline-note">{tr('This keyboard firmware does not support live side rhythm. The side LEDs keep their onboard effect.')}</p>}
-    {error&&<p className="stream-error" role="alert">{error}</p>}
-    {live&&status?.lastError&&<p className="stream-error" role="alert">{status.lastError}</p>}
-    {live&&status?.audioError&&<p className="stream-error" role="alert">{status.audioError}</p>}
-    <div className="rhythm-layout"><div className="rhythm-modes"><h3>{tr('Key rhythm')}</h3><div className="rhythm-mode-grid">{RHYTHM_MODES.map(mode=><button type="button" key={mode.id} className={config.keyMode===mode.id?'active':''} aria-pressed={config.keyMode===mode.id} onClick={()=>change({keyMode:mode.id})} disabled={busy}><Thumbnail shape={mode.shape}/><strong>{tr(mode.name)}</strong><span>{tr(mode.description)}</span></button>)}</div>
+  return <div className="custom-rgb-gate" hidden={!visible}>
+    <RgbToolbarSlot visible={visible}>
+      <span className="rgb-sync-note" data-attention={reconnecting||!applied&&live||undefined} role="status">{reconnecting?tr('Reconnecting to background app…'):applied?tr('Auto sync'):live?tr('Joining running Rhythm…'):demo?tr('Simulation'):null}</span>
+      {!applied&&<button type="button" className="apply-button" onClick={()=>void apply()} disabled={busy||checking||locked||compatible&&!sideSupported}><Play size={15}/>{busy?tr('Working…'):tr('Start Rhythm')}</button>}
+      {status?.enabled&&<button type="button" className="secondary-button" title={tr('Return to onboard')} disabled={busy} onClick={()=>void stop()}><Square size={14}/> {tr('Back to onboard')}</button>}
+    </RgbToolbarSlot>
+    <RgbToolbarSlot visible={visible} notice>
+      {live&&status?.configurationBusy&&<p className="rgb-inline-note" role="status">{tr('Saving keyboard configuration · lighting paused')}</p>}
+      {error&&<p className="stream-error" role="alert">{error}</p>}
+      {live&&status?.lastError&&<p className="stream-error" role="alert">{status.lastError}</p>}
+      {live&&status?.audioError&&<p className="stream-error" role="alert">{status.audioError}</p>}
+    </RgbToolbarSlot>
+    <section className={`rhythm-editor custom-rgb-content${locked?' is-locked':''}`} inert={locked} aria-label="Rhythm Sync">
+    <RhythmPreview configuration={config} demo={demo} live={!!live} paused={locked||!visible} sessionId={status?.sessionId} advancedBindings={advancedBindings}/>
+    <div className="rhythm-layout"><div className="settings-card rhythm-modes"><h3>{tr('Key rhythm')}</h3><div className="rhythm-mode-grid">{RHYTHM_MODES.map(mode=><button type="button" key={mode.id} className={config.keyMode===mode.id?'active':''} aria-pressed={config.keyMode===mode.id} onClick={()=>change({keyMode:mode.id})} disabled={busy}><Thumbnail shape={mode.shape}/><strong>{tr(mode.name)}</strong><span>{tr(mode.description)}</span></button>)}</div>
       <h3>{tr('Side rhythm')}</h3><div className="rhythm-side-modes" role="group" aria-label={tr('Side rhythm')}>{RHYTHM_SIDE_MODES.map(mode=><button type="button" key={mode.id} className="secondary-button" aria-pressed={config.sideMode===mode.id} disabled={busy||!demo&&mode.id!==500&&!status?.supportedRhythmSideModes?.includes(mode.id)} title={!demo&&mode.id!==500&&!status?.supportedRhythmSideModes?.includes(mode.id)?tr('Requires firmware with live side rhythm support'):undefined} onClick={()=>change({sideMode:mode.id})}>{tr(mode.name)}</button>)}</div></div>
       <section className="settings-card rhythm-controls"><div className="rhythm-control-heading"><h3><SlidersHorizontal size={17}/> {tr(selected.name)}</h3><button type="button" className="rhythm-reset" aria-label={tr('Reset mode parameters')} title={tr('Reset mode parameters')} onClick={()=>change({...defaultRhythm(),keyMode:config.keyMode,sideMode:config.sideMode,endpoint:config.endpoint})}><RotateCcw size={16}/></button></div>
         <label className="rhythm-select">{tr('Audio source')}<AppSelect label={tr('Audio source')} value={config.endpoint} disabled={busy} onChange={endpoint=>change({endpoint})} options={[{value:'default',label:tr('Follow Windows default')},...(!endpoints.some(d=>d.id===config.endpoint)&&config.endpoint!=='default'?[{value:config.endpoint,label:tr('Saved device · unavailable')}]:[]),...endpoints.map(d=>({value:d.id,label:d.name+(d.default?' (default)':'')}))]} /><small>{tr('Captures music playing through your speakers or headphones.')}</small></label>
@@ -155,7 +157,9 @@ export default function RhythmSyncEditor({onSetup}:{onSetup:()=>void}) {
           <label>{tr('Release / smoothing')} <strong>{config.releaseMs} ms</strong><input aria-label={tr('Rhythm release time')} type="range" min={0} max={200} step={5} value={config.releaseMs} onChange={e=>change({releaseMs:+e.target.value})}/><small>{tr('Fast attack. Release only softens the fade.')}</small></label></div>
         <label className="rhythm-select">{tr('Colors')}<AppSelect<RhythmConfiguration['palette']> label={tr('Colors')} value={config.palette} onChange={palette=>change({palette})} options={[{value:'fixed',label:tr('Single color')},{value:'rainbow',label:tr('Rainbow')},{value:'aurora',label:tr('Aurora')},{value:'fire',label:tr('Fire')}]} /></label>
         {config.palette==='fixed'&&<div className="rhythm-color"><RgbColorPicker label={tr('Rhythm color')} value={config.color} onChange={color=>change({color})}/><span>{config.color.toUpperCase()}</span></div>}
-        <details className="rhythm-advanced"><summary>{tr('Advanced & diagnostics')}</summary>
+        <details className="rhythm-advanced"><summary>{tr('Details')}</summary>
+          <p>{live?`${(status?.fps??0).toFixed(1)} FPS`:tr('60 FPS target')}</p>
+          {!status?.sideOutput&&<p>{tr('This keyboard firmware does not support live side rhythm. The side LEDs keep their onboard effect.')}</p>}
           {config.keyMode===428&&<><label className="rhythm-select">{tr('FFT window')}<AppSelect<RhythmConfiguration['spectrum']['window']> label={tr('FFT window')} value={config.spectrum.window} onChange={window=>change({spectrum:{...config.spectrum,window}})} options={[{value:'hann',label:'Hann'},{value:'hamming',label:'Hamming'},{value:'blackman',label:'Blackman'}]} /></label><label className="rhythm-radius">{tr('Spatial smoothing')} <input aria-label={tr('Spectrum spatial radius')} type="range" min={0} max={16} value={config.spectrum.spatialRadius} onChange={e=>change({spectrum:{...config.spectrum,spatialRadius:+e.target.value}})}/>{config.spectrum.spatialRadius}</label></>}
           <dl><dt>{tr('Audio')}</dt><dd>{status?.audioState??tr('Stopped')}{status?.sampleRate?` · ${status.sampleRate/1000} kHz`:''}</dd><dt>{tr('Frame time')}</dt><dd>{(status?.frameMs??0).toFixed(2)} ms</dd><dt>{tr('Frame gap p95')}</dt><dd>{status?.frameGapP95Ms?.toFixed(2)??'—'} ms</dd><dt>{tr('Sample → USB p95')}</dt><dd>{status?.audioToWriteP95Ms?.toFixed(2)??'—'} ms</dd><dt>{tr('Dropped frames')}</dt><dd>{status?.droppedFrames??0}</dd></dl>
           <p>{tr('USB completion is not LED readback. Physical light latency needs a hardware measurement.')}</p>

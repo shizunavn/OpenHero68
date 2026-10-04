@@ -110,6 +110,7 @@ const VI: Record<string, string> = {
   "Waiting to sync": "Đang chờ đồng bộ",
   "Could not sync changes": "Chưa đồng bộ được thay đổi",
   "Drop onto a key": "Thả vào phím để gán",
+  "Drop to remove binding": "Thả để xóa gán",
   "Uses this key's Actuation Point and Rapid Trigger settings.": "Dùng Actuation Point và Rapid Trigger đã đặt cho phím này.",
   "Digital button · Actuation Point + Rapid Trigger": "Nút digital · Actuation Point + Rapid Trigger",
   "Analog stick and trigger travel is independent of Actuation Point and Rapid Trigger. Digital buttons follow the keyboard settings.": "Hành trình stick và trigger analog độc lập với Actuation Point và Rapid Trigger. Nút digital dùng cài đặt của bàn phím.",
@@ -153,8 +154,8 @@ const VI: Record<string, string> = {
   "Enable Gamepad": "Bật Gamepad",
   "Apply configuration": "Áp dụng cấu hình",
   "Controller Mapping": "Gán tay cầm",
-  "Drag a control onto a key, or select a key and click a control. Right-click a key to remove its binding.":
-    "Kéo nút vào phím, hoặc chọn phím rồi chọn nút tay cầm. Chuột phải để xóa.",
+  "Drag a control onto a key, or select a key and click a control. Drag a mapped control outside the keyboard or right-click its key to remove the binding.":
+    "Kéo nút vào phím, hoặc chọn phím rồi chọn nút tay cầm. Kéo nút đã gán ra ngoài bàn phím hoặc chuột phải vào phím để xóa gán.",
   "Analog Curve": "Đường cong analog",
   Response: "Phản hồi",
   "Snappy Joystick": "Snappy Joystick",
@@ -219,7 +220,8 @@ export default function GamepadPage({
     [serviceConnected, setServiceConnected] = useState(false),
     [connectionAttempt, setConnectionAttempt] = useState(0),
     [saveState, setSaveState] = useState<GamepadSaveState>("saved"),
-    [dragged, setDragged] = useState<{action:GamepadAction;x:number;y:number}|null>(null),
+    [dragged, setDragged] = useState<{action:GamepadAction;x:number;y:number;sourceKeyId?:string}|null>(null),
+    [removeTarget, setRemoveTarget] = useState(false),
     [dropTarget, setDropTarget] = useState<string|null>(null),
     [assigned, setAssigned] = useState<{keyId:string;sequence:number}|null>(null),
     [curveDragging, setCurveDragging] = useState(false),
@@ -234,6 +236,7 @@ export default function GamepadPage({
     mounted = useRef(true),
     restoreFromService = useRef(!hasDraft(slot));
   const emptyDragImage = useRef<HTMLSpanElement>(null);
+  const keyboard = useRef<HTMLDivElement>(null);
   const curveBeforeDrag = useRef<CurvePoint[] | null>(null);
   const autoApply = useRef<GamepadAutoApply<GamepadStatus> | null>(null);
   useEffect(() => {
@@ -371,13 +374,49 @@ export default function GamepadPage({
     setSelected(keyId);
     setAssigned({keyId,sequence:Date.now()});
   }
+  function clearDrag() {
+    setDragged(null);
+    setDropTarget(null);
+    setRemoveTarget(false);
+  }
+  function removeBinding(keyId: string) {
+    restoreFromService.current = false;
+    setConfig(c => ({...c, bindings: c.bindings.filter(b => b.keyId !== keyId)}));
+  }
+  useEffect(() => {
+    const sourceKeyId = dragged?.sourceKeyId;
+    if (!sourceKeyId || disabled) return;
+    const outsideKeyboard = (event: DragEvent) =>
+      event.target instanceof Node && !keyboard.current?.querySelector('.hero68-case')?.contains(event.target);
+    const over = (event: DragEvent) => {
+      const outside = outsideKeyboard(event);
+      setRemoveTarget(outside);
+      if (outside) {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        setDropTarget(null);
+      }
+    };
+    const drop = (event: DragEvent) => {
+      if (!outsideKeyboard(event)) return;
+      event.preventDefault();
+      removeBinding(sourceKeyId);
+      clearDrag();
+    };
+    document.addEventListener('dragover', over);
+    document.addEventListener('drop', drop);
+    return () => {
+      document.removeEventListener('dragover', over);
+      document.removeEventListener('drop', drop);
+    };
+  }, [dragged, disabled]);
   useEffect(() => {
     if (!assigned) return;
     const timer = setTimeout(() => setAssigned(null), 700);
     return () => clearTimeout(timer);
   }, [assigned]);
   useEffect(() => {
-    if (locked || profileBusy) { setDragged(null); setDropTarget(null); }
+    if (locked || profileBusy) clearDrag();
     if ((locked || profileBusy) && drag.current !== null) finishCurve(true);
   }, [locked, profileBusy]);
   function finishCurve(cancel = false) {
@@ -448,7 +487,7 @@ export default function GamepadPage({
   return (
     <div className="gp-gate page-enter">
       <span ref={emptyDragImage} className="gp-empty-drag-image" aria-hidden="true"/>
-      {dragged && <GamepadDragPreview {...dragged} label={t("Drop onto a key")}/>}
+      {dragged && <GamepadDragPreview {...dragged} removing={removeTarget} label={t(removeTarget ? "Drop to remove binding" : "Drop onto a key")}/>}
       <div
         className={`gamepad-page ${showGate ? "gp-locked" : ""}`}
         inert={locked}
@@ -493,7 +532,7 @@ export default function GamepadPage({
             e.target.value = "";
           }}
         />
-        <div className="gp-keyboard">
+        <div className="gp-keyboard" ref={keyboard}>
           <GamepadKeyboardPreview
             lightingSource="local"
             lightingFrame={neutralLighting}
@@ -501,7 +540,18 @@ export default function GamepadPage({
             liveStore={liveStore}
             keyLabels={labels}
             keyDecorations={{...Object.fromEntries(config.bindings.map(b=>[b.keyId,<span key={`${b.keyId}:${assigned?.keyId===b.keyId?assigned.sequence:0}`} className={assigned?.keyId===b.keyId?'gp-assigned-pop':''}><GamepadControlIcon action={b.action}/></span>])),...(dropTarget&&dragged?{[dropTarget]:<span className="gp-drop-preview"><GamepadControlIcon action={dragged.action}/></span>}:{})}}
-            keyClassNames={Object.fromEntries(HERO68_LAYOUT.flat().map(k=>[k.id,k.id===dropTarget&&dragged?'gp-drop-target':'']))}
+            keyClassNames={Object.fromEntries(HERO68_LAYOUT.flat().map(k=>[k.id,[k.id===dropTarget&&dragged?'gp-drop-target':'',k.id===dragged?.sourceKeyId?'gp-drag-source':''].filter(Boolean).join(' ')]))}
+            draggableKeys={new Set(!disabled && tab === 'setup' ? config.bindings.map(b => b.keyId) : [])}
+            onDragStartKey={(id, e) => {
+              const source = config.bindings.find(b => b.keyId === id);
+              if (disabled || tab !== 'setup' || !source) { e.preventDefault(); return; }
+              e.dataTransfer.setData('application/x-openhero-gamepad', source.action);
+              e.dataTransfer.effectAllowed = 'move';
+              if (emptyDragImage.current) e.dataTransfer.setDragImage(emptyDragImage.current, 0, 0);
+              setRemoveTarget(false);
+              setDragged({action:source.action,sourceKeyId:id,x:e.clientX,y:e.clientY});
+            }}
+            onDragEndKey={clearDrag}
             keyTooltips={Object.fromEntries(
               config.bindings.map((b) => [
                 b.keyId,
@@ -517,20 +567,30 @@ export default function GamepadPage({
             }}
             onDropKey={(id, e) => {
               e.preventDefault();
-              setDragged(null);setDropTarget(null);
+              e.stopPropagation();
+              clearDrag();
               if (disabled) return;
+              if (dragged?.sourceKeyId) {
+                const sourceKeyId = dragged.sourceKeyId;
+                if (sourceKeyId === id) return;
+                restoreFromService.current = false;
+                setConfig(c => {
+                  const source = c.bindings.find(b => b.keyId === sourceKeyId);
+                  return source ? {...c, bindings:[...c.bindings.filter(b => b.keyId !== sourceKeyId && b.keyId !== id), {...source,keyId:id}]} : c;
+                });
+                setSelected(id);
+                setAssigned({keyId:id,sequence:Date.now()});
+                return;
+              }
               const a = e.dataTransfer.getData(
                 "application/x-openhero-gamepad",
               ) as GamepadAction;
               if (GAMEPAD_ACTIONS.includes(a)) assign(id, a);
             }}
-            onDragOverKey={(id,e)=>{if(dragged&&!disabled){e.dataTransfer.dropEffect='copy';setDropTarget(id)}}}
+            onDragOverKey={(id,e)=>{if(dragged&&!disabled){e.dataTransfer.dropEffect=dragged.sourceKeyId?'move':'copy';setDropTarget(id)}}}
             onDragLeaveKey={(id)=>setDropTarget(current=>current===id?null:current)}
             onRemoveKey={(id) => {
-              if (!disabled)
-                patch({
-                  bindings: config.bindings.filter((b) => b.keyId !== id),
-                });
+              if (!disabled) removeBinding(id);
             }}
             overlayMode={tab === "tester" ? "stream" : "none"}
             streamPreviewValues={Object.fromEntries(
@@ -633,14 +693,14 @@ export default function GamepadPage({
               <h3>{t("Controller Mapping")}</h3>
               <p>
                 {t(
-                  "Drag a control onto a key, or select a key and click a control. Right-click a key to remove its binding.",
+                  "Drag a control onto a key, or select a key and click a control. Drag a mapped control outside the keyboard or right-click its key to remove the binding.",
                 )}
               </p>
               <div className="gp-palette">
                 {palette.map((a) => (
                   <button
                     key={a}
-                    className={"gp-action gp-action-" + a + (dragged?.action===a?' is-dragging':'')}
+                    className={"gp-action gp-action-" + a + (dragged?.action===a&&!dragged.sourceKeyId?' is-dragging':'')}
                     draggable={!disabled}
                     disabled={disabled}
                     aria-label={"Bind " + a}
@@ -650,7 +710,7 @@ export default function GamepadPage({
                       if(emptyDragImage.current)e.dataTransfer.setDragImage(emptyDragImage.current,0,0);
                       setDragged({action:a,x:e.clientX,y:e.clientY});
                     }}
-                    onDragEnd={()=>{setDragged(null);setDropTarget(null)}}
+                    onDragEnd={clearDrag}
                     onClick={() => selected && assign(selected, a)}
                   >
                     <GamepadControlIcon action={a} />

@@ -5,6 +5,7 @@ import RhythmSyncEditor from './RhythmSyncEditor'
 import Hero68Preview from './Hero68Preview'
 import RgbColorPicker from './RgbColorPicker'
 import RgbKeyPaintTools from './RgbKeyPaintTools'
+import { RgbPreviewPanel, RgbToolbarSlot, RgbWorkspace } from './RgbWorkspace'
 import { FirmwareRgbPreview } from "../keyboard/rgbPreview"
 import { useCustomRgbPlayback } from './useCustomRgbPlayback'
 import { HERO68_KEY_IDS } from '../keyboard/hero68Layout'
@@ -50,12 +51,9 @@ function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,ini
     return previousRgbTab()
   })
   const customMode=tab==='custom',rhythmMode=tab==='rhythm'
+  const [rhythmVisited,setRhythmVisited]=useState(rhythmMode)
+  useEffect(()=>{if(rhythmMode)setRhythmVisited(true)},[rhythmMode])
   useEffect(()=>{try{sessionStorage.setItem('openhero68:rgb-tab',tab)}catch{}},[tab])
-  useEffect(()=>{
-    if(status?.mode&&['onboard','custom','rhythm'].includes(status.mode)){
-      setTab(status.mode as RgbTab)
-    }
-  },[status?.mode])
   useEffect(()=>{onTabChange?.(tab)},[tab,onTabChange])
   const playback=useCustomRgbPlayback(value,onChange,onSetup,slot,tab==='custom')
   const engineRef=useRef<FirmwareRgbPreview|null>(null)
@@ -119,34 +117,37 @@ function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,ini
       else releases.current.push({at:engine.ticks*0.5+150,id})
     }}
   }
-  return <div className="page settings-page rgb-settings-page page-enter">
-    <div className="settings-hero"><div><h1>{tr('RGB Settings')}</h1><p>{rhythmMode?tr('System audio · Live rhythm lighting.'):customMode?tr('Build a base and blend your own RGB effects.'):tr('Onboard lighting · Changes are applied with Save.')}</p></div><span className="rgb-basic-badge">{rhythmMode?tr('Rhythm'):customMode?tr('Custom'):tr('Onboard')}</span></div>
-    <div className="rgb-zone-tabs" role="group" aria-label={tr('RGB mode')}>{[false,true].map(custom=><button key={String(custom)} disabled={busy||playback.busy} aria-pressed={!rhythmMode&&customMode===custom} onClick={()=>setTab(custom?'custom':'onboard')}>{custom?tr('Custom Effects'):tr('Onboard Effects')}</button>)}<button disabled={busy||playback.busy} aria-pressed={rhythmMode} onClick={()=>setTab('rhythm')}>{tr('Rhythm Sync')}</button></div>
-    {rhythmMode&&<RhythmSyncEditor onSetup={onSetup}/>}
+  return <RgbWorkspace tab={tab} onTab={setTab} disabled={busy||playback.busy} output={status?.enabled&&status.mode==='custom'?'custom':status?.enabled&&status.mode==='rhythm'?'rhythm':'onboard'}>
+    {(rhythmMode||rhythmVisited)&&<RhythmSyncEditor onSetup={onSetup} visible={rhythmMode} advancedBindings={advancedBindings}/>}
     <CustomRgbEditor value={value} onChange={onChange} busy={busy} advancedBindings={advancedBindings} visible={customMode} onSetup={onSetup} playback={playback}/>
     {!customMode&&!rhythmMode&&<>
-    <div className="rhythm-actions rgb-onboard-actions"><button className="apply-button" disabled={busy||playback.busy||!status?.enabled} onClick={()=>void playback.onboard()}>{tr('Use onboard lighting')}</button><span className="rhythm-apply-note">{tr('Onboard changes use Save to profile.')}</span></div>
-    <div className="rgb-preview-stage">
-      <Hero68Preview advancedBindings={advancedBindings} selectedKeys={perKey?selected:new Set()} onToggleKey={toggle} lightingFrame={frame.keys} lightingSource="local" selectionEnabled={perKey}/>
+    <RgbToolbarSlot>{status?.enabled&&<button className="apply-button" disabled={busy||playback.busy} onClick={()=>void playback.onboard()}>{tr('Use onboard lighting')}</button>}</RgbToolbarSlot>
+    <RgbToolbarSlot notice>{playback.error&&<p className="stream-error" role="alert">{tr(playback.error)}</p>}</RgbToolbarSlot>
+    <RgbPreviewPanel source={tr('Draft preview')} hint={perKey?tr('Select keys on the preview to paint.'):tr('Onboard changes use Save to profile.')} actions={capability?.reactive?<button className="secondary-button" onClick={()=>setReplay(x=>x+1)}><RotateCcw size={15}/> {tr('Try effect')}</button>:undefined} footer={perKey&&<RgbKeyPaintTools selected={selected} onSelect={setSelected} color={paint} onColor={setPaint} disabled={busy} onPaint={()=>{const colors={...value.colors};for(const id of selected)colors[id]=hexColor(paint);onChange({...value,colors})}}/>}>
+      <Hero68Preview advancedBindings={advancedBindings} showAdvancedIcons={false} selectedKeys={perKey?selected:new Set()} onToggleKey={toggle} lightingFrame={frame.keys} lightingSource="local" selectionEnabled={perKey}/>
       <div className="rgb-side-preview" aria-label={tr('18 side light positions')}>{frame.side.map((color,i)=><span key={i} style={{background:color,color}}/>)}</div>
-    </div>
-    {perKey&&<RgbKeyPaintTools selected={selected} onSelect={setSelected} color={paint} onColor={setPaint} disabled={busy} onPaint={()=>{const colors={...value.colors};for(const id of selected)colors[id]=hexColor(paint);onChange({...value,colors})}}/>}
-    <div className="rgb-zone-tabs" role="group" aria-label={tr('Lighting zone')}>{(['keys','side'] as const).map(id=><button key={id} aria-pressed={zone===id} onClick={()=>setZone(id)}>{id==='keys'?tr('Keys'):tr('Side Light')}</button>)}</div>
+    </RgbPreviewPanel>
+    <div className="rgb-editor-layout">
+    <aside className="settings-card rgb-effect-library">
+      <div className="rgb-zone-tabs" role="group" aria-label={tr('Lighting zone')}>{(['keys','side'] as const).map(id=><button key={id} aria-pressed={zone===id} onClick={()=>setZone(id)}>{id==='keys'?tr('Keys'):tr('Side Light')}</button>)}</div>
+      <h2>{tr('Choose effect')}</h2>
+      <div className="rgb-mode-grid">{effects.map((mode,i)=>{const Icon=[Lightbulb,Waves,Sparkles,Palette][i%4];return <button key={mode.id} disabled={busy} className={config.mode===mode.id?'active':''} aria-pressed={config.mode===mode.id} onClick={()=>change({mode:mode.id})}><Icon size={16}/><span>{tr(mode.name)}</span></button>})}</div>
+    </aside>
     <section className="settings-card rgb-basic-card">
-      <div className="rgb-section-heading"><div><h2>{zone==='keys'?tr('Key lighting'):tr('Side lighting')}</h2><p>{tr('{count} effects stored on your keyboard',{count:effects.length})}</p></div><button className="secondary-button" onClick={()=>setReplay(x=>x+1)}><RotateCcw size={15}/> {tr('Replay preview')}</button></div>
-      <div className="rgb-mode-grid">{effects.map((mode,i)=>{const Icon=[Lightbulb,Waves,Sparkles,Palette][i%4];return <button key={mode.id} disabled={busy} className={config.mode===mode.id?'active':''} aria-pressed={config.mode===mode.id} onClick={()=>change({mode:mode.id})}><Icon size={19}/><span>{mode.name}</span></button>})}</div>
+      <div className="rgb-section-heading"><h2>{tr(capability?.name??'Unrecognized onboard mode')}</h2><span>{zone==='keys'?tr('Key lighting'):tr('Side lighting')}</span></div>
       {!capability&&<p className="rgb-inline-note">{tr('Unrecognized onboard mode')} {config.mode}. {tr('It is preserved until you select another effect.')}</p>}
       {darkReason&&<div className="rgb-dark-preview-note" role="status"><span>{tr('Lighting is dark')} · {darkReason}</span><button type="button" className="secondary-button" disabled={busy} onClick={()=>change({mix:true,brightness:config.brightness||brightnessMax})}>{tr('Use Multicolor')}</button></div>}
       <div className="rgb-parameters">
         <label>{tr('Brightness')} <strong>{config.brightness<=brightnessMax?`${config.brightness*(zone==='side'?25:5)}%`:tr('Unknown ({value})',{value:config.brightness})}</strong><input aria-label={tr('RGB brightness')} type="range" min="0" max={brightnessMax} value={Math.min(config.brightness,brightnessMax)} disabled={busy||!capability||config.mode===0} onChange={e=>change({brightness:Number(e.target.value)})}/></label>
-        <label>{tr('Speed')} <strong>{config.speed+1} / 5</strong><input aria-label={tr('RGB speed')} type="range" min="0" max="4" value={config.speed} disabled={busy||!capability?.speed} onChange={e=>change({speed:Number(e.target.value)})}/></label>
-        {capability?.color&&<div className="rgb-color-controls"><div className="rgb-active-color">{config.mix?<><span className="rgb-rainbow-swatch" aria-label={tr('Multicolor palette')}/><span>{tr('Multicolor')}</span></>:<><label>{tr('Color')}<RgbColorPicker label={tr('Effect color')} value={colorHex(config.rgb)} disabled={busy} onChange={hex=>change({rgb:hexColor(hex)})}/></label><span>{colorHex(config.rgb).toUpperCase()}</span></>}</div><label className="rgb-mix"><input type="checkbox" checked={config.mix} disabled={busy} onChange={e=>change({mix:e.target.checked})}/> {tr('Multicolor')}</label></div>}
+        {capability?.speed&&<label>{tr('Speed')} <strong>{config.speed+1} / 5</strong><input aria-label={tr('RGB speed')} type="range" min="0" max="4" value={config.speed} disabled={busy} onChange={e=>change({speed:Number(e.target.value)})}/></label>}
+        {capability?.color&&<div className="rgb-color-controls"><div className="rgb-active-color">{config.mix?<span className="rgb-rainbow-swatch" aria-label={tr('Multicolor palette')}/>:<><label>{tr('Color')}<RgbColorPicker label={tr('Effect color')} value={colorHex(config.rgb)} disabled={busy} onChange={hex=>change({rgb:hexColor(hex)})}/></label><span>{colorHex(config.rgb).toUpperCase()}</span></>}</div><label className="rgb-mix"><input type="checkbox" checked={config.mix} disabled={busy} onChange={e=>change({mix:e.target.checked})}/> {tr('Multicolor')}</label></div>}
       </div>
       {capability?.reactive&&<p className="rgb-inline-note">{tr('Preview only · sample key presses repeat automatically. Click or type to try your own keys.')}</p>}
       {config.brightness>brightnessMax&&<p className="rgb-inline-note">{tr('This draft has an unrecognized brightness value. Choose a supported level before saving this zone.')}</p>}
       {error&&<p className="stream-error">{tr('Preview unavailable')}: {error}</p>}
-      <p className="rgb-preview-note">{tr('Preview uses firmware V3.20 RGB calculations. Screen colors may differ from the LEDs.')}</p>
+      <details className="service-details"><summary>{tr('Details')}</summary><p>{tr('Preview uses firmware V3.20 RGB calculations. Screen colors may differ from the LEDs.')}</p></details>
     </section>
+    </div>
     </>}
-  </div>
+  </RgbWorkspace>
 }

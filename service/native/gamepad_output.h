@@ -25,7 +25,6 @@ class Output {
   uint64_t neutralCount_=0,outputs_=0;
   Report report_{};
   double nextOutput_=0,started_=0,lastOutput_=0;
-  double nextIndexCheck_=0;
   std::vector<double> outputGaps_;
   std::string error_;
   unsigned long userIndex_=ULONG_MAX;
@@ -67,9 +66,7 @@ class Output {
               if(now>=nextOutput_){nextOutput_+=period;if(nextOutput_<=now)nextOutput_+=std::floor((now-nextOutput_)/period+1)*period;}
               XINPUT_STATE actual{};
               // Standard XInputGetState omits the Guide bit.
-              if(now>=nextIndexCheck_){ULONG index=ULONG_MAX;if(VIGEM_SUCCESS(vigem_target_x360_get_user_index(client_,target_,&index)))userIndex_=index;nextIndexCheck_=now+250;}
               xinputError_=userIndex_<4?XInputGetState(userIndex_,&actual):ERROR_DEVICE_NOT_CONNECTED;
-              if(xinputError_!=ERROR_SUCCESS){vigem_target_x360_get_user_index(client_,target_,&userIndex_);xinputError_=userIndex_<4?XInputGetState(userIndex_,&actual):ERROR_DEVICE_NOT_CONNECTED;}
               verified_=xinputError_==ERROR_SUCCESS&&
                 actual.Gamepad.wButtons==(r.wButtons&~1024)&&actual.Gamepad.sThumbLX==r.sThumbLX&&
                 actual.Gamepad.sThumbLY==r.sThumbLY&&actual.Gamepad.sThumbRX==r.sThumbRX&&actual.Gamepad.sThumbRY==r.sThumbRY&&
@@ -98,14 +95,30 @@ public:
     driverAvailable_=true;
     target_=vigem_target_x360_alloc();
     const auto added=target_?vigem_target_add(client_,target_):VIGEM_ERROR_TARGET_UNINITIALIZED;
-    if(!VIGEM_SUCCESS(added)){std::ostringstream e;e<<"Could not create Xbox controller (ViGEm 0x"<<std::hex<<unsigned(added)<<", Windows "<<std::dec<<GetLastError()<<")";error_=e.str();destroy();return false;}
+    const DWORD addedError=GetLastError();
+    if(!VIGEM_SUCCESS(added)){std::ostringstream e;e<<"Could not create Xbox controller (ViGEm 0x"<<std::hex<<unsigned(added)<<", Windows "<<std::dec<<addedError<<")";error_=e.str();destroy();return false;}
     // ViGEmBus 1.22 initializes XInput with its captured boot packet (nonzero
     // sticks), but its report cache starts zero and suppresses an initial zero
-    // update. Force a cache transition by one axis unit, then neutralize before
-    // exposing ready. No buttons or triggers are emitted by this bootstrap.
-    XUSB_REPORT seed{};seed.sThumbLX=1;vigem_target_x360_update(client_,target_,seed);
-    Sleep(1);vigem_target_x360_update(client_,target_,{});
-    userIndex_=ULONG_MAX;vigem_target_x360_get_user_index(client_,target_,&userIndex_);
+    // update. Force a tiny cache transition, identify this exact XInput device,
+    // then neutralize before exposing ready. All four axis values are far below
+    // standard deadzones; no buttons/triggers are emitted. GET_USER_INDEX can
+    // return zero bytes on 1.22 and falsely identify another controller as P1.
+    XUSB_REPORT seed{};seed.sThumbLX=1;seed.sThumbLY=2;seed.sThumbRX=3;seed.sThumbRY=4;
+    const auto seeded=vigem_target_x360_update(client_,target_,seed);
+    userIndex_=ULONG_MAX;
+    const double indexDeadline=clock()+500;
+    while(VIGEM_SUCCESS(seeded)&&userIndex_>=4&&clock()<indexDeadline){
+      for(DWORD index=0;index<4;++index){
+        XINPUT_STATE actual{};
+        if(XInputGetState(index,&actual)==ERROR_SUCCESS&&actual.Gamepad.wButtons==0&&
+          actual.Gamepad.bLeftTrigger==0&&actual.Gamepad.bRightTrigger==0&&
+          actual.Gamepad.sThumbLX==1&&actual.Gamepad.sThumbLY==2&&
+          actual.Gamepad.sThumbRX==3&&actual.Gamepad.sThumbRY==4){userIndex_=index;break;}
+      }
+      if(userIndex_>=4)Sleep(5);
+    }
+    const auto neutralized=vigem_target_x360_update(client_,target_,{});
+    if(!VIGEM_SUCCESS(seeded)||!VIGEM_SUCCESS(neutralized)||userIndex_>=4){error_="Could not verify Xbox controller initialization";destroy();return false;}
     if(!keyboardHook_.prepare(config_.keyboardScans,config_.suppressMappedKeys)){error_="Windows keyboard hook unavailable";destroy();return false;}
     enabled_=true;paused_=false;armed_=false;stale_=true;outputs_=0;
     started_=nextOutput_=clock();lastOutput_=0;outputGaps_.clear();samples_={};SetEvent(wake_);return true;

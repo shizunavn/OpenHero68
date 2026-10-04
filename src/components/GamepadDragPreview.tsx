@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import type { GamepadAction } from '../keyboard/gamepad'
 import GamepadControlIcon from './GamepadControlIcon'
 
-export default function GamepadDragPreview({ action, x, y, label }: { action: GamepadAction; x: number; y: number; label: string }) {
+export default function GamepadDragPreview({ action, x, y, label, removing = false }: { action: GamepadAction; x: number; y: number; label: string; removing?: boolean }) {
   const element = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let frame = 0, left = x, top = y
@@ -19,5 +19,5 @@ export default function GamepadDragPreview({ action, x, y, label }: { action: Ga
     document.addEventListener('dragover', move)
     return () => { document.removeEventListener('dragover', move); cancelAnimationFrame(frame) }
   }, [x, y])
-  return createPortal(<div ref={element} className="gp-drag-cursor" aria-hidden="true"><div className="gp-drag-tile"><GamepadControlIcon action={action}/></div><span>{label}</span></div>, document.body)
+  return createPortal(<div ref={element} className={`gp-drag-cursor${removing ? ' is-removing' : ''}`} aria-hidden="true"><div className="gp-drag-tile"><GamepadControlIcon action={action}/></div><span>{label}</span></div>, document.body)
 }

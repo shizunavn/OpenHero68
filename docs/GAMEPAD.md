@@ -133,9 +133,20 @@ the service so its launcher can restart it. Gamepad always starts disabled.
 
 ViGEmBus 1.22.0 initializes its Xbox device with a nonzero captured boot packet,
 while its duplicate-report cache starts zero. The adapter forces a one-unit
-left-stick X cache transition, immediately sends neutral and only then reports
+four-axis cache transition (raw values 1/2/3/4), identifies its own XInput slot,
+sends neutral and only then reports
 ready. No button or trigger is used during this bootstrap. The native adapter
 is isolated in `gamepad_output.h` so another backend can replace it later.
+
+From 0.4.5, a cold Xbox startup that exceeds ViGEmBus 1.22.0's one-second
+ready wait keeps the same child plugged in for up to ten more seconds. It awaits
+that child's driver readiness signal by repeating WAIT_DEVICE_READY on the
+same serial. Output starts only after the driver confirms boot; timeouts
+never count as ready. Fatal errors or an expired wait unplug the child and
+preserve the Windows error. Only Xbox Start gets a 15-second native watchdog
+and 30-second browser request window; normal HID and status deadlines stay
+short. This handles delayed Windows enumeration without manual Start retries;
+persistent driver failure or all four XInput slots being occupied still fails.
 
 ## Local API
 

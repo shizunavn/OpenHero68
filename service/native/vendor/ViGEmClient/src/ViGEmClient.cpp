@@ -513,6 +513,52 @@ void vigem_target_free(PVIGEM_TARGET target)
 	}
 }
 
+// ViGEmBus 1.22's readiness request times out after one second, even while
+// Windows is still installing/starting xusb. Keep the same child attached and
+// wait for its LED/user index (set by xusb's boot packet) instead of restarting
+// enumeration. Reissue the readiness wait on that serial; only the driver's
+// actual boot signal counts as ready (GET_USER_INDEX can return no output).
+static DWORD wait_for_x360_boot(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
+{
+	OVERLAPPED ol = {};
+	ol.hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (!ol.hEvent) return GetLastError();
+	const auto deadline = GetTickCount64() + 10000;
+	DWORD failure = ERROR_DEVICE_HARDWARE_ERROR;
+	do
+	{
+		// Let the previous driver's one-second waiter finish its event cleanup.
+		Sleep(100);
+		VIGEM_WAIT_DEVICE_READY ready;
+		VIGEM_WAIT_DEVICE_READY_INIT(&ready, target->SerialNo);
+		DWORD transferred = 0;
+		const HANDLE event = ol.hEvent;
+		ol = {};
+		ol.hEvent = event;
+		ResetEvent(event);
+		const BOOL submitted = DeviceIoControl(vigem->hBusDevice, IOCTL_VIGEM_WAIT_DEVICE_READY,
+			&ready, ready.Size, nullptr, 0, &transferred, &ol);
+		const DWORD submitError = submitted ? ERROR_SUCCESS : GetLastError();
+		const BOOL pending = submitted || submitError == ERROR_IO_PENDING;
+		if (pending && GetOverlappedResult(vigem->hBusDevice, &ol, &transferred, TRUE))
+		{
+			failure = ERROR_SUCCESS;
+			break;
+		}
+		else
+		{
+			const DWORD error = pending ? GetLastError() : submitError;
+			if (error != ERROR_DEVICE_HARDWARE_ERROR)
+			{
+				failure = error;
+				break;
+			}
+		}
+	} while (GetTickCount64() < deadline);
+	CloseHandle(ol.hEvent);
+	return failure;
+}
+
 VIGEM_ERROR vigem_target_add(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
 {
 	VIGEM_ERROR error = VIGEM_ERROR_NO_FREE_SLOT;
@@ -630,7 +676,18 @@ VIGEM_ERROR vigem_target_add(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
 				// Backwards compatibility with version pre-1.17, where this IOCTL doesn't exist
 				// 
 				waitReadyError = GetLastError();
-				if (waitReadyError == ERROR_INVALID_PARAMETER)
+				const bool waitReadyUnsupported = waitReadyError == ERROR_INVALID_PARAMETER;
+				if (waitReadyError == ERROR_DEVICE_HARDWARE_ERROR && target->Type == Xbox360Wired)
+				{
+					waitReadyError = wait_for_x360_boot(vigem, target);
+					if (waitReadyError == ERROR_SUCCESS)
+					{
+						target->State = VIGEM_TARGET_CONNECTED;
+						error = VIGEM_ERROR_NONE;
+						break;
+					}
+				}
+				if (waitReadyUnsupported)
 				{
 					target->State = VIGEM_TARGET_CONNECTED;
 					target->IsWaitReadyUnsupported = true;

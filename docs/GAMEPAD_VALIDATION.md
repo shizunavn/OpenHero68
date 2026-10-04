@@ -1,5 +1,30 @@
 # Recorded Gamepad / shared Hall validation
 
+## 0.4.5 follow-up — 2026-10-04
+
+- 533 JavaScript regression tests passed in 58.6 seconds, including a 5.2-second
+  native Start response that exceeds the ordinary HID and web-read deadlines.
+  Firmware blocking and restoration passed after that delayed start.
+- Simulated SDK tests preserve one child across a 3.2-second boot delay,
+  bound persistent waits, preserve immediate/asynchronous fatal errors through
+  cleanup, and retain normal/pre-1.17 behavior. Other controller types do not
+  enter Xbox recovery.
+- Live ViGEmBus checks forced the first readiness request to report timeout,
+  then verified recovery through the actual driver's readiness signal. The
+  same target remained plugged in. Two subsequent warm Start/Stop cycles
+  passed. XInput slot 0 was already occupied; the new target was identified
+  correctly as slot 1, xinputVerified=true, with all actual axes/buttons/triggers
+  neutral. No physical keyboard writes or keyboard input injection were used.
+- Six component drag scenarios passed for persisted removal, cancel, moving
+  analog travel settings, same-key/case-background drops, palette copy and
+  removal when dropping in the physical keyboard's outer margins.
+- Web/service TypeScript and full Windows builds passed. Release ZIPs are
+  checked by the existing packaging scripts; signed core requires launcher
+  0.4.5 to ensure the new native helper is installed.
+- First startup after a Windows reboot/driver installation was not reproduced.
+  Persistent driver failure still returns an error and cannot be ruled out by
+  the simulated cold-start and live warm-device checks.
+
 ## 0.4.2 follow-up — 2026-10-04
 
 - Full JavaScript regression: 510 passed in 58.3 seconds. Production web,

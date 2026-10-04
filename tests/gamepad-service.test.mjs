@@ -17,7 +17,10 @@ const read=async()=>JSON.parse(await readFile(path.join(state,'fixture-hid.json'
 test('service atomically blocks/restores firmware; fast tester streams add no Hall consumers and startup recovers persisted remaps',async t=>{
  await start();t.after(()=>{if(service?.exitCode===null)service.kill()})
  let status=await(await fetch(base+'/gamepad/status')).json();const config={...status.configuration,bindings:status.configuration.bindings.slice(0,2),suppressMappedKeys:true}
+ // Native cold boot may exceed both the ordinary HID watchdog and a web read.
+ await writeFile(path.join(state,'fixture-start-delay.json'),JSON.stringify({delayMs:5200}))
  status=await post('/gamepad/start',{slot:0,configuration:config});assert.ok(status.enabled&&status.keyboardSuppressionActive)
+ await writeFile(path.join(state,'fixture-start-delay.json'),JSON.stringify({delayMs:0}))
  let actual=await read();assert.equal(Object.keys(actual.remaps).length,6);assert.ok(Object.values(actual.remaps).every(v=>v===0))
  const journal=JSON.parse(await readFile(path.join(state,'gamepad-remap-recovery.json'),'utf8'));assert.equal(journal.entries.length,6)
  const abort=new AbortController(),response=await fetch(base+'/gamepad/input/events',{signal:abort.signal}),reader=response.body.getReader();let frames=0,text='';const started=performance.now()
