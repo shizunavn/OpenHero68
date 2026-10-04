@@ -1,6 +1,6 @@
 // Ported from the hero68_re reverse-engineering workspace (typescript/src/commands.ts).
 // Every builder here returns exactly the packet shape recovered from the official
-// AULA bundle / hardware captures. See docs/PROTOCOL_0323.md for confidence levels.
+// AULA bundle / hardware captures. See ../README.md#sources-and-evidence for provenance.
 import { buildReport, mmUnits, u16be, u32be } from "./codec";
 import type {
   ActuationConfig,
@@ -363,7 +363,7 @@ export function writeProfileName(slot: 0 | 1 | 2, name: string): Uint8Array {
   const encoded = new TextEncoder().encode(name);
   if (encoded.length > 55) throw new RangeError("name cannot exceed 55 UTF-8 bytes");
   // Official sync_profile_name always declares LEN=56; data[0] is the
-  // actual UTF-8 length. See hero68_re/docs/STATIC_RE_COMPLETE.md, section 6.
+  // actual UTF-8 length. See ../../../docs/PROFILE_REMAP_NOTES.md#protocol-reference.
   const data = new Uint8Array(56);
   data[0] = encoded.length;
   data.set(encoded, 1);

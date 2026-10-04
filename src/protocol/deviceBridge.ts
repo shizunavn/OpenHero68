@@ -51,10 +51,7 @@ export function isHero68ProtocolReady() {
 
 export async function saveDeviceConfiguration(snapshot: DeviceConfigurationSnapshot) {
   if (!protocolEncoder || !transport) {
-    // Intentionally do not invent packet opcodes. The UI/state pipeline is ready;
-    // register the RE-derived encoder + WebHID transport when the HEX map is known.
-    console.info('[OpenHero68 protocol] Save staged; no encoder/transport registered yet.', snapshot)
-    return { mode: 'staged' as const, packets: [] as string[] }
+    throw new Error('HERO68 protocol is not ready. Reconnect the keyboard and try again.')
   }
 
   const packets = protocolEncoder.encodeSave(snapshot)

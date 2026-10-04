@@ -5,6 +5,7 @@ export type LanguagePreference = Language
 export type RegionGroup = 'VN' | 'OTHER'
 
 const VI: Record<string, string> = {
+  'HERO68 protocol is not ready. Reconnect the keyboard and try again.': 'Giao thức HERO68 chưa sẵn sàng. Hãy kết nối lại bàn phím và thử lại.',
   'Output: Custom': 'Đang chạy Custom',
   'Lighting preview': 'Xem trước ánh sáng',
   'Arrows': 'Mũi tên',

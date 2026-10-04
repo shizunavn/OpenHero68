@@ -25,9 +25,8 @@ export const HERO68_HALL_VISUAL_MAX_MM = 3.4 as const
  *              gated by the 0x98 mode bit. This is the passive path candidate.
  * mode-poll:   same multi-key snapshots after entering 0x98 mode; fallback if
  *              firmware 0323 differs from the 0320 image.
- * event-stream: legacy unsolicited changed-key scheduler after 0x98 START.
  */
-export type HallStreamSource = 'direct-poll' | 'mode-poll' | 'event-stream'
+export type HallStreamSource = 'direct-poll' | 'mode-poll'
 
 export type HallStreamSample = {
   keyId: string

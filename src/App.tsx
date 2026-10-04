@@ -134,7 +134,7 @@ function App() {
   const tr = useMemo(() => createTranslator(resolvedLanguage), [resolvedLanguage])
   const [switchSearch, setSwitchSearch] = useState(() => persistedState?.switchSearch ?? '')
   const [switchBrandFilter, setSwitchBrandFilter] = useState(() => persistedState?.switchBrandFilter ?? 'all')
-  const [saveState, setSaveState] = useState<'idle' | 'staged' | 'sent'>('idle')
+  const [saveState, setSaveState] = useState<'idle' | 'sent'>('idle')
   const [profileSlot, setProfileSlot] = useState<ProfileSlot>(() => persistedState?.profileSlot ?? 1)
   const initialRgbDraft = persistedState?.profileDrafts?.[persistedState?.profileSlot ?? 1]
   const [rgb, setRgb] = useState<RgbProfile>(() => restoreStoredRgb(initialRgbDraft?.rgb, initialRgbDraft?.rgbFormat))
@@ -910,8 +910,8 @@ function App() {
       profileBusyRef.current = true
       setProfileBusy(true)
       setDeviceActionError(null)
-      const result = dirtyKeys.size ? await saveDeviceConfiguration(snapshot) : { mode: 'sent' as const }
-      if(result.mode==='sent'&&dirtyKeys.size){
+      if(dirtyKeys.size){
+        await saveDeviceConfiguration(snapshot)
         const readback=await hydrateFromDevice(hero68DeviceManager,profileSlot,[...dirtyKeys])
         const near=(actual:number|undefined,wanted:number)=>actual!==undefined&&Math.abs(actual-wanted)<=0.011
         for(const expected of snapshot.keys){
@@ -935,7 +935,7 @@ function App() {
           }
         }
       }
-      if (result.mode === 'sent' && [...dirtyRemaps].some(change => {
+      if ([...dirtyRemaps].some(change => {
         const [layerText, keyId] = change.split(':')
         const remapLayer = Number(layerText) as RemapLayer
         return isMacroRemapValue(remapLayers[remapLayer]?.[keyId])
@@ -945,20 +945,18 @@ function App() {
         await hero68DeviceManager.request(selectProfile(profileSlot), 0x10, 0)
         await syncHero68MacroLibrary(hero68DeviceManager, macroLibrary)
       }
-      if (result.mode === 'sent') await saveRemapChanges(hero68DeviceManager, profileSlot, remapLayers, dirtyRemaps)
-      if (result.mode === 'sent' && advancedPending) {
+      await saveRemapChanges(hero68DeviceManager, profileSlot, remapLayers, dirtyRemaps)
+      if (advancedPending) {
         const verified = await saveAdvancedBindings(hero68DeviceManager, profileSlot, advancedBindings, advancedBaseline)
         setAdvancedBaseline(verified)
       }
-      if (result.mode === 'sent' && rgbPending && !tachyon) {
+      if (rgbPending && !tachyon) {
         if(activePage==='rgb'&&activeRgbTab==='onboard'&&hero68DeviceManager.viaService){const result=await rgbService.mode('onboard');publishRgbServiceStatus(result)}
         await saveRgbProfile(hero68DeviceManager, rgb, rgbBaseline, setRgbBaseline)
       }
-      if (result.mode === 'sent') {
-        if(dirtyKeys.size)setDirtyKeys(new Set())
-        if(dirtyRemaps.size){remapBaselineRef.current=structuredClone(remapLayers);setDirtyRemaps(new Set())}
-        setSaveState('sent')
-      } else setSaveState(result.mode)
+      if(dirtyKeys.size)setDirtyKeys(new Set())
+      if(dirtyRemaps.size){remapBaselineRef.current=structuredClone(remapLayers);setDirtyRemaps(new Set())}
+      setSaveState('sent')
       window.setTimeout(() => setSaveState('idle'), 1200)
     } catch (error) {
       setSaveState('idle')
@@ -1162,7 +1160,7 @@ function App() {
             </div>
 
             <div className="topbar-actions">
-              {showKeyboardArea && (activePage === 'gamepad' || activePage==='rgb'&&activeRgbTab!=='onboard') ? <span className="profile-status">{tr('Changes apply automatically')}</span> : showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : saveState === 'staged' ? tr('Saved locally') : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
+              {showKeyboardArea && (activePage === 'gamepad' || activePage==='rgb'&&activeRgbTab!=='onboard') ? <span className="profile-status">{tr('Changes apply automatically')}</span> : showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
             </div>
           </header>
         )}
@@ -1473,7 +1471,7 @@ function App() {
           ) : activeSettingsPage === 'switches' ? (
             <div className="page settings-page switch-selector-page page-enter">
               <div className="switch-page-actions">
-                    <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0)}>{saveState === 'sent' ? tr('Saved') : saveState === 'staged' ? tr('Saved locally') : tr('Save')}</button>
+                    <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0)}>{saveState === 'sent' ? tr('Saved') : tr('Save')}</button>
               </div>
 
               <section className="switch-selector-stage">
