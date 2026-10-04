@@ -1,6 +1,6 @@
 import {readFileSync,writeFileSync} from 'node:fs'
 // Development-time derivation only. The generated profile is compiled into the helper.
-const source=readFileSync('docs/HEROMusicServe_RE_full_v2.md','utf8').split('# 47.')[1].split('# 48.')[0]
+const source=readFileSync('docs/re-notes/HEROMusicServe_RE_full_v2.md','utf8').split('# 47.')[1].split('# 48.')[0]
 const positions=[1,15,16,17,18,19,20,21,22,23,24,25,26,27,98,28,29,30,31,32,33,34,35,36,37,38,39,40,41,99,42,43,44,45,46,47,48,49,50,51,52,53,54,102,55,56,57,58,59,60,61,62,63,64,65,66,74,103,67,68,69,70,71,72,73,76,75,77]
 function rows(section){
   const text=source.split('['+section+']')[1].split('\n[')[0]

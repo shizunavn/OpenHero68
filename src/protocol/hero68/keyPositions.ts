@@ -22,9 +22,9 @@
 // The full 68-key table was generated and cross-checked by script against
 // layout.py (position-set equality, no duplicates, exactly 68 keys) rather than
 // hand-typed from these hardware IDs directly, to avoid re-introducing the same
-// class of bug this table exists to fix. See docs/PROTOCOL_0323.md and
-// fixtures/golden_packets.json in the hero68_re workspace for the underlying
-// evidence.
+// class of bug this table exists to fix. See ../README.md#sources-and-evidence.
+// The original layout and golden packet fixtures belong to the external
+// hero68_re workspace and are not shipped in this repository.
 import { HERO68_KEY_IDS } from "../../keyboard/hero68Layout";
 
 export const HERO68_KEY_POSITIONS: Readonly<Record<string, number>> = {

@@ -5,6 +5,19 @@ export type LanguagePreference = Language
 export type RegionGroup = 'VN' | 'OTHER'
 
 const VI: Record<string, string> = {
+  'Connection, profile saving and background service help.': 'Hướng dẫn kết nối, lưu hồ sơ và thiết lập ứng dụng nền.',
+  "These preferences change the app interface and are saved in this browser.": "Các tùy chọn này thay đổi giao diện ứng dụng và được lưu trong trình duyệt này.",
+  "Choose Interface for language and sidebar preferences, Device Settings for keyboard options, or Background Service for installation and connection help.": "Chọn Giao diện để đổi ngôn ngữ và thanh bên, Cài đặt thiết bị để chỉnh bàn phím, hoặc Ứng dụng nền để xem hướng dẫn cài đặt và kết nối.",
+  "Connect your HERO68, save onboard settings, or set up the Windows background service.": "Kết nối HERO68, lưu cài đặt vào bàn phím hoặc thiết lập ứng dụng nền Windows.",
+  "Connect HERO68": "Kết nối HERO68",
+  "Open OpenHero68 in Chrome or Edge over HTTPS, click Connect, and select HERO68. Close other keyboard apps if the device is busy.": "Mở OpenHero68 bằng Chrome hoặc Edge qua HTTPS, nhấn Kết nối và chọn HERO68. Đóng các ứng dụng bàn phím khác nếu thiết bị đang bận.",
+  "Save onboard settings": "Lưu cài đặt vào bàn phím",
+  "Choose a profile, edit your keys, then use Save to profile. Wait for readback confirmation; a failed save keeps your edits available for retry.": "Chọn hồ sơ, chỉnh các phím rồi nhấn Lưu vào hồ sơ. Đợi xác nhận đọc lại; nếu lưu thất bại, các thay đổi được giữ lại để thử lại.",
+  "Custom Effects, Rhythm Sync and Gamepad need the Windows background service. Open Settings > Background Service for setup. Gamepad also requires ViGEmBus.": "Custom Effects, Rhythm Sync và Gamepad cần ứng dụng nền Windows. Mở Cài đặt > Ứng dụng nền để thiết lập. Gamepad còn cần ViGEmBus.",
+  "Documentation": "Tài liệu",
+  "Read the documentation": "Đọc tài liệu",
+  "Report an issue": "Báo lỗi",
+  'HERO68 protocol is not ready. Reconnect the keyboard and try again.': 'Giao thức HERO68 chưa sẵn sàng. Hãy kết nối lại bàn phím và thử lại.',
   'Output: Custom': 'Đang chạy Custom',
   'Lighting preview': 'Xem trước ánh sáng',
   'Arrows': 'Mũi tên',

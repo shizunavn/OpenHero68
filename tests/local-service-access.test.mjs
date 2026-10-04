@@ -12,11 +12,34 @@ class Permission extends EventTarget {
 function pendingFetch(_,options){return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true}))}
 
 test('public Pages origin is allowed exactly, while other sites and non-loopback hosts stay blocked',()=>{
-  const origins=serviceOrigins(16868)
+  const origins=serviceOrigins(16868,'')
   assert.equal(isAllowedServiceRequest('127.0.0.1:16868','https://open-hero68.pages.dev',origins,16868),true)
   assert.equal(isAllowedServiceRequest('localhost:16868',undefined,origins,16868),true)
   for(const origin of ['http://open-hero68.pages.dev','https://other.pages.dev','https://preview.open-hero68.pages.dev','https://open-hero68.pages.dev.evil.test','null'])assert.equal(isAllowedServiceRequest('127.0.0.1:16868',origin,origins,16868),false)
   for(const host of ['evil.test:16868','192.168.1.10:16868','127.0.0.1:1234',undefined])assert.equal(isAllowedServiceRequest(host,'https://open-hero68.pages.dev',origins,16868),false)
+})
+
+test('configured origins are normalized and exact; personal hosts are opt-in and host checks still apply',()=>{
+  const defaults=serviceOrigins(16868,'')
+  assert.equal(defaults.has('https://shizuna.ddns.net:5173'),false)
+  for(const origin of ['http://localhost:5173','https://localhost:5173','http://127.0.0.1:5173','https://127.0.0.1:5173'])assert.ok(defaults.has(origin))
+  const origins=serviceOrigins(16868,' https://preview.example.com:443/, ,http://localhost:4173 ')
+  assert.equal(isAllowedServiceRequest('127.0.0.1:16868','https://preview.example.com',origins,16868),true)
+  assert.equal(isAllowedServiceRequest('localhost:16868','http://localhost:4173',origins,16868),true)
+  for(const origin of ['http://preview.example.com','https://preview.example.com.evil.test','https://other.example.com'])assert.equal(isAllowedServiceRequest('127.0.0.1:16868',origin,origins,16868),false)
+  assert.equal(isAllowedServiceRequest('192.168.1.10:16868','https://preview.example.com',origins,16868),false)
+})
+
+test('service origins read the process environment without accepting non-HTTP or wildcard/path entries',()=>{
+  const previous=process.env.HERO68_ALLOWED_ORIGINS
+  try {
+    process.env.HERO68_ALLOWED_ORIGINS='https://preview.example.com'
+    assert.ok(serviceOrigins(16868).has('https://preview.example.com'))
+    for(const value of ['null','*','file:///tmp/test','ftp://example.com','https://*.example.com','https://example.com/path','https://user:password@example.com','https://example.com?query=1','https://example.com#hash'])assert.throws(()=>serviceOrigins(16868,value))
+  } finally {
+    if(previous===undefined)delete process.env.HERO68_ALLOWED_ORIGINS
+    else process.env.HERO68_ALLOWED_ORIGINS=previous
+  }
 })
 
 test('permission prompt outlives the normal service timeout; granting starts that timeout and hides guidance',async()=>{

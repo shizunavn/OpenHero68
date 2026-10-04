@@ -6,6 +6,7 @@ import {mkdtemp,readFile,mkdir} from 'node:fs/promises'
 import path from 'node:path'
 async function load(input){const b=await rolldown({input});try{const {output}=await b.generate({format:'esm',codeSplitting:false});return import('data:text/javascript;base64,'+Buffer.from(output[0].code).toString('base64'))}finally{await b.close()}}
 const {defaultRgb}=await load('src/protocol/hero68/rgb.ts'),{defaultCustomRgb}=await load('src/keyboard/customRgbModel.ts'),{defaultRhythm}=await load('src/keyboard/rhythm.ts')
+await mkdir('.refactor',{recursive:true})
 const dir=await mkdtemp(path.resolve('.refactor/service-custom-test-')),state=path.join(dir,'state');await mkdir(state)
 const b=await rolldown({input:'service/main.ts',external:/^node:/});try{await b.write({format:'cjs',file:path.join(dir,'service.cjs')})}finally{await b.close()}
 const base='http://127.0.0.1:16915';let service,output=''

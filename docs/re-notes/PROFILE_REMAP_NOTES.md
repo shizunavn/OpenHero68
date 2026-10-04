@@ -18,7 +18,7 @@ slot selection, a settings summary, and JSON export of the current draft.
 
 ## Protocol reference
 
-Source directory: `C:/Users/nguye/Downloads/hero68 & f75/hero68_re`.
+The original source is an external `hero68_re` workspace, not shipped with this repository. The following source report names are historical provenance, not local links.
 
 - `docs/RGB_AND_REMAP_RE_2026-09-21.md`: remap writes/reads use `0x03/0x83`,
   layer in ZONE, six-byte `POS:u16be | ACTION:u32be` records, up to nine records
@@ -26,8 +26,8 @@ Source directory: `C:/Users/nguye/Downloads/hero68 & f75/hero68_re`.
   Fn, modifiers, media and mouse actions.
 - `docs/static_bundle_catalog.json`: canonical action catalog and all 68 factory
   bindings for each of the three layers. The relevant data was copied into
-  `src/protocol/hero68/remapCatalog.json`; no external path is needed at runtime.
-- `docs/STATIC_RE_COMPLETE.md`, section 6: profile selection/read use `0x10/0x90`;
+  [the bundled remap catalog](../../src/protocol/hero68/remapCatalog.json); no external path is needed at runtime.
+- The external static RE profile report (section 6): profile selection/read use `0x10/0x90`;
   profile naming uses `0x1a/0x9a` with the slot in ZONE. Writes declare LEN=56,
   include the actual UTF-8 length in the first data byte, and allow up to 55
   UTF-8 bytes. Inner length 255 means the default name.

@@ -17,7 +17,7 @@ export interface RgbPageProps {
   rgb: RgbProfile
   profileBusy: boolean
   setRgb: React.Dispatch<React.SetStateAction<RgbProfile>>
-  setSaveState: React.Dispatch<React.SetStateAction<'idle' | 'staged' | 'sent'>>
+  setSaveState: React.Dispatch<React.SetStateAction<'idle' | 'sent'>>
   RgbSettingsPage: React.LazyExoticComponent<RgbSettingsPageComponent>
 }
 

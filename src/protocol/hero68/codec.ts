@@ -1,7 +1,8 @@
 // Ported from the hero68_re reverse-engineering workspace (typescript/src/codec.ts).
 // Report framing, checksum and record decoders for the AULA HERO68 HE wire protocol
-// (firmware 0323). Byte layouts are cited in docs/PROTOCOL_0323.md and cross-checked
-// against fixtures/golden_packets.json in the RE workspace.
+// (firmware 0323). See ../README.md#sources-and-evidence for source provenance.
+// Original golden packet fixtures live in the external hero68_re workspace;
+// this repository carries runnable protocol checks in ../../../tests/.
 import type { DecodedReport } from "./types";
 
 export const REPORT_ID = 0x09 as const;

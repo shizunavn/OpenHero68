@@ -1,4 +1,5 @@
 import { lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { version as uiVersion } from '../package.json'
 import {
   Activity,
   ArrowDownToLine,
@@ -133,7 +134,7 @@ function App() {
   const tr = useMemo(() => createTranslator(resolvedLanguage), [resolvedLanguage])
   const [switchSearch, setSwitchSearch] = useState(() => persistedState?.switchSearch ?? '')
   const [switchBrandFilter, setSwitchBrandFilter] = useState(() => persistedState?.switchBrandFilter ?? 'all')
-  const [saveState, setSaveState] = useState<'idle' | 'staged' | 'sent'>('idle')
+  const [saveState, setSaveState] = useState<'idle' | 'sent'>('idle')
   const [profileSlot, setProfileSlot] = useState<ProfileSlot>(() => persistedState?.profileSlot ?? 1)
   const initialRgbDraft = persistedState?.profileDrafts?.[persistedState?.profileSlot ?? 1]
   const [rgb, setRgb] = useState<RgbProfile>(() => restoreStoredRgb(initialRgbDraft?.rgb, initialRgbDraft?.rgbFormat))
@@ -909,8 +910,8 @@ function App() {
       profileBusyRef.current = true
       setProfileBusy(true)
       setDeviceActionError(null)
-      const result = dirtyKeys.size ? await saveDeviceConfiguration(snapshot) : { mode: 'sent' as const }
-      if(result.mode==='sent'&&dirtyKeys.size){
+      if(dirtyKeys.size){
+        await saveDeviceConfiguration(snapshot)
         const readback=await hydrateFromDevice(hero68DeviceManager,profileSlot,[...dirtyKeys])
         const near=(actual:number|undefined,wanted:number)=>actual!==undefined&&Math.abs(actual-wanted)<=0.011
         for(const expected of snapshot.keys){
@@ -934,7 +935,7 @@ function App() {
           }
         }
       }
-      if (result.mode === 'sent' && [...dirtyRemaps].some(change => {
+      if ([...dirtyRemaps].some(change => {
         const [layerText, keyId] = change.split(':')
         const remapLayer = Number(layerText) as RemapLayer
         return isMacroRemapValue(remapLayers[remapLayer]?.[keyId])
@@ -944,20 +945,18 @@ function App() {
         await hero68DeviceManager.request(selectProfile(profileSlot), 0x10, 0)
         await syncHero68MacroLibrary(hero68DeviceManager, macroLibrary)
       }
-      if (result.mode === 'sent') await saveRemapChanges(hero68DeviceManager, profileSlot, remapLayers, dirtyRemaps)
-      if (result.mode === 'sent' && advancedPending) {
+      await saveRemapChanges(hero68DeviceManager, profileSlot, remapLayers, dirtyRemaps)
+      if (advancedPending) {
         const verified = await saveAdvancedBindings(hero68DeviceManager, profileSlot, advancedBindings, advancedBaseline)
         setAdvancedBaseline(verified)
       }
-      if (result.mode === 'sent' && rgbPending && !tachyon) {
+      if (rgbPending && !tachyon) {
         if(activePage==='rgb'&&activeRgbTab==='onboard'&&hero68DeviceManager.viaService){const result=await rgbService.mode('onboard');publishRgbServiceStatus(result)}
         await saveRgbProfile(hero68DeviceManager, rgb, rgbBaseline, setRgbBaseline)
       }
-      if (result.mode === 'sent') {
-        if(dirtyKeys.size)setDirtyKeys(new Set())
-        if(dirtyRemaps.size){remapBaselineRef.current=structuredClone(remapLayers);setDirtyRemaps(new Set())}
-        setSaveState('sent')
-      } else setSaveState(result.mode)
+      if(dirtyKeys.size)setDirtyKeys(new Set())
+      if(dirtyRemaps.size){remapBaselineRef.current=structuredClone(remapLayers);setDirtyRemaps(new Set())}
+      setSaveState('sent')
       window.setTimeout(() => setSaveState('idle'), 1200)
     } catch (error) {
       setSaveState('idle')
@@ -1080,7 +1079,7 @@ function App() {
               <SidebarItem key={item.id} icon={item.icon} label={item.label} active={activePage === item.id} onClick={() => setActivePage(item.id)} />
             ))}
 
-            <div className="sidebar-version">OpenHero68 <span>v0.9.55 UI</span></div>
+            <div className="sidebar-version">OpenHero68 <span>v{uiVersion} UI</span></div>
           </>
         ) : activeRail === 'settings' ? (
           <>
@@ -1109,7 +1108,7 @@ function App() {
               <SidebarItem key={item.id} icon={item.icon} label={item.label} active={activeSettingsPage === item.id} onClick={() => setActiveSettingsPage(item.id)} />
             ))}
 
-            <div className="sidebar-version">OpenHero68 <span>{tr('Settings UI')}</span></div>
+            <div className="sidebar-version">OpenHero68 <span>v{uiVersion} UI</span></div>
           </>
         ) : (
           <>
@@ -1117,7 +1116,7 @@ function App() {
               <strong>{tr('Help')}</strong>
             </div>
             <div className="help-sidebar-copy">
-              <p>{tr('This baseline currently focuses on the keyboard workspace and the switch profile selector settings page.')}</p>
+              <p>{tr('Connection, profile saving and background service help.')}</p>
             </div>
           </>
         )}
@@ -1161,7 +1160,7 @@ function App() {
             </div>
 
             <div className="topbar-actions">
-              {showKeyboardArea && (activePage === 'gamepad' || activePage==='rgb'&&activeRgbTab!=='onboard') ? <span className="profile-status">{tr('Changes apply automatically')}</span> : showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : saveState === 'staged' ? tr('Saved locally') : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
+              {showKeyboardArea && (activePage === 'gamepad' || activePage==='rgb'&&activeRgbTab!=='onboard') ? <span className="profile-status">{tr('Changes apply automatically')}</span> : showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
             </div>
           </header>
         )}
@@ -1472,7 +1471,7 @@ function App() {
           ) : activeSettingsPage === 'switches' ? (
             <div className="page settings-page switch-selector-page page-enter">
               <div className="switch-page-actions">
-                    <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0)}>{saveState === 'sent' ? tr('Saved') : saveState === 'staged' ? tr('Saved locally') : tr('Save')}</button>
+                    <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0)}>{saveState === 'sent' ? tr('Saved') : tr('Save')}</button>
               </div>
 
               <section className="switch-selector-stage">
@@ -1599,7 +1598,7 @@ function App() {
                 <article className="settings-card interface-only-card">
                   <div className="settings-card-head">
                     <h2>{tr('General')}</h2>
-                    <p>{tr("Application-only settings inspired by Wootility's interface preferences.")}</p>
+                    <p>{tr("These preferences change the app interface and are saved in this browser.")}</p>
                   </div>
                   <div className="setting-line">
                     <div>
@@ -1641,16 +1640,31 @@ function App() {
               <div className="settings-hero">
                 <div>
                   <h1>{tr('Settings')}</h1>
-                  <p>{tr('Select a settings category from the sidebar.')}</p>
+                  <p>{tr('Choose Interface for language and sidebar preferences, Device Settings for keyboard options, or Background Service for installation and connection help.')}</p>
                 </div>
               </div>
             </div>
           )
         ) : (
-          <div className="placeholder-page page-enter">
-            <div className="placeholder-icon"><CircleHelp size={28} /></div>
-            <h1>{tr('Help')}</h1>
-            <p>{tr('Use the left rail to switch between the keyboard workspace and the new settings page.')}</p>
+          <div className="page settings-page page-enter">
+            <div className="settings-hero">
+              <div>
+                <h1>{tr('Help')}</h1>
+                <p>{tr('Connect your HERO68, save onboard settings, or set up the Windows background service.')}</p>
+              </div>
+            </div>
+            <section className="selector-page-grid">
+              <article className="settings-card">
+                <h2>{tr('Connect HERO68')}</h2>
+                <p>{tr('Open OpenHero68 in Chrome or Edge over HTTPS, click Connect, and select HERO68. Close other keyboard apps if the device is busy.')}</p>
+                <h2>{tr('Save onboard settings')}</h2>
+                <p>{tr('Choose a profile, edit your keys, then use Save to profile. Wait for readback confirmation; a failed save keeps your edits available for retry.')}</p>
+                <h2>{tr('Background Service')}</h2>
+                <p>{tr('Custom Effects, Rhythm Sync and Gamepad need the Windows background service. Open Settings > Background Service for setup. Gamepad also requires ViGEmBus.')}</p>
+                <h2>{tr('Documentation')}</h2>
+                <p><a href="https://github.com/shizunavn/OpenHero68/blob/main/docs/README.md" target="_blank" rel="noreferrer">{tr('Read the documentation')}</a>{' · '}<a href="https://github.com/shizunavn/OpenHero68/issues" target="_blank" rel="noreferrer">{tr('Report an issue')}</a></p>
+              </article>
+            </section>
           </div>
         )}
         </div>
