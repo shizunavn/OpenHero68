@@ -4,6 +4,7 @@ import {rolldown} from 'rolldown'
 import {spawn} from 'node:child_process'
 import {mkdtemp,readFile,mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
+await mkdir('.refactor',{recursive:true})
 const dir=await mkdtemp(path.resolve('.refactor/service-gamepad-test-')),state=path.join(dir,'state');await mkdir(state)
 const b=await rolldown({input:'service/main.ts',external:/^node:/});try{await b.write({format:'cjs',file:path.join(dir,'service.cjs')})}finally{await b.close()}
 const port=16914,base=`http://127.0.0.1:${port}`

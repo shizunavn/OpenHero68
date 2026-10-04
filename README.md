@@ -103,6 +103,20 @@ Gamepad starts disabled whenever the service starts. Once enabled, it keeps runn
 
 ## Development
 
+Production builds and tests require development dependencies. Use `npm ci` (or
+`npm ci --include=dev` if your environment defaults to omitting them) before
+building; the resulting `dist/` contains static browser assets.
+
+Copy `.env.example` to `.env.local` to configure `HERO68_DEV_HOSTS`: optional
+comma-separated hostnames/IPs added to the local Vite certificate. Localhost and
+127.0.0.1 remain available without configuration.
+
+Set `HERO68_ALLOWED_ORIGINS` in the **service process environment** to allow
+additional exact HTTP(S) origins, separated by commas. Paths, credentials and
+wildcards are rejected. The service does not load Vite's `.env.local`; its
+deployed Pages and localhost defaults remain available, and `--allow-origin`
+still adds origins explicitly. These variables are not exposed to browser code.
+
 | Command | Description |
 | --- | --- |
 | `npm run dev` | Start the Vite dev server over HTTPS |

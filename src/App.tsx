@@ -1,4 +1,5 @@
 import { lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { version as uiVersion } from '../package.json'
 import {
   Activity,
   ArrowDownToLine,
@@ -1080,7 +1081,7 @@ function App() {
               <SidebarItem key={item.id} icon={item.icon} label={item.label} active={activePage === item.id} onClick={() => setActivePage(item.id)} />
             ))}
 
-            <div className="sidebar-version">OpenHero68 <span>v0.9.55 UI</span></div>
+            <div className="sidebar-version">OpenHero68 <span>v{uiVersion} UI</span></div>
           </>
         ) : activeRail === 'settings' ? (
           <>
