@@ -25,6 +25,7 @@ import {profileRequest} from './profileSelection'
 import {CustomPlayback} from './customPlayback'
 import {deferredSave} from './deferredSave'
 import {GamepadFirmware} from './gamepadFirmware'
+import {digitalSettingsCommand} from './gamepadDigital'
 import {hookConfiguration} from './gamepadKeyboard'
 import {selectProfile} from '../src/protocol/hero68/commands'
 import {TachyonLighting,validTachyonSnapshot,isTachyonLightingWrite} from '../src/protocol/hero68/tachyonLighting'
@@ -177,7 +178,7 @@ function needsAnalogHall(){return !tachyon&&mode==='custom'&&needsRgbAnalogHall(
 let lastHallCommand=''
 async function syncHall(){
   hallBroker.update({id:'rgb',keys:needsAnalogHall()?rgbHallKeys(profile?.custom):[],hz:100})
-  for(const [suffix,analog] of [['analog',true],['digital',false]] as const)hallBroker.update({id:'gamepad:'+suffix,keys:gamepadState.enabled?gamepadConfigurations[gamepadSlot].bindings.filter(b=>isAnalogAction(b.action)===analog).map(b=>b.keyId):[],hz:analog?gamepadConfigurations[gamepadSlot].rate:100})
+  for(const [suffix,analog] of [['analog',true],['digital',false]] as const)hallBroker.update({id:'gamepad:'+suffix,keys:gamepadState.enabled?gamepadConfigurations[gamepadSlot].bindings.filter(b=>isAnalogAction(b.action)===analog).map(b=>b.keyId):[],hz:analog?gamepadConfigurations[gamepadSlot].rate:200})
   const command=hallBroker.command('gamepad:')
   if(command!==lastHallCommand){const result=await bridge.line(command);if(result!=='hall-ready')throw Error(result);lastHallCommand=command}
   for(const key of hallSamples.keys())if(!hallBroker.demands.has(key)){hallSamples.delete(key);hallReceivedAt.delete(key)}
@@ -311,6 +312,11 @@ async function applyFirmware(config:GamepadConfiguration){
 async function configureNativeGamepad(config:GamepadConfiguration,running:boolean){
   const actual=running&&config.suppressMappedKeys&&config.keyboardSuppressionMode==='hook'?await hookConfiguration(config,packet=>bridge.request(packet)):config
   const r=await bridge.line(nativeGamepadCommand(actual));if(r!=='gamepad-configured')throw Error(r)
+  if(running){
+    const settings=await digitalSettingsCommand(config,packet=>bridge.request(packet))
+    const result=await bridge.line(settings)
+    if(result!=='gamepad-digital-ready')throw Error('Digital AP/RT requires the full Windows service 0.4.6 package or later: '+result)
+  }
 }
 const lightingTransport={request:(packet:Uint8Array)=>bridge.request(packet)}
 async function connect(){
@@ -597,7 +603,9 @@ const server=createServer(async(req,res)=>{
             if(!recovered)throw Error('HERO68 did not return after polling-rate change')
           }
         }
-        if(mutatesRemaps&&run){await configureNativeGamepad(gamepadConfigurations[gamepadSlot],run);await applyFirmware(gamepadConfigurations[gamepadSlot])}
+        const changesDigitalSettings=requests.some(({packet})=>[0x13,0x19,0x16].includes(packet[1]))
+        if(run&&(mutatesRemaps||changesDigitalSettings))await configureNativeGamepad(gamepadConfigurations[gamepadSlot],run)
+        if(mutatesRemaps&&run)await applyFirmware(gamepadConfigurations[gamepadSlot])
         return replies
         }catch(e){if(run)await stopGamepad().catch(()=>{});throw e}
         finally{configurationBusy=false;if(resume)await bridge.line('rhythm-resume');await bridge.line('gamepad-resume')}

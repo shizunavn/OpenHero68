@@ -4,6 +4,7 @@
 #include <avrt.h>
 #include <ViGEm/Client.h>
 #include "gamepad_core.h"
+#include "gamepad_digital.h"
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -18,6 +19,8 @@ class Output {
   PVIGEM_CLIENT client_=nullptr;
   PVIGEM_TARGET target_=nullptr;
   Config config_;
+  DigitalSettings digitalSettings_{};
+  std::array<DigitalState,hall::Capacity> digitalState_{};
   keyboard::Hook keyboardHook_;
   std::array<hall::Sample,hall::Capacity> samples_{};
   bool enabled_=false,paused_=false,armed_=false,stale_=true,verified_=false;
@@ -32,7 +35,7 @@ class Output {
   XINPUT_STATE actual_{};
   static double clock(){LARGE_INTEGER t,f;QueryPerformanceCounter(&t);QueryPerformanceFrequency(&f);return t.QuadPart*1000./f.QuadPart;}
   static bool nonzero(const Report& r){return r.buttons||r.lx||r.ly||r.rx||r.ry||r.lt||r.rt;}
-  void neutral(){keyboardHook_.release();if(target_)vigem_target_x360_update(client_,target_,{});report_={};armed_=false;verified_=false;neutralCount_++;}
+  void neutral(){keyboardHook_.release();if(target_)vigem_target_x360_update(client_,target_,{});report_={};armed_=false;verified_=false;digitalState_={};neutralCount_++;}
   void destroy(){keyboardHook_.stop();if(target_){neutral();vigem_target_remove(client_,target_);vigem_target_free(target_);target_=nullptr;}if(client_){vigem_disconnect(client_);vigem_free(client_);client_=nullptr;}enabled_=false;report_={};actual_={};userIndex_=ULONG_MAX;xinputError_=ERROR_DEVICE_NOT_CONNECTED;verified_=false;}
   void run(){
     DWORD task=0;HANDLE scheduling=AvSetMmThreadCharacteristicsW(L"Games",&task);
@@ -87,9 +90,11 @@ class Output {
 public:
   Output(){auto probe=vigem_alloc();if(probe){driverAvailable_=VIGEM_SUCCESS(vigem_connect(probe));vigem_disconnect(probe);vigem_free(probe);}worker_=std::thread([this]{run();});}
   ~Output(){quit_=true;SetEvent(wake_);worker_.join();std::lock_guard<std::mutex> lock(mutex_);destroy();if(wake_)CloseHandle(wake_);}
-  void configure(const Config& c){std::lock_guard<std::mutex> lock(mutex_);neutral();if(!keyboardHook_.prepare(c.keyboardScans,c.suppressMappedKeys&&enabled_))throw std::runtime_error("Windows keyboard hook unavailable");config_=c;samples_={};nextOutput_=clock();SetEvent(wake_);}
+  void configure(const Config& c){std::lock_guard<std::mutex> lock(mutex_);neutral();if(!keyboardHook_.prepare(c.keyboardScans,c.suppressMappedKeys&&enabled_))throw std::runtime_error("Windows keyboard hook unavailable");config_=c;digitalSettings_={};samples_={};nextOutput_=clock();SetEvent(wake_);}
+  void digitalSettings(const DigitalSettings& settings){std::lock_guard<std::mutex> lock(mutex_);neutral();digitalSettings_=settings;samples_={};SetEvent(wake_);}
   bool start(){
     std::lock_guard<std::mutex> lock(mutex_);destroy();error_.clear();client_=vigem_alloc();
+    for(const auto& b:config_.bindings)if(!analog(b.action)&&!digitalSettings_[b.pos].configured){error_="Read digital AP/RT settings before starting Gamepad";destroy();return false;}
     if(!client_){error_="ViGEm allocation failed";return false;}
     if(!VIGEM_SUCCESS(vigem_connect(client_))){driverAvailable_=false;error_="Install the official ViGEmBus v1.22.0 driver";destroy();return false;}
     driverAvailable_=true;
@@ -125,7 +130,7 @@ public:
   }
   void stop(){std::lock_guard<std::mutex> lock(mutex_);destroy();SetEvent(wake_);}
   void pause(bool value){std::lock_guard<std::mutex> lock(mutex_);if(paused_==value)return;paused_=value;neutral();samples_={};SetEvent(wake_);}
-  void sample(uint16_t pos,const hall::Sample& s){std::lock_guard<std::mutex> lock(mutex_);if(pos<hall::Capacity)samples_[pos]=s;}
+  void sample(uint16_t pos,const hall::Sample& s){std::lock_guard<std::mutex> lock(mutex_);if(pos<hall::Capacity){samples_[pos]=s;for(const auto& b:config_.bindings)if(b.pos==pos&&!analog(b.action)){samples_[pos].pressed=digitalState_[pos].sample(digitalSettings_[pos],s);break;}}}
   bool enabled(){std::lock_guard<std::mutex> lock(mutex_);return enabled_;}
   std::string error(){std::lock_guard<std::mutex> lock(mutex_);return error_;}
   std::string input(){

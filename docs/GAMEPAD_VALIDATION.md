@@ -174,3 +174,26 @@ RGB or gamepad output pipeline.
 - Windows ZIP, signed core and production Pages ZIP passed package/checksum
   validation. No physical input injection, driver installation, additional
   hardware benchmark or extended stress run was performed for this update.
+
+## Digital AP/RT evaluation — v0.4.6
+
+- 535 automated tests passed, plus web/service TypeScript builds and native Hall,
+  mapping and digital state tests. Reader tests reject malformed/incomplete data.
+- Native sequences use diagnostic pressed flags deliberately opposite to the
+  desired button state. They cover AP, separate RT release/press thresholds,
+  reactivation below AP, peak/trough tracking, top/bottom deadzones and stale reset.
+- Service integration verifies one settings reload after a batch AP/RT edit,
+  independent profile settings, unchanged Xbox target/remap journal and 200 Hz
+  digital Hall demand. These checks use a simulated HID transport.
+- The native output test passed against installed ViGEmBus/XInput using synthetic
+  Hall samples. Xbox A stayed released at 2.40 mm with AP 2.50 mm, activated at
+  2.50 mm, released after 0.20 mm upward travel and reactivated at 2.30 mm after
+  0.10 mm downward travel. XInput confirmed each expected report. No physical
+  keyboard settings were changed by this test.
+- The initial test harness intermittently exceeded the 50 ms input watchdog
+  while its main thread also printed/asserted status. Its independent sample
+  producer now keeps input flowing during checks; the final native build passed.
+  Deliberately stopping that producer still neutralizes output and requires rest.
+  This does not establish behavior under sustained system overload.
+- Real physical switch strokes and first boot after Windows restart were not
+  exercised. Hall sampling cannot recover RT transitions between snapshots.

@@ -8,22 +8,31 @@ int main(){
   std::cout<<std::unitbuf;
   gamepad::Output output;
   auto config=gamepad::parse("50;1;0;0;45;0,0|1,1;30,15,0.1,3.4|70,0,0.1,3.4");output.configure(config);
+  output.digitalSettings(gamepad::parseDigital("70,200,0,20,10,0,0,0"));
   if(!output.start()){std::cerr<<output.error()<<'\n';return 1;}
-  uint64_t seq=1;
-  auto feed=[&](bool held){double at=now();output.sample(30,{uint16_t(held?340:0),0,false,at,seq++});output.sample(70,{uint16_t(held?200:0),0,held,at,seq++});};
-  for(int i=0;i<500;i++){feed(false);Sleep(5);if(i>=50&&output.status().find("\"xinputVerified\":true")!=std::string::npos)break;}
+  std::atomic<bool> quit{false},feeding{true},diagnostic{true};std::atomic<unsigned> analog{0},digital{0};
+  std::thread producer([&]{DWORD task=0;HANDLE scheduling=AvSetMmThreadCharacteristicsW(L"Games",&task);uint64_t seq=1;while(!quit){if(feeding){double at=now();output.sample(30,{uint16_t(analog.load()),0,false,at,seq++});output.sample(70,{uint16_t(digital.load()),0,diagnostic.load(),at,seq++});}Sleep(5);}if(scheduling)AvRevertMmThreadCharacteristics(scheduling);});
+  auto waitFor=[&](const std::string& text){const double limit=now()+1500;std::string state;do{Sleep(10);state=output.status();if(state.find(text)!=std::string::npos&&state.find("\"xinputVerified\":true")!=std::string::npos)return state;}while(now()<limit);std::cerr<<"Expected "<<text<<" in "<<state<<'\n';assert(false);return state;};
+  waitFor("\"armed\":true");
   std::cout<<"rest:"<<output.status()<<'\n';
   assert(output.status().find("\"xinputVerified\":true")!=std::string::npos);
-  for(int i=0;i<50;i++){feed(true);Sleep(5);}
+  analog=340;digital=200;diagnostic=false;waitFor("\"ly\":32767");
   std::cout<<"held:"<<output.status()<<'\n';
   assert(output.status().find("\"ly\":32767")!=std::string::npos);
+  assert(output.status().find("\"buttons\":4096")!=std::string::npos);
   assert(output.status().find("\"xinputVerified\":true")!=std::string::npos);
-  double stopped=now();Sleep(53);
+  feeding=false;waitFor("\"stale\":true");
   std::cout<<"watchdog:"<<output.status()<<'\n';assert(output.status().find("\"ly\":0")!=std::string::npos);
-  for(int i=0;i<10;i++){feed(true);Sleep(5);}assert(output.status().find("\"armed\":false")!=std::string::npos);
-  for(int i=0;i<10;i++){feed(false);Sleep(5);}assert(output.status().find("\"armed\":true")!=std::string::npos);
-  for(int i=0;i<10;i++){feed(true);Sleep(5);}output.pause(true);
+  feeding=true;Sleep(100);assert(output.status().find("\"armed\":false")!=std::string::npos);
+  analog=0;digital=0;diagnostic=true;waitFor("\"armed\":true");
+  analog=340;digital=200;diagnostic=false;waitFor("\"ly\":32767");output.pause(true);
   assert(output.status().find("\"ly\":0")!=std::string::npos);output.pause(false);
-  output.stop();std::cout<<"stopped:"<<output.status()<<'\n';assert(!output.enabled());
+  analog=0;digital=0;output.digitalSettings(gamepad::parseDigital("70,250,1,20,10,1,5,10"));waitFor("\"armed\":true");
+  auto checkDigital=[&](unsigned distance,bool expected){digital=distance;diagnostic=!expected;Sleep(50);waitFor(expected?"\"buttons\":4096":"\"buttons\":0");};
+  checkDigital(0,false);checkDigital(240,false);checkDigital(250,true);
+  checkDigital(220,false);checkDigital(230,true); // RT reactivation below AP
+  checkDigital(5,false);checkDigital(230,false);checkDigital(250,true);
+  std::cout<<"AP/RT with contradictory Hall pressed flags verified by XInput\n";
+  quit=true;producer.join();output.stop();std::cout<<"stopped:"<<output.status()<<'\n';assert(!output.enabled());
   std::cout<<"ViGEm watchdog, restart-after-rest and pause checks passed\n";
 }

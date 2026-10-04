@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto'
 import path from 'node:path'
 
 // Run after signed package verification. Never replace a published release.
-const root=process.cwd(),version=process.argv[2],sourceRepo=path.resolve(process.argv[3]??root),assetFolder=path.resolve(process.argv[4]??'service/releases'),minLauncher=process.env.HERO68_RELEASE_MIN_LAUNCHER??'0.4.5'
+const root=process.cwd(),version=process.argv[2],sourceRepo=path.resolve(process.argv[3]??root),assetFolder=path.resolve(process.argv[4]??'service/releases'),minLauncher=process.env.HERO68_RELEASE_MIN_LAUNCHER??'0.4.6'
 if(!/^\d+\.\d+\.\d+$/.test(version??''))throw Error('Usage: node tools/publish-service-release.mjs VERSION [SOURCE_REPO] [ASSET_FOLDER]')
 const repositories=['https://github.com/shizunavn/OpenHero68-RGB-Service.git','https://github.com/shizunavn/OpenHero68.git']
 const git=(...args)=>execFileSync('git',args,{cwd:sourceRepo,encoding:'utf8',windowsHide:true}).trim()

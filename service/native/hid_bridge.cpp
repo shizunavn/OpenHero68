@@ -172,7 +172,7 @@ int main() {
     std::array<double,hall::Capacity> consumerHz{};std::array<bool,hall::Capacity> hallDirty{};
     double nextHallPublish=0,nextGamepadPublish=0,nextInputPublish=0;bool inputStreaming=false;uint64_t inputSequence=0;
     ProcessMetrics processMetrics;
-    auto updateHall=[&]{auto hz=consumerHz;if(gamepadOutput.enabled())for(const auto& b:gamepadConfig.bindings)hz[b.pos]=std::max(hz[b.pos],double(gamepad::analog(b.action)?gamepadConfig.rate:100));hallScheduler.configure(hz,rhythm::clockMs());};
+    auto updateHall=[&]{auto hz=consumerHz;if(gamepadOutput.enabled())for(const auto& b:gamepadConfig.bindings)hz[b.pos]=std::max(hz[b.pos],double(gamepad::analog(b.action)?gamepadConfig.rate:200));hallScheduler.configure(hz,rhythm::clockMs());};
     std::vector<rhythm::Report> customBatch;uint64_t submission=0,lastSubmission=0,reusedFrames=0;
     double nextFrame=0,reconnectAt=0,lastFrame=0;uint64_t dropped=0,lastAudioSequence=0;
     auto parseReport=[](const std::string& text,std::array<unsigned char,64>& request) {
@@ -258,6 +258,7 @@ int main() {
       }
       if(line.rfind("hall-config:",0)==0){try{std::array<double,hall::Capacity> hz{};for(auto& p:gamepad::split(line.substr(12),'|')){auto v=gamepad::split(p,',');if(v.size()!=2)throw std::runtime_error("Invalid Hall demand");double pos=gamepad::number(v[0]),rate=gamepad::number(v[1]);if(pos<1||pos>=hall::Capacity||pos!=std::floor(pos)||!hall::heroPosition(unsigned(pos))||rate<1||rate>200)throw std::runtime_error("Invalid Hall rate");hz[size_t(pos)]=std::max(hz[size_t(pos)],rate);}consumerHz=hz;updateHall();emitLine("hall-ready");}catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}continue;}
       if(line.rfind("gamepad-config:",0)==0){try{auto c=gamepad::parse(line.substr(15));gamepadOutput.configure(c);gamepadConfig=c;updateHall();emitLine("gamepad-configured");}catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}continue;}
+      if(line.rfind("gamepad-digital:",0)==0){try{gamepadOutput.digitalSettings(gamepad::parseDigital(line.substr(16)));emitLine("gamepad-digital-ready");}catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}continue;}
       if(line=="gamepad-start"||line=="gamepad-start-paused"){gamepadPaused=line=="gamepad-start-paused";if(gamepadOutput.start()){setGamepadPause();updateHall();emitLine("gamepad-ready");}else emitLine("error:"+gamepadOutput.error());continue;}
       if(line=="gamepad-stop"){gamepadOutput.stop();updateHall();emitLine("gamepad-stopped");continue;}
       if(line=="gamepad-status"){emitLine("gamepad-state:"+gamepadOutput.status());continue;}

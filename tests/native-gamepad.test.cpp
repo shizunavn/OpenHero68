@@ -1,7 +1,21 @@
 #include "../service/native/gamepad_core.h"
+#include "../service/native/gamepad_digital.h"
 #include <cassert>
 #include <iostream>
+#include <cstdlib>
 int main(){
+  _set_error_mode(_OUT_TO_STDERR);_set_abort_behavior(0,_WRITE_ABORT_MSG|_CALL_REPORTFAULT);
+  auto settings=gamepad::parseDigital("70,200,1,20,10,1,5,10");gamepad::DigitalState digital;uint64_t sequence=0;double at=0;
+  auto press=[&](unsigned distance,bool diagnostic=false){return digital.sample(settings[70],{uint16_t(distance),0,diagnostic,at+=5,++sequence});};
+  assert(!press(0,true));assert(!press(199,true));assert(press(200,false));
+  assert(press(250));assert(press(231));assert(!press(230,true)); // peak minus release sensitivity
+  assert(!press(180));assert(!press(189));assert(press(190)); // trough plus press sensitivity, below AP
+  assert(press(190));assert(!press(5));assert(!press(190,true));assert(press(200)); // top deadzone resets AP
+  assert(press(335));assert(press(330));assert(!press(315)); // bottom deadzone holds until outside it
+  at+=50;assert(!press(190,true)); // timeout resets the old RT latch
+  settings[70].rt=false;digital={};assert(!press(199,true));assert(press(200,false));assert(!press(199,true));
+  settings[70].ap=280;assert(!press(250,true));assert(press(280,false));
+  for(const auto& invalid:{"70,200,2,20,10,0,0,0","70,341,0,0,0,0,0,0","70,200,1,20,10,0,0,0|70,100,0,0,0,0,0,0","2,100,0,0,0,0,0,0"}){bool rejected=false;try{gamepad::parseDigital(invalid);}catch(...){rejected=true;}assert(rejected);}
   keyboard::Policy policy;keyboard::Mask mask;mask.set(30);mask.set(0x148);
   assert(policy.event(30,true,true,mask));assert(policy.event(30,true,true,mask));assert(policy.event(30,false,false,mask));
   assert(!policy.event(30,true,false,mask));assert(!policy.event(30,true,true,mask));assert(!policy.event(30,false,true,mask));

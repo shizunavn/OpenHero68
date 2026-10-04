@@ -61,7 +61,7 @@ test('Snappy uses strongest direction, ties neutral, subtraction combines opposi
   c.snappy=false;assert.equal(gp.mapGamepad(c,{KeyW:sample(3.4),KeyS:sample(1.75)}).ly,16384)
 })
 
-test('digital buttons follow firmware AP/RT state, never the analog 0.1 mm travel',()=>{
+test('digital report packing uses evaluated pressed state, never the analog 0.1 mm travel',()=>{
   const c=configuration([bind('Space','A')])
   assert.equal(gp.mapGamepad(c,{Space:sample(.5,false)}).buttons,0)
   assert.equal(gp.mapGamepad(c,{Space:sample(2,true)}).buttons,4096)

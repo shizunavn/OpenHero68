@@ -26,6 +26,7 @@ child.spawn=function(file,...args){
   if(line==='gamepad-start'){enabled=true;saved.starts=(saved.starts??0)+1;persist()}if(line==='gamepad-stop'){enabled=false;saved.stops=(saved.stops??0)+1;persist()}
   if(commands[line]){emit(commands[line]);return}
   if(line.startsWith('gamepad-config:')){emit('gamepad-configured');return}
+  if(line.startsWith('gamepad-digital:')){saved.digitalCommand=line;saved.digitalReads=(saved.digitalReads??0)+1;persist();emit('gamepad-digital-ready');return}
   if(line.startsWith('hall-config:')){emit('hall-ready');return}
   if(line.startsWith('gamepad-input-')){streaming=line==='gamepad-input-on';emit('gamepad-input-ready');return}
   if(/^[a-f0-9]{128}$/.test(line)){
@@ -33,6 +34,9 @@ child.spawn=function(file,...args){
    if(b[1]===0x82)data.push(17,0,0,0,0,3);
    if(b[1]===0x90)data.push(saved.slot);
    if(b[1]===0x10){saved.slot=b[7];persist()}
+   const settingCommands={0x93:[0x13,5,[0,200,1]],0x99:[0x19,8,[1,0,20,0,10,1]],0x96:[0x16,8,[0,5,0,10,1,1]]};
+   if(settingCommands[b[1]]){const [command,bytes,fallback]=settingCommands[b[1]];for(let i=7;i<7+b[6];i+=2){const pos=b.readUInt16BE(i);data.push(pos>>8,pos&255,...(saved.settings?.[`${saved.slot}:${command}:${pos}`]??fallback))}}
+   if([0x13,0x19,0x16].includes(b[1])){saved.settings??={};const bytes=b[1]===0x13?5:8;for(let i=7;i<7+b[6];i+=bytes)saved.settings[`${saved.slot}:${b[1]}:${b.readUInt16BE(i)}`]=[...b.subarray(i+2,i+bytes)];persist()}
    if(b[1]===0x83)for(let i=7;i<7+b[6];i+=2){const pos=b.readUInt16BE(i),v=value(b[2],pos);data.push(pos>>8,pos&255,(v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255)}
    if(b[1]===0x03){saved.writes=(saved.writes??0)+1;for(let i=7;i<7+b[6];i+=6)saved.remaps[`${saved.slot}:${b[2]}:${b.readUInt16BE(i)}`]=b.readUInt32BE(i+2);persist()}
    emit(report(b,data));return

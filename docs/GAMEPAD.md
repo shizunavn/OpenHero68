@@ -1,4 +1,4 @@
-# Gamepad and shared Hall — service 0.4.3 / API 6
+# Gamepad and shared Hall — service 0.4.6 / API 6
 
 ## Using gamepad
 
@@ -16,7 +16,7 @@ starts hardware polling.
 
 - **Setup & Remap:** select or drag a control onto a keyboard key. Right-click
   removes its binding. Each physical key has one binding; several keys may use
-  the same output. Rates are 50, 100 or 200 Hz for analog controls and 100 Hz for
+  the same output. Rates are 50, 100 or 200 Hz for analog controls and 200 Hz for
   digital buttons. Start/Stop is also available in the Windows tray.
 - **Configuration:** monotonic, piecewise linear curve, Linear/Aggressive/Slow/
   Smooth/Instant presets, per-binding start deadzone and full-output travel,
@@ -25,9 +25,15 @@ starts hardware polling.
   Snappy chooses the stronger opposing input and cancels ties. With Snappy
   disabled, opposing inputs subtract. Duplicate analog outputs take the maximum;
   duplicate digital buttons use OR. Analog does not depend on keyboard actuation
-  or Rapid Trigger; digital buttons follow the firmware's pressed bit, using
-  the key's configured Actuation Point and Rapid Trigger. Analog travel inputs
-  are hidden for digital bindings.
+  or Rapid Trigger; digital buttons use Hall distance and the key's AP, split RT
+  thresholds and deadzones read from the selected firmware profile. The diagnostic
+  Hall pressed flag is not used as the digital button state. Analog travel inputs
+  are hidden for digital bindings. The first press crosses AP; RT releases from
+  the deepest pressed point and reactivates from the shallowest released point,
+  including below AP until the top deadzone resets the stroke. Settings are read
+  at Start, profile/binding changes and after AP/RT/deadzone writes through the
+  service. Failed or incomplete readback stops output instead of using defaults.
+  This requires the complete Windows 0.4.6 package, including its native helper.
 - **Tester:** live Hall travel, expected Xbox report, XInput verification, measured
   Hall/output rates, stale samples and active consumers. XInput may briefly lag
   a changing report or a newly enumerating controller; pending verification is
@@ -79,7 +85,7 @@ at 4 Hz. An unambiguous standard Xbox browser Gamepad API report may update on
 animation frames when it agrees with the native report; otherwise the native
 stream is used. The tester adds no Hall subscription and closes its input stream
 when leaving the tab, hiding the document or losing service access. Analog
-measured Hz excludes the separate 100 Hz digital-button demand.
+measured Hz excludes the separate 200 Hz digital-button demand.
 RGB receives transitions for firmware-blocked keys from the already shared
 Gamepad Hall samples, preserving reactive effects without requesting more keys.
 
@@ -93,7 +99,7 @@ active demand. Gamepad and RGB therefore share a single read for common keys.
 | Consumer | Source keys | Demand |
 | --- | --- | --- |
 | Gamepad stick/trigger | Assigned analog bindings | 50/100/200 Hz |
-| Gamepad buttons | Assigned digital bindings | 100 Hz |
+| Gamepad buttons | Assigned digital bindings | 200 Hz |
 | RGB Pressure Wave | Enabled layer's output keys | 100 Hz |
 | RGB Mixing | Left, Down, Right arrows | 100 Hz |
 | RGB Touch/Jelly/AOE | All 68 source keys, independently of output LEDs | 100 Hz |

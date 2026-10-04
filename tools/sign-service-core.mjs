@@ -1,7 +1,7 @@
 import {createHash,sign} from 'node:crypto'
 import {mkdir,readFile,writeFile} from 'node:fs/promises'
 import path from 'node:path'
-const root=process.cwd(),version=process.argv[2]??'0.4.5',minLauncher=process.argv[5]??'0.4.5'
+const root=process.cwd(),version=process.argv[2]??'0.4.6',minLauncher=process.argv[5]??'0.4.6'
 if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Expected semver core version')
 if(!/^\d+\.\d+\.\d+$/.test(minLauncher))throw Error('Expected semver minimum launcher version')
 const privateKey=await readFile(path.join(process.env.LOCALAPPDATA??root,'OpenHero68','release-signing-key.pem'),'utf8')

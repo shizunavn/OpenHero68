@@ -37,6 +37,17 @@ test('service atomically blocks/restores firmware; fast tester streams add no Ha
  const scopeConfig={...liveConfig,bindings:[liveConfig.bindings[0],{keyId:'Space',action:'A',startMm:.1,endMm:3.4}]}
  status=await post('/gamepad/config',{slot:0,configuration:scopeConfig});assert.equal(status.enabled,true)
  actual=await read();assert.equal(actual.starts,beforeEdit.starts);assert.equal(actual.stops,beforeEdit.stops)
+ assert.equal(actual.digitalCommand,'gamepad-digital:70,200,1,20,10,1,5,10')
+ assert.equal(status.hall.consumers.find(c=>c.id==='gamepad:digital').hz,200)
+ // Read AP/RT from firmware again after edits, without restarting Xbox or
+ // touching the suppression journal. Split thresholds and profile are distinct.
+ const settingPacket=(command,pos,values)=>{const p=Buffer.alloc(64);p[0]=9;p[1]=command;p[4]=1;p[6]=values.length+2;p.writeUInt16BE(pos,7);Buffer.from(values).copy(p,9);p[63]=(255-[...p.subarray(0,63)].reduce((a,b)=>a+b,0))&255;return {hex:p.toString('hex')}}
+ const settingsBefore=await read(),settingsJournal=await readFile(path.join(state,'gamepad-remap-recovery.json'),'utf8')
+ await post('/device/batch',{requests:[settingPacket(0x13,70,[0,250,1]),settingPacket(0x19,70,[1,0,30,0,15,1])]})
+ actual=await read();assert.equal(actual.digitalCommand,'gamepad-digital:70,250,1,30,15,1,5,10');assert.equal(actual.digitalReads,settingsBefore.digitalReads+1)
+ assert.equal(actual.starts,settingsBefore.starts);assert.equal(actual.writes,settingsBefore.writes);assert.equal(await readFile(path.join(state,'gamepad-remap-recovery.json'),'utf8'),settingsJournal)
+ await post('/gamepad/profile',{slot:1,configuration:scopeConfig});assert.equal((await read()).digitalCommand,'gamepad-digital:70,200,1,20,10,1,5,10')
+ await post('/gamepad/profile',{slot:0,configuration:scopeConfig});assert.equal((await read()).digitalCommand,'gamepad-digital:70,250,1,30,15,1,5,10')
  assert.equal(actual.remaps['0:0:30'],0);assert.equal(actual.remaps['0:0:70'],0);assert.equal(actual.remaps['0:0:44'],0x10000+44)
  status=await post('/gamepad/config',{slot:0,configuration:config});assert.equal(status.enabled,true)
  assert.equal((await read()).remaps['0:0:70'],0x10000+70)
