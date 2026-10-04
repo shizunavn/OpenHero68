@@ -88,14 +88,14 @@ void notify(const wchar_t* message) {
 }
 void checkUpdates() {
     if (checkingUpdates.exchange(true)) { MessageBoxW(nullptr, L"An update check is already running.", L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND); return; }
-    notify(L"Checking and downloading updates...");
     std::thread([] {
+        // Service waits for the GitHub check before replying, so the result is the real outcome.
         const UpdateReply reply = parseUpdateReply(post(L"/updates/tray-check", 190000));
         if (!exiting) {
-            if (!reply.valid) MessageBoxW(nullptr, L"Update check or download failed. Open the service log folder for details.", L"OpenHero68 RGB", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
-            else if (reply.kind == "none") MessageBoxW(nullptr, (L"Up to date. Core " + reply.version + L"; launcher " HERO68_VERSION_W L".").c_str(), L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+            if (!reply.valid) notify(L"Update check failed. Open the service log folder for details.");
+            else if (reply.kind == "none") notify((L"Up to date \u2714  Core " + reply.version + L"; launcher " HERO68_VERSION_W L".").c_str());
             else if (reply.kind == "started") notify(L"Updating the app. It will restart automatically; Windows will stay running.");
-            else if (reply.kind == "core") MessageBoxW(nullptr, (L"Core update " + reply.version + L" downloaded and verified. The service is restarting to apply it.").c_str(), L"OpenHero68 RGB", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+            else if (reply.kind == "core") notify((L"Core update " + reply.version + L" downloaded. The service is restarting.").c_str());
             else if (reply.kind == "package") {
                 const std::wstring message = L"Windows update " + reply.version + L" downloaded and verified to:\n" + reply.file + L"\n\nQuit the tray app, extract the ZIP over its folder, then restart it. Open the download folder?";
                 if (MessageBoxW(nullptr, message.c_str(), L"OpenHero68 RGB", MB_YESNO | MB_ICONINFORMATION | MB_SETFOREGROUND) == IDYES) {
