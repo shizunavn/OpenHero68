@@ -363,7 +363,7 @@ export function writeProfileName(slot: 0 | 1 | 2, name: string): Uint8Array {
   const encoded = new TextEncoder().encode(name);
   if (encoded.length > 55) throw new RangeError("name cannot exceed 55 UTF-8 bytes");
   // Official sync_profile_name always declares LEN=56; data[0] is the
-  // actual UTF-8 length. See ../../../docs/PROFILE_REMAP_NOTES.md#protocol-reference.
+  // actual UTF-8 length. See ../../../docs/re-notes/PROFILE_REMAP_NOTES.md#protocol-reference.
   const data = new Uint8Array(56);
   data[0] = encoded.length;
   data.set(encoded, 1);

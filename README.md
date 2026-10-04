@@ -3,8 +3,8 @@
 An open-source, browser-based configurator for the **AULA HERO68** Hall-effect keyboard, plus an optional **Windows tray service** that keeps custom RGB, Rhythm Sync and analog Xbox gamepad output running after the browser is closed.
 
 [**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-RGB-Windows-x64.zip) · [Release notes](https://github.com/shizunavn/OpenHero68/releases/latest)
-![Openhero68 Main Page](Open-hero68.png)
-![OpenHero68 RGB Settings page](RGB-Setting-Page.png)
+![Openhero68 Main Page](docs/images/Open-hero68.png)
+![OpenHero68 RGB Settings page](docs/images/RGB-Setting-Page.png)
 
 > **Unofficial project.** OpenHero68 is a community effort based on reverse engineering. It is not affiliated with or endorsed by AULA or the makers of Wootility.
 
@@ -92,13 +92,9 @@ Gamepad starts disabled whenever the service starts. Once enabled, it keeps runn
 ### Updating
 
 - **Check for updates** in the tray downloads and applies compatible signed core updates automatically.
-- When the native launcher also changes (for example for Rhythm Sync), the tray downloads a checksum-verified ZIP instead. Quit the old app, extract all files over the service folder, then start the new launcher. A core-only update is not enough in that case.
-- Rhythm Sync needs service core 0.3.0, launcher 0.3.0 and API 5 or newer.
-- Firmware keyboard blocking and the fast Gamepad tester require **core 0.4.1, launcher 0.4.1 and API 6**. Upgrade older installations with the complete Windows ZIP because the native helper also changes. Keyboard input stays enabled until Mapped-key override is applied; firmware empty action is its default method. Windows hooking is an optional fallback, disabled by default in Configuration.
-- **0.4.2** fixes ViGEm startup cleanup and preserves the original Windows initialization error. Install the complete Windows package for this native fix. Opening Gamepad also avoids a brief blur during the initial check, while still requiring a live service and confirmed ViGEmBus before controls become active.
-- **0.4.5** waits for slow initial Xbox driver boot without requiring repeated Start clicks, verifies its own XInput slot and adds drag-out removal for Gamepad bindings. Install the **complete Windows ZIP** for the updated native helper; the signed core requires launcher 0.4.5. RGB/Rhythm also share the new toolbar and preview layout.
-- **0.4.6** evaluates digital Gamepad buttons from Hall travel and the selected profile's AP, split Rapid Trigger and deadzones. Changing these settings while running reloads them without recreating Xbox. Install the **complete Windows ZIP**; the signed core requires launcher 0.4.6.
-- If you are on 0.2.3 or 0.3.0 and see `Unexpected update source`, download the full 0.3.1 (or newer) ZIP manually once. This is caused by the GitHub repository rename.
+- When the native launcher/helper changes, install the **complete Windows ZIP**: quit the old app, extract all files over its folder, then start the new launcher. A core-only update is insufficient for native changes.
+- The current digital Gamepad AP/Rapid Trigger behavior requires **core 0.4.6, launcher 0.4.6 and API 6**. Install the complete package when upgrading an older service.
+- If an older installation reports `Unexpected update source`, download a current complete ZIP from [Releases](https://github.com/shizunavn/OpenHero68/releases/latest). See the [changelog](CHANGELOG.md) for version-specific migration notes.
 - If Auto-start points to an old folder, use **Auto-start: replace old app path** in the new tray menu.
 
 ## Development
@@ -129,6 +125,16 @@ still adds origins explicitly. These variables are not exposed to browser code.
 
 Tech stack: React, TypeScript, Vite, WebHID; the service uses a bundled Node runtime with a native C++ launcher and HID bridge.
 
+### Cloudflare Pages ZIP deployment
+
+Run `npm ci`, `npm run build` and `node tools/package-pages.mjs`, then upload
+`open-hero68-pages.zip` through the Cloudflare Pages dashboard. The packaging
+script generates `_worker.js` and `_routes.json` from `functions/api/region.js`;
+do not put generated copies in `public/`. A bare `dist/` upload does not include
+the region endpoint. Use the same ZIP workflow for Preview before Production,
+then check `/api/region` and `/api/region/` return JSON. Access-protected previews
+require sign-in before checking the endpoint.
+
 ## Building the Windows service
 
 Requires Windows with **Visual Studio Build Tools** (C++ desktop workload and Windows SDK).
@@ -149,12 +155,16 @@ Helper scripts in `tools/` cover verification (`verify-service-package.mjs`, `ve
 ```text
 src/
   App.tsx            Main shell: rail, sidebar, pages
+  assets/fonts/      Bundled Nunito Sans variable font subsets
+  styles/            Ordered shared stylesheets
   components/        Feature pages (remap, macros, RGB, advanced keys, …)
   app/               Shared UI pieces, hooks and helpers
   keyboard/          HERO68 layout and RGB/preview models
   protocol/          WebHID transport and the HERO68 protocol (hero68/)
   state/             Persisted app state, macros, remap presets
   i18n/              English / Vietnamese translations
+functions/           Cloudflare Pages Functions (region detection)
+public/              Optional static files copied by Vite (create as needed)
 service/             Tray service: TypeScript core + native C++ (native/)
 tools/               Build, packaging, verification and release scripts
 tests/               Automated tests and fixtures
@@ -169,7 +179,7 @@ docs/                Reverse-engineering notes, feature docs, release notes
 - [Macros UI](docs/MACRO_UI.md) · [Advanced Keys UI](docs/ADVANCED_KEYS_UI.md)
 - [Protocol integration notes](src/protocol/README.md)
 - [All docs, including reverse-engineering notes](docs/README.md)
-- [Service release notes](docs/releases/)
+- [Changelog](CHANGELOG.md) · [Service release notes](docs/releases/)
 
 ## Status and known limitations
 

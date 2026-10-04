@@ -1108,7 +1108,7 @@ function App() {
               <SidebarItem key={item.id} icon={item.icon} label={item.label} active={activeSettingsPage === item.id} onClick={() => setActiveSettingsPage(item.id)} />
             ))}
 
-            <div className="sidebar-version">OpenHero68 <span>{tr('Settings UI')}</span></div>
+            <div className="sidebar-version">OpenHero68 <span>v{uiVersion} UI</span></div>
           </>
         ) : (
           <>
@@ -1116,7 +1116,7 @@ function App() {
               <strong>{tr('Help')}</strong>
             </div>
             <div className="help-sidebar-copy">
-              <p>{tr('This baseline currently focuses on the keyboard workspace and the switch profile selector settings page.')}</p>
+              <p>{tr('Connection, profile saving and background service help.')}</p>
             </div>
           </>
         )}
@@ -1598,7 +1598,7 @@ function App() {
                 <article className="settings-card interface-only-card">
                   <div className="settings-card-head">
                     <h2>{tr('General')}</h2>
-                    <p>{tr("Application-only settings inspired by Wootility's interface preferences.")}</p>
+                    <p>{tr("These preferences change the app interface and are saved in this browser.")}</p>
                   </div>
                   <div className="setting-line">
                     <div>
@@ -1640,16 +1640,31 @@ function App() {
               <div className="settings-hero">
                 <div>
                   <h1>{tr('Settings')}</h1>
-                  <p>{tr('Select a settings category from the sidebar.')}</p>
+                  <p>{tr('Choose Interface for language and sidebar preferences, Device Settings for keyboard options, or Background Service for installation and connection help.')}</p>
                 </div>
               </div>
             </div>
           )
         ) : (
-          <div className="placeholder-page page-enter">
-            <div className="placeholder-icon"><CircleHelp size={28} /></div>
-            <h1>{tr('Help')}</h1>
-            <p>{tr('Use the left rail to switch between the keyboard workspace and the new settings page.')}</p>
+          <div className="page settings-page page-enter">
+            <div className="settings-hero">
+              <div>
+                <h1>{tr('Help')}</h1>
+                <p>{tr('Connect your HERO68, save onboard settings, or set up the Windows background service.')}</p>
+              </div>
+            </div>
+            <section className="selector-page-grid">
+              <article className="settings-card">
+                <h2>{tr('Connect HERO68')}</h2>
+                <p>{tr('Open OpenHero68 in Chrome or Edge over HTTPS, click Connect, and select HERO68. Close other keyboard apps if the device is busy.')}</p>
+                <h2>{tr('Save onboard settings')}</h2>
+                <p>{tr('Choose a profile, edit your keys, then use Save to profile. Wait for readback confirmation; a failed save keeps your edits available for retry.')}</p>
+                <h2>{tr('Background Service')}</h2>
+                <p>{tr('Custom Effects, Rhythm Sync and Gamepad need the Windows background service. Open Settings > Background Service for setup. Gamepad also requires ViGEmBus.')}</p>
+                <h2>{tr('Documentation')}</h2>
+                <p><a href="https://github.com/shizunavn/OpenHero68/blob/main/docs/README.md" target="_blank" rel="noreferrer">{tr('Read the documentation')}</a>{' · '}<a href="https://github.com/shizunavn/OpenHero68/issues" target="_blank" rel="noreferrer">{tr('Report an issue')}</a></p>
+              </article>
+            </section>
           </div>
         )}
         </div>
