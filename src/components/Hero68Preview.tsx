@@ -200,7 +200,7 @@ export default function Hero68Preview({
               {row.map((key, keyIndex) => {
                 const selected = selectedKeys.has(key.id)
                 const advanced = overlayMode === 'deadzone' ? undefined : advancedByKey.get(key.id)
-                const advancedIcon = advanced && <span className="hero-key-advanced-icon"><AdvancedKeyIcon kind={advanced.kind} /></span>
+                const advancedIcon = advanced && !(overlayMode==='rapid'&&rapidPreviewValues[key.id]?.active&&rapidPreviewValues[key.id]?.secondary) && <span className="hero-key-advanced-icon"><AdvancedKeyIcon kind={advanced.kind} /></span>
                 const keyColor = (displayedLighting ?? lighting)[key.id] ?? '#35393b'
                 const channels = /^#[0-9a-f]{6}$/i.test(keyColor) ? [1,3,5].map(i=>parseInt(keyColor.slice(i,i+2),16)) : undefined
                 const rgbTextColor = displayedLighting && channels && channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722 > 155 ? '#172022' : undefined
@@ -235,7 +235,7 @@ export default function Hero68Preview({
                         type="button"
                         aria-label={keyLabels?.[key.id] ?? key.label}
                         aria-description={advanced ? previewTooltips[key.id]?.title : undefined}
-                        className={`hero-key ${keyClassNames?.[key.id] ?? ''} ${highlightedKeys?.has(key.id) ? "is-preset-highlighted" : ""} ${advanced ? 'has-advanced-binding' : ''} ${selected ? 'is-selected' : ''} ${overlayMode !== 'none' ? 'has-overlay' : ''} ${showActuationOverlay ? 'is-actuation-overlay' : ''} ${showRapidOverlay && rapidPreview?.active ? 'has-rapid-overlay' : ''} ${rapidDisabled || deadzoneDisabled ? 'is-feature-disabled' : ''} ${showDeadzoneOverlay && deadzonePreview?.active ? 'has-deadzone-overlay' : ''} ${showStreamOverlay ? 'is-stream-key' : ''} ${showStreamState ? 'has-stream-overlay' : ''} ${showStreamState && streamPreview?.releaseInferred ? 'has-stream-inferred-release' : ''}`}
+                        className={`hero-key ${keyClassNames?.[key.id] ?? ''} ${highlightedKeys?.has(key.id) ? "is-preset-highlighted" : ""} ${advanced ? 'has-advanced-binding' : ''} ${overlayMode==='rapid'&&rapidPreviewValues[key.id]?.active&&rapidPreviewValues[key.id]?.secondary?'has-split-rapid':''} ${selected ? 'is-selected' : ''} ${overlayMode !== 'none' ? 'has-overlay' : ''} ${showActuationOverlay ? 'is-actuation-overlay' : ''} ${showRapidOverlay && rapidPreview?.active ? 'has-rapid-overlay' : ''} ${rapidDisabled || deadzoneDisabled ? 'is-feature-disabled' : ''} ${showDeadzoneOverlay && deadzonePreview?.active ? 'has-deadzone-overlay' : ''} ${showStreamOverlay ? 'is-stream-key' : ''} ${showStreamState ? 'has-stream-overlay' : ''} ${showStreamState && streamPreview?.releaseInferred ? 'has-stream-inferred-release' : ''}`}
                         style={{
                           '--key-rgb': keyColor,
                           '--rgb-label-color': rgbTextColor,

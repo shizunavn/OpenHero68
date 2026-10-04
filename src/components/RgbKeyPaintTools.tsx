@@ -1,4 +1,5 @@
 import {Paintbrush} from 'lucide-react'
+import {useEffect,useState} from 'react'
 import {HERO68_KEY_IDS} from '../keyboard/hero68Layout'
 import RgbColorPicker from './RgbColorPicker'
 import { useI18n } from '../i18n'
@@ -8,6 +9,12 @@ export default function RgbKeyPaintTools({selected,onSelect,color,onColor,onPain
   selected:Set<string>;onSelect:(keys:Set<string>)=>void;color:string;onColor:(color:string)=>void;onPaint:()=>void;disabled:boolean
 }) {
   const { tr } = useI18n()
+  const [hex,setHex]=useState(color.toUpperCase())
+  useEffect(()=>setHex(color.toUpperCase()),[color])
+  function changeHex(next:string){
+    setHex(next)
+    if(/^#?[0-9a-f]{6}$/i.test(next))onColor('#'+next.replace('#','').toLowerCase())
+  }
   return <section className="rgb-key-paint-tools" aria-label={tr('Per-key painting')}>
     <div className="rgb-key-paint-selection">
       <span role="status" aria-live="polite">{selected.size} / {HERO68_KEY_IDS.length} {tr('selected')}</span>
@@ -15,7 +22,7 @@ export default function RgbKeyPaintTools({selected,onSelect,color,onColor,onPain
     </div>
     <div className="rgb-key-paint-color">
       <label>{tr('Color')}<RgbColorPicker label={tr('Paint selected keys')} value={color} disabled={disabled} onChange={onColor}/></label>
-      <span className="rgb-key-paint-hex">{color.toUpperCase()}</span>
+      <input className="rgb-key-paint-hex" aria-label={tr('Brush HEX color')} value={hex} maxLength={7} spellCheck={false} disabled={disabled} onChange={event=>changeHex(event.target.value)} onBlur={()=>setHex(color.toUpperCase())}/>
       <button type="button" className="apply-button" disabled={disabled||!selected.size} onClick={onPaint}><Paintbrush size={15}/> {tr('Paint keys')}</button>
     </div>
   </section>

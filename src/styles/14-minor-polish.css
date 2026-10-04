@@ -1,0 +1,37 @@
+/* AP uses the brand color even when selection is empty; only mixed is neutral. */
+.actuation-page .actuation-page-slider .vertical-meter {opacity:1}
+.actuation-page .actuation-page-slider .vertical-meter.is-disabled {opacity:1}
+.actuation-page .actuation-page-slider .meter-fill {background:var(--brand)}
+.actuation-page .actuation-page-slider .meter-marker {border-color:var(--brand);background:var(--brand)}
+.actuation-page .actuation-page-slider .vertical-meter.is-mixed .meter-fill {background:#747c82;opacity:.55}
+.actuation-page .actuation-page-slider .vertical-meter.is-mixed .meter-marker {border-color:#bfc7cc;background:#24292c}
+.hero-key.has-advanced-binding.has-split-rapid .hero-key-rapid-overlay {position:static;display:flex;inset:auto}
+.hero-key.has-advanced-binding.has-split-rapid .hero-key-rapid-overlay span {position:static;font-size:.893em;line-height:1;inset:auto}
+
+/* Preserve navigation nodes and interpolate the same three grid columns. */
+.app-shell {transition:grid-template-columns 220ms cubic-bezier(.2,0,0,1)}
+.sidebar {overflow-x:hidden;transition:padding 220ms cubic-bezier(.2,0,0,1)}
+.sidebar-title strong,.sidebar-label,.sidebar-section-label,.sidebar-version,.device-copy,.device-card>svg {
+  opacity:1;max-width:320px;max-height:72px;white-space:nowrap;overflow:hidden;
+  transition:opacity 140ms ease,max-width 220ms cubic-bezier(.2,0,0,1),max-height 220ms cubic-bezier(.2,0,0,1),margin 220ms ease;
+}
+.sidebar-item {margin-inline:auto;transition:width 220ms ease,min-height 220ms ease,padding 220ms ease,gap 220ms ease,margin-top 220ms ease,background 140ms ease,color 140ms ease}
+.sidebar-icon {transition:width 220ms ease,min-width 220ms ease,height 220ms ease}
+.sidebar .device-card {overflow:hidden;transition:width 220ms ease,padding 220ms ease,gap 220ms ease,grid-template-columns 220ms ease,background 140ms ease}
+.sidebar .device-thumb {transition:width 220ms ease,height 220ms ease}
+.app-shell.is-sidebar-compact .sidebar-title strong,
+.app-shell.is-sidebar-compact .device-copy,
+.app-shell.is-sidebar-compact .device-card>svg,
+.app-shell.is-sidebar-compact .sidebar-section-label,
+.app-shell.is-sidebar-compact .sidebar-label,
+.app-shell.is-sidebar-compact .sidebar-version {display:block;opacity:0;max-width:0;max-height:0;margin:0;pointer-events:none}
+.app-shell.is-sidebar-compact .sidebar .device-card {grid-template-columns:52px 0px 0px;gap:0}
+.app-shell.is-sidebar-compact .sidebar-item {gap:0}
+.app-shell.is-sidebar-compact .sidebar-title {justify-content:space-between}
+.app-shell.is-sidebar-compact .sidebar-title .icon-button {margin-inline:auto}
+@media(max-width:1100px) and (min-width:761px) {
+  .app-shell.is-sidebar-compact .sidebar-title strong,.app-shell.is-sidebar-compact .device-copy,.app-shell.is-sidebar-compact .device-card>svg,.app-shell.is-sidebar-compact .sidebar-section-label,.app-shell.is-sidebar-compact .sidebar-label,.app-shell.is-sidebar-compact .sidebar-version {display:none}
+}
+@media(prefers-reduced-motion:reduce) {
+  .app-shell,.sidebar,.sidebar-title strong,.sidebar-label,.sidebar-section-label,.sidebar-version,.device-copy,.device-card>svg,.sidebar-item,.sidebar-icon,.sidebar .device-card,.sidebar .device-thumb {transition:none}
+}

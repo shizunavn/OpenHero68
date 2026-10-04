@@ -6,6 +6,7 @@ import { serviceHealth } from './serviceHealth'
 export type RgbServiceStatus={
   tachyon?:boolean;supportsTachyon?:boolean;apiVersion?:number;supportedEffects?:string[];supportedBaseEffects?:string[];mode?:'onboard'|'custom'|'rhythm';sessionId?:string
   enabled:boolean;connected:boolean;preset:boolean;fps:number;frameMs:number;frames:number;packets:number
+  customConfiguration?:RgbProfile;customRevision?:number
   hallSnapshots:number;timeouts:number;maxGapMs:number;lastError:string|null;targetFps?:number;renderFps?:number;reusedFrames?:number
   sideOutput?:boolean;supportedModes?:string[];supportedRhythmModes?:number[];supportedRhythmSideModes?:number[];rhythmConfiguration?:RhythmConfiguration
   audioState?:string;audioError?:string;audioLevel?:number;sampleRate?:number;audioEndpoint?:string;droppedFrames?:number
@@ -29,7 +30,7 @@ async function request(path:string,value?:unknown):Promise<RgbServiceStatus>{
   catch(error){if(path==='/status')setOnline(health.failure(error instanceof LocalServicePermissionError));if(error instanceof LocalServicePermissionError)throw error;throw Error(error instanceof DOMException&&error.name==='TimeoutError'?'RGB service phản hồi quá chậm. Hãy thử lại.':'RGB service đã tắt. Hãy chạy lại Hero68RgbService.exe. Các thay đổi chưa lưu vẫn được giữ trên web.')}
   if(response.status===403){if(path==='/status')setOnline(health.failure(true));throw Error('The background app does not allow this website. Update the app, then check again.')}
   const result=await response.json()
-  if(!response.ok){if(path==='/status')setOnline(health.failure());throw Error(result.error??'RGB service request failed')}
+  if(!response.ok){if(path==='/status')setOnline(health.failure());throw Object.assign(Error(result.error??'RGB service request failed'),{status:response.status})}
   if(path==='/status')confirmRgbServiceAvailable()
   return result
 }
@@ -38,7 +39,7 @@ export const rgbService={
   rhythmStart:(configuration:RhythmConfiguration)=>request('/rhythm/start',{configuration}),
   rhythmUpdate:(configuration:RhythmConfiguration,sessionId:string)=>request('/rhythm/config',{configuration,sessionId}),
   async audioDevices():Promise<AudioEndpoint[]>{const response=await fetchLocalService(endpoint+'/audio/devices',{},5000);const result=await response.json();if(!response.ok)throw Error(result.error??'Cannot list playback devices');return result.devices},
-  status:()=>request('/status'),start:(profile:RgbProfile)=>request('/start',profile),update:(profile:RgbProfile,sessionId:string)=>request('/preset',{profile,sessionId}),stop:()=>request('/stop',{}),mode:(mode:'onboard'|'custom',profile?:RgbProfile)=>request('/mode',{mode,...(profile?{profile}:{})}),
+  status:()=>request('/status'),start:(profile:RgbProfile)=>request('/start',profile),update:(profile:RgbProfile,sessionId:string,expectedRevision?:number)=>request('/preset',{profile,sessionId,...(expectedRevision!==undefined?{expectedRevision}:{})}),stop:()=>request('/stop',{}),mode:(mode:'onboard'|'custom',profile?:RgbProfile)=>request('/mode',{mode,...(profile?{profile}:{})}),
   onAvailability(listener:(online:boolean)=>void){availability.add(listener);return()=>availability.delete(listener)},
   async deviceRequest(packet:Uint8Array,reenumerate=false){
     const hex=Array.from(packet,c=>c.toString(16).padStart(2,'0')).join('')

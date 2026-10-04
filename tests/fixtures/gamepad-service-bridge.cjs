@@ -14,6 +14,8 @@ child.spawn=function(file,...args){
  const command=line=>{
   if(line==='gamepad-status'){emit('gamepad-state:'+JSON.stringify(status()));return}
   if(line==='device-identity'){emit('device-identity:0066006900780074007500720065');return}
+  if(line==='custom-start'){saved.customStarts=(saved.customStarts??0)+1;persist();emit('custom-ready');return}
+  if(line.startsWith('rhythm:')){emit('rhythm-ready');return}
   const commands={'gamepad-start':'gamepad-ready','gamepad-stop':'gamepad-stopped','gamepad-pause':'gamepad-paused','gamepad-resume':'gamepad-resumed','rhythm-pause':'rhythm-paused','rhythm-resume':'rhythm-resumed','custom-stop':'custom-stopped','rhythm-stop':'rhythm-stopped','close':'closed'};
   if(line==='gamepad-start-paused'){enabled=true;saved.starts=(saved.starts??0)+1;persist();emit('gamepad-ready');return}
   if(line==='gamepad-start'){enabled=true;saved.starts=(saved.starts??0)+1;persist()}if(line==='gamepad-stop'){enabled=false;saved.stops=(saved.stops??0)+1;persist()}

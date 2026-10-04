@@ -11,6 +11,7 @@ export interface RgbPageProps {
   onSetup: () => void
   initialCustom: boolean
   onEntered: () => void
+  onTabChange: (tab: import('../components/RgbSettingsPage').RgbTab) => void
   advancedBindings: AdvancedBinding[]
   profileSlot: ProfileSlot
   rgb: RgbProfile
@@ -24,6 +25,7 @@ function RgbPage({
   onSetup,
   initialCustom,
   onEntered,
+  onTabChange,
   advancedBindings,
   profileSlot,
   rgb,
@@ -34,7 +36,7 @@ function RgbPage({
 }: RgbPageProps) {
   const { tr } = useI18n()
   return (
-            <Suspense fallback={<div className="page settings-page">{tr('Loading RGB preview…')}</div>}><RgbSettingsPage onSetup={onSetup} initialCustom={initialCustom} onEntered={onEntered} advancedBindings={advancedBindings} key={profileSlot} value={rgb} busy={profileBusy} onChange={next => { setRgb(next); setSaveState('idle') }} /></Suspense>
+            <Suspense fallback={<div className="page settings-page">{tr('Loading RGB preview…')}</div>}><RgbSettingsPage slot={profileSlot} onTabChange={onTabChange} onSetup={onSetup} initialCustom={initialCustom} onEntered={onEntered} advancedBindings={advancedBindings} key={profileSlot} value={rgb} busy={profileBusy} onChange={next => { setRgb(next); setSaveState('idle') }} /></Suspense>
   )
 }
 

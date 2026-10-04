@@ -5,6 +5,16 @@ export type LanguagePreference = Language
 export type RegionGroup = 'VN' | 'OTHER'
 
 const VI: Record<string, string> = {
+  'Brush HEX color': 'Mã HEX màu cọ',
+  'Start Custom': 'Bắt đầu Custom',
+  'Joining running Custom…': 'Đang đồng bộ Custom đang chạy…',
+  'Syncing changes…': 'Đang đồng bộ thay đổi…',
+  'Restore draft': 'Khôi phục bản nháp',
+  'Changes paused · restore your draft to continue': 'Tạm dừng đồng bộ · khôi phục bản nháp để tiếp tục',
+  'Custom configuration changed in another editor. Your draft was preserved.': 'Cấu hình Custom đã đổi ở cửa sổ khác. Bản nháp của bạn được giữ lại.',
+  'Onboard changes use Save to profile.': 'Thay đổi onboard được ghi bằng Lưu vào hồ sơ.',
+  'Custom runs in the background; changes sync automatically.': 'Custom chạy trong nền; thay đổi được đồng bộ tự động.',
+  'Click or type to simulate a press. Start Custom for actual analog feedback.': 'Nhấp hoặc gõ để mô phỏng nhấn phím. Bật Custom để nhận phản hồi analog thực tế.',
   'Keyboard': 'Bàn phím',
   'Settings': 'Cài đặt',
   'Help': 'Trợ giúp',

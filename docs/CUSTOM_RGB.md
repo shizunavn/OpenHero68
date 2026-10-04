@@ -6,15 +6,32 @@ Try demo unlocks a local preview without HID writes or Hall polling. Download ap
 opens Settings > Background Service with the download and setup tutorial.
 
 Run `service/dist/Hero68RgbService.exe`, then RGB Settings > Custom Effects >
-Apply to keyboard. Apply transfers this preset to the service and routes
+Start Custom. Start transfers this preset to the service and routes
 keyboard configuration through the service-owned HID connection, so AP, RT
-and deadzone remain editable while RGB runs. Only edits following a successful
-Apply are sent live. Losing the service or changing profile/session cancels
-queued updates and requires Reapply; drafts remain local. Preset edits coalesce at 40 ms
-intervals with at most one in-flight request. Closing the editor/page leaves
-playback running. Use onboard lighting restores firmware lighting immediately;
+and deadzone remain editable while RGB runs. Reopening Custom joins the running
+session and receives its configuration and output preview without restarting it.
+A different local draft is retained for Restore draft. Running edits coalesce at
+40 ms intervals with one request in flight and one latest configuration pending.
+Disk saves wait until 300 ms without edits, and Stop/Exit flush the latest state.
+Closing the editor/page leaves playback running. Use onboard lighting restores firmware lighting immediately;
 the bridge retains the HID handle so AP/RT/Save keep using one transport.
 Close other keyboard configuration applications while rendering.
+
+API 6 optionally exposes `customConfiguration` and `customRevision` in `/status`.
+`POST /preset` accepts `{profile, sessionId, expectedRevision}`; a stale revision
+returns HTTP 409 without changing playback. Older clients may omit the revision.
+The editor keeps the conflicting draft, refreshes status and requires an explicit
+Restore draft to resume writes. Old acknowledgements never replace newer edits.
+Services lacking session configuration/revision support must be updated to use
+automatic rejoining. Reading status does not register a Hall consumer.
+
+Per-key Color uses a shared painting toolbar directly beneath the keyboard
+preview. Select keys individually or use All/WASD/arrows, choose a brush color or
+HEX value, then Paint keys. Changing the brush alone does not change colors.
+Black turns a key LED off. Custom paints sync while running; onboard paints use
+Save to profile. Saving RGB in the Onboard editor returns to firmware lighting
+before writing and verifying the changes. Saving AP/RT on other pages keeps
+background playback running.
 
 The executable is a Windows background application, not an installed Windows
 SCM service. It runs in the Windows system tray, without administrator rights
@@ -79,7 +96,7 @@ host behaviors:
 - RT Display shows green/red from the reported Hall pressed flag. The flag's
   exact correspondence to the firmware RT output state is not established.
 
-The service reports `supportedEffects` in `/status`. The web editor blocks Apply
+The service reports `supportedEffects` in `/status`. The web editor blocks Start
 when the service cannot render a preset's effects and opens the setup/update
 tutorial instead. Services without this field support only the legacy effects;
 Demo can still preview the new effects without updating the app.
@@ -133,8 +150,8 @@ No persistent `06`/`04` writes are used for animation.
 
 The known live protocol addresses main keys only. The 18 side LEDs retain their
 onboard effect; the preview's side frame is not streamed. Rhythm Sync is described
-in [RHYTHM_SYNC.md](RHYTHM_SYNC.md). Gamepad and Spiral/Noise host FX remain outside
-this service. The tray Check for updates
+in [RHYTHM_SYNC.md](RHYTHM_SYNC.md). Gamepad shares the native Hall pipeline;
+Spiral/Noise host FX remain outside this service. The tray Check for updates
 checks GitHub Releases through the local service and shows a window message
 when current, without opening the control panel. Compatible signed core
 updates are applied and restarted automatically. A release requiring a newer

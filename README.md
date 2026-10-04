@@ -32,14 +32,14 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 | Key Remap | Remap keys across layers, with a searchable icon catalog |
 | Advanced Keys | SOCD, DKS, Mod Tap, Toggle, MPT and END bindings (Main Layer) |
 | Macros | Macro editor with a local library synced to the keyboard |
-| RGB Settings | On-board effects for keys and side light, plus **Custom Effects** and **Rhythm Sync** |
+| RGB Settings | On-board effects for keys and side light, plus **Custom Effects** and **Rhythm Sync**; per-key painting tools sit directly below the keyboard preview |
 | Gamepad | Setup & Remap with automatic saves, analog response curves/travel, digital AP/RT, Snappy, circle/square, angle adjustment and a live tester with XInput verification |
 | Device settings | Polling rate (125 Hz – 8000 Hz), Tachyon Mode, OS mode, Windows key lock, Hall debounce, auto calibration, switch selector |
 | Interface | English and Vietnamese UI, optional advanced pages (Hall Stream), compact sidebar |
 
 **RGB tray service** (Windows x64, portable)
 
-- **Custom Effects:** an Aurora base with composable effects (Comet, Pressure Wave, Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail, RT Display) and a layer editor.
+- **Custom Effects:** an Aurora base with composable effects (Comet, Pressure Wave, Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail, RT Display) and a layer editor. Start/Stop controls with automatic live updates, session recovery and preserved drafts.
 - **Rhythm Sync:** seven key modes driven by native system-audio capture, with live preview and a 60 FPS USB scheduler shared with Custom Effects.
 - **Gamepad:** one virtual Xbox controller through ViGEmBus 1.22.0, up to 200 Hz analog output, automatically saved configurations for three HERO68 profiles and tray Start/Stop. Curve edits save on release; digital buttons follow keyboard AP/RT. The tester has a separate fast input stream; assigned keyboard keys can use firmware empty action with automatic remap recovery.
 - **Shared Hall:** one native scheduler polls active source keys only, sharing common samples between Gamepad, RGB, Hall Stream and visual feedback. RGB Hall demand stays 100 Hz; LED output retains its 60 FPS target.
@@ -75,7 +75,7 @@ Open the HTTPS URL printed by Vite. WebHID requires a secure context, so Vite cr
 1. Download the Windows x64 ZIP from [Releases](https://github.com/shizunavn/OpenHero68/releases/latest) and extract it to a **permanent folder**. Keep all included files together.
 2. Run `Hero68RgbService.exe`. An **H** icon appears in the system tray.
 3. Open the web app and choose **Allow** if the browser asks for access to apps and services on this device.
-4. Go to **RGB Settings → Custom Effects** or **Rhythm Sync**, pick a preset and click **Apply to keyboard**.
+4. Go to **RGB Settings → Custom Effects** or **Rhythm Sync**, pick a preset and click **Start Custom** or **Start Rhythm Sync**. Running edits sync automatically; returning to the editor joins existing playback.
 5. Close the browser if you like — playback continues. Right-click the tray icon for controls.
 
 **Tray menu:** Open web app · Open control panel · Start saved RGB · Stop RGB · Start saved Gamepad · Stop Gamepad · Check for updates · Open log folder · Auto-start · Quit.

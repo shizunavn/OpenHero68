@@ -4,6 +4,7 @@ import CustomRgbEditor from './CustomRgbEditor'
 import RhythmSyncEditor from './RhythmSyncEditor'
 import Hero68Preview from './Hero68Preview'
 import RgbColorPicker from './RgbColorPicker'
+import RgbKeyPaintTools from './RgbKeyPaintTools'
 import { FirmwareRgbPreview } from "../keyboard/rgbPreview"
 import { useCustomRgbPlayback } from './useCustomRgbPlayback'
 import { HERO68_KEY_IDS } from '../keyboard/hero68Layout'
@@ -20,9 +21,9 @@ import { useRgbServiceState } from '../protocol/rgbServiceState'
 
 const colorHex=(color:RgbColor)=>'#'+color.map(v=>v.toString(16).padStart(2,'0')).join('')
 const hexColor=(hex:string):RgbColor=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)) as RgbColor
-type RgbTab='onboard'|'custom'|'rhythm'
+export type RgbTab='onboard'|'custom'|'rhythm'
 function previousRgbTab():RgbTab{try{const tab=sessionStorage.getItem('openhero68:rgb-tab');return tab==='custom'||tab==='rhythm'?tab:'onboard'}catch{return 'onboard'}}
-type RgbSettingsProps = {value:RgbProfile;onChange:(value:RgbProfile)=>void;busy:boolean;advancedBindings:AdvancedBinding[];onSetup:()=>void;initialCustom?:boolean;onEntered?:()=>void}
+type RgbSettingsProps = {value:RgbProfile;onChange:(value:RgbProfile)=>void;busy:boolean;advancedBindings:AdvancedBinding[];onSetup:()=>void;initialCustom?:boolean;onEntered?:()=>void;slot?:number;onTabChange?:(tab:RgbTab)=>void}
 export default function RgbSettingsPage(props: RgbSettingsProps) {
   const tachyon = useContext(TachyonContext)
   const { tr } = useI18n()
@@ -33,7 +34,7 @@ export default function RgbSettingsPage(props: RgbSettingsProps) {
   </div>
   return <ActiveRgbSettingsPage {...props}/>
 }
-function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,initialCustom=false,onEntered}: RgbSettingsProps) {
+function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,initialCustom=false,onEntered,slot=0,onTabChange}: RgbSettingsProps) {
   const { tr } = useI18n()
   useEffect(()=>{onEntered?.()},[])
   const [zone,setZone]=useState<'keys'|'side'>('keys')
@@ -55,7 +56,8 @@ function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,ini
       setTab(status.mode as RgbTab)
     }
   },[status?.mode])
-  const playback=useCustomRgbPlayback(value,onChange,onSetup)
+  useEffect(()=>{onTabChange?.(tab)},[tab,onTabChange])
+  const playback=useCustomRgbPlayback(value,onChange,onSetup,slot,tab==='custom')
   const engineRef=useRef<FirmwareRgbPreview|null>(null)
   const replayRef=useRef(replay)
   const releases=useRef<{at:number;id:string}[]>([])
@@ -123,10 +125,12 @@ function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,ini
     {rhythmMode&&<RhythmSyncEditor onSetup={onSetup}/>}
     <CustomRgbEditor value={value} onChange={onChange} busy={busy} advancedBindings={advancedBindings} visible={customMode} onSetup={onSetup} playback={playback}/>
     {!customMode&&!rhythmMode&&<>
+    <div className="rhythm-actions rgb-onboard-actions"><button className="apply-button" disabled={busy||playback.busy||!status?.enabled} onClick={()=>void playback.onboard()}>{tr('Use onboard lighting')}</button><span className="rhythm-apply-note">{tr('Onboard changes use Save to profile.')}</span></div>
     <div className="rgb-preview-stage">
       <Hero68Preview advancedBindings={advancedBindings} selectedKeys={perKey?selected:new Set()} onToggleKey={toggle} lightingFrame={frame.keys} lightingSource="local" selectionEnabled={perKey}/>
       <div className="rgb-side-preview" aria-label={tr('18 side light positions')}>{frame.side.map((color,i)=><span key={i} style={{background:color,color}}/>)}</div>
     </div>
+    {perKey&&<RgbKeyPaintTools selected={selected} onSelect={setSelected} color={paint} onColor={setPaint} disabled={busy} onPaint={()=>{const colors={...value.colors};for(const id of selected)colors[id]=hexColor(paint);onChange({...value,colors})}}/>}
     <div className="rgb-zone-tabs" role="group" aria-label={tr('Lighting zone')}>{(['keys','side'] as const).map(id=><button key={id} aria-pressed={zone===id} onClick={()=>setZone(id)}>{id==='keys'?tr('Keys'):tr('Side Light')}</button>)}</div>
     <section className="settings-card rgb-basic-card">
       <div className="rgb-section-heading"><div><h2>{zone==='keys'?tr('Key lighting'):tr('Side lighting')}</h2><p>{tr('{count} effects stored on your keyboard',{count:effects.length})}</p></div><button className="secondary-button" onClick={()=>setReplay(x=>x+1)}><RotateCcw size={15}/> {tr('Replay preview')}</button></div>
@@ -138,7 +142,6 @@ function ActiveRgbSettingsPage({value,onChange,busy,advancedBindings,onSetup,ini
         <label>{tr('Speed')} <strong>{config.speed+1} / 5</strong><input aria-label={tr('RGB speed')} type="range" min="0" max="4" value={config.speed} disabled={busy||!capability?.speed} onChange={e=>change({speed:Number(e.target.value)})}/></label>
         {capability?.color&&<div className="rgb-color-controls"><div className="rgb-active-color">{config.mix?<><span className="rgb-rainbow-swatch" aria-label={tr('Multicolor palette')}/><span>{tr('Multicolor')}</span></>:<><label>{tr('Color')}<RgbColorPicker label={tr('Effect color')} value={colorHex(config.rgb)} disabled={busy} onChange={hex=>change({rgb:hexColor(hex)})}/></label><span>{colorHex(config.rgb).toUpperCase()}</span></>}</div><label className="rgb-mix"><input type="checkbox" checked={config.mix} disabled={busy} onChange={e=>change({mix:e.target.checked})}/> {tr('Multicolor')}</label></div>}
       </div>
-      {perKey&&<div className="rgb-per-key"><div><h3>{tr('Paint your keys')}</h3><p>{tr('Select keys above, choose a color, then apply it. Black turns LEDs off.')}</p></div><div className="rgb-paint-actions"><span>{tr('{count} keys selected',{count:selected.size})}</span><button className="secondary-button" onClick={()=>setSelected(new Set(HERO68_KEY_IDS))}>{tr('Select all')}</button><button className="secondary-button" onClick={()=>setSelected(new Set())}>{tr('Deselect')}</button><RgbColorPicker label={tr('Per-key color')} value={paint} disabled={busy} onChange={setPaint}/><button className="apply-button" disabled={busy||!selected.size} onClick={()=>{const colors={...value.colors};for(const id of selected)colors[id]=hexColor(paint);onChange({...value,colors})}}>{tr('Apply color')}</button></div></div>}
       {capability?.reactive&&<p className="rgb-inline-note">{tr('Preview only · sample key presses repeat automatically. Click or type to try your own keys.')}</p>}
       {config.brightness>brightnessMax&&<p className="rgb-inline-note">{tr('This draft has an unrecognized brightness value. Choose a supported level before saving this zone.')}</p>}
       {error&&<p className="stream-error">{tr('Preview unavailable')}: {error}</p>}

@@ -7,13 +7,15 @@ import path from 'node:path'
 const root=path.resolve('.refactor/rgb-ui-fixture')
 await build({configFile:false,plugins:[react(),{
   name:'isolated-rgb-service',enforce:'pre',
-  transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/protocol/rgbService.ts'))return code.replace('http://127.0.0.1:16868','http://127.0.0.1:5190')},
+  transform(code,id){if(['/src/protocol/rgbService.ts','/src/protocol/gamepadService.ts'].some(name=>id.replaceAll('\\','/').endsWith(name)))return code.replace('http://127.0.0.1:16868','http://127.0.0.1:5190')},
 }],build:{outDir:root,rollupOptions:{input:'tests/fixtures/rgb-ui.html'}}})
-let online=false,legacy=false,failApply=false,enabled=false,sessionId='fixture-session',savedOpacity=null,mode='onboard',rhythmConfiguration=null
+let online=false,legacy=false,failApply=false,enabled=false,sessionId='fixture-session',savedOpacity=null,mode='onboard',rhythmConfiguration=null,customConfiguration=null,customRevision=0,sequence=0
+const frameClients=new Set()
 const requests=[]
 const effects=['aurora','comet','pressure-wave','jelly','scan','breath','ripple','touch','reaction','aoe','mixing','trail','rt']
-const status=()=>({apiVersion:legacy?4:5,...(!legacy?{supportedEffects:effects,supportedBaseEffects:["aurora"],supportedModes:['onboard','custom','rhythm'],supportedRhythmModes:[169,170,171,172,173,180,428],supportedRhythmSideModes:[500]}:{}),sessionId,enabled,mode:enabled?mode:'onboard',connected:false,preset:true,fps:60,targetFps:60,frameMs:1,frames:0,packets:0,hallSnapshots:0,timeouts:0,maxGapMs:17,lastError:null,rhythmConfiguration,sideOutput:false})
+const status=()=>({apiVersion:legacy?4:6,...(!legacy?{customRevision,customConfiguration:customConfiguration??undefined}:{}),...(!legacy?{supportedEffects:effects,supportedBaseEffects:["aurora"],supportedModes:['onboard','custom','rhythm'],supportedRhythmModes:[169,170,171,172,173,180,428],supportedRhythmSideModes:[500]}:{}),sessionId,enabled,mode:enabled?mode:'onboard',connected:true,preset:true,fps:60,targetFps:60,frameMs:1,frames:0,packets:0,hallSnapshots:0,timeouts:0,maxGapMs:17,lastError:null,rhythmConfiguration,sideOutput:false})
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.woff2':'font/woff2'}
+setInterval(()=>{if(!enabled)return;const keys=Object.fromEntries(Object.entries(customConfiguration?.colors??{}).map(([id,c])=>[id,'#'+c.map(x=>x.toString(16).padStart(2,'0')).join('')]));for(const res of frameClients)if(!res.writableLength)res.write('data: '+JSON.stringify({...status(),keys,sequence:++sequence})+'\n\n')},1000/60).unref()
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1:5190')
   const json=(value,code=200)=>{res.writeHead(code,{'Content-Type':'application/json'});res.end(JSON.stringify(value))}
@@ -24,28 +26,38 @@ createServer(async(req,res)=>{
       if(input.legacy!==undefined)legacy=input.legacy
       if(input.failApply!==undefined)failApply=input.failApply
       if(input.sessionId)sessionId=input.sessionId
+      if(input.customConfiguration){customConfiguration=input.customConfiguration;customRevision++}
+      if(input.mode){mode=input.mode;enabled=mode!=='onboard'}
     }
-    json({online,enabled,sessionId,savedOpacity,requests});return
+    json({online,enabled,mode,sessionId,customRevision,customConfiguration,savedOpacity,requests});return
   }
   if(['/status','/mode','/preset','/rhythm/start','/rhythm/config','/audio/devices','/stop','/frames','/device/request'].includes(url.pathname)){
     if(!online){json({error:'Mock service offline'},503);return}
     if(url.pathname==='/status'){json(status());return}
     if(url.pathname==='/audio/devices'){json({devices:[{id:'fixture-speakers',name:'Fixture speakers',default:true}]});return}
-    if(url.pathname==='/frames'){res.writeHead(200,{'Content-Type':'text/event-stream'});res.write(`data: ${JSON.stringify({...status(),sequence:1})}\n\n`);return}
-    requests.push({path:url.pathname,mode:input.mode,sessionId:input.sessionId})
+    if(url.pathname==='/frames'){res.writeHead(200,{'Content-Type':'text/event-stream'});res.flushHeaders();frameClients.add(res);req.on('close',()=>frameClients.delete(res));return}
+    if(url.pathname==='/device/request'){
+      const packet=Buffer.from(input.hex??'','hex'),reply=Buffer.alloc(64)
+      reply[0]=9;reply[1]=packet[1]??0;reply[2]=packet[2]??0;reply[4]=1;reply[6]=6
+      reply.set([0x11,0,0,0,0,3],7);reply[3]=(255-reply.reduce((sum,value)=>sum+value,0))&255
+      json({hex:reply.toString('hex')});return
+    }
+    requests.push({path:url.pathname,mode:input.mode,sessionId:input.sessionId,expectedRevision:input.expectedRevision,profile:input.profile})
     if(url.pathname==='/rhythm/start'||url.pathname==='/rhythm/config'){
       if(legacy){json({error:'Update app'},404);return}
       if(url.pathname==='/rhythm/config'&&input.sessionId!==sessionId){json({error:'Stale session'},409);return}
       if(input.configuration.sideMode!==500){json({error:'Side unverified'},400);return}
+      if(url.pathname==='/rhythm/start')sessionId='fixture-rhythm-'+Date.now()
       enabled=true;mode='rhythm';rhythmConfiguration=input.configuration;json(status());return
     }
     if(url.pathname==='/mode'){
       if(failApply){failApply=false;json({error:'Simulated Apply failure'},500);return}
-      enabled=input.mode==='custom';mode=input.mode;savedOpacity=input.profile?.custom?.layers?.[0]?.opacity??savedOpacity;json(status());return
+      enabled=input.mode==='custom';mode=input.mode;sessionId='fixture-session-'+Date.now();if(input.profile){customConfiguration=input.profile;customRevision++}savedOpacity=input.profile?.custom?.layers?.[0]?.opacity??savedOpacity;json(status());return
     }
     if(url.pathname==='/preset'){
       if(input.sessionId!==sessionId){json({error:'Stale session'},409);return}
-      savedOpacity=input.profile?.custom?.layers?.[0]?.opacity??savedOpacity;json(status());return
+      if(input.expectedRevision!==undefined&&input.expectedRevision!==customRevision){json({error:'Custom configuration changed in another editor. Your draft was preserved.'},409);return}
+      customConfiguration=input.profile;customRevision++;savedOpacity=input.profile?.custom?.layers?.[0]?.opacity??savedOpacity;json(status());return
     }
     if(url.pathname==='/stop'){enabled=false;json(status());return}
     json({error:'This fixture never connects to hardware'},403);return

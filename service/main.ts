@@ -23,6 +23,7 @@ import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SID
 import {latestSse} from './latestSse'
 import {profileRequest} from './profileSelection'
 import {CustomPlayback} from './customPlayback'
+import {deferredSave} from './deferredSave'
 import {GamepadFirmware} from './gamepadFirmware'
 import {hookConfiguration} from './gamepadKeyboard'
 import {selectProfile} from '../src/protocol/hero68/commands'
@@ -68,6 +69,7 @@ function persistTachyon(){
 }
 const tachyonLighting=new TachyonLighting(tachyonSnapshot, snapshot=>{tachyonLighting.snapshot=snapshot;persistTachyon()})
 let profile:RgbProfile|null=null, mode:'onboard'|'custom'|'rhythm'='onboard', connected=false, closing=false, updating=false
+let customRevision=0
 let rhythmConfig:RhythmConfiguration=defaultRhythm(),savedMode:'onboard'|'custom'|'rhythm'='onboard',configurationBusy=false
 try{rhythmConfig=validateRhythm(JSON.parse(readFileSync(path.join(stateDir,'rhythm-preset.json'),'utf8')))}catch{}
 function persistRhythm(){const file=path.join(stateDir,'rhythm-preset.json');writeFileSync(file+'.tmp',JSON.stringify(rhythmConfig));renameSync(file+'.tmp',file)}
@@ -77,6 +79,7 @@ if(tachyon){
   mode='onboard'
 }
 function persist(){
+  presetSave.cancel()
   const file=path.join(stateDir,'preset.json')
   try{
     const old=JSON.parse(readFileSync(file,'utf8'))
@@ -86,6 +89,7 @@ function persist(){
   }catch{/* No previous valid preset. */}
   writeFileSync(file+'.tmp',JSON.stringify({version:3,mode,savedMode,enabled:mode!=='onboard',profile}));renameSync(file+'.tmp',file)
 }
+const presetSave=deferredSave(persist,error=>{lastError=String(error);log('Preset save failed: '+String(error))})
 const frameEncoder=new RgbFrameEncoder()
 const playback=new CustomPlayback(profile)
 let engine=playback.engine, reconnectAt=0
@@ -400,6 +404,7 @@ function status(){const now=performance.now();if(now-cpuAt>=1000){const next=pro
   supportedEffects:CUSTOM_RGB_EFFECTS.map(effect=>effect.id),supportedBaseEffects:['aurora'],
   pid:process.pid,coreVersion,launcherVersion:LAUNCHER_VERSION,mode,tachyon,supportsTachyon:true,enabled:mode!=='onboard',connected,
   preset:!!profile||savedMode==='rhythm',savedMode,configurationBusy,pendingRequests,sessionId,
+  customConfiguration:profile??undefined,customRevision,
   fps,frameMs,renderMs,encodeMs,writeMs,frames,packets,hallSnapshots,hallPolls,hallClients:hallClients.size,timeouts,maxGapMs,
   frameGapP95Ms:percentile(frameGaps),frameGapP99Ms:percentile(frameGaps,.99),gapsOver100,lastLongGapAt,
   eventLoopDelayP99Ms:eventLoopDelay.percentile(99)/1e6,eventLoopDelayMaxMs:eventLoopDelay.max/1e6,
@@ -601,13 +606,18 @@ const server=createServer(async(req,res)=>{
       if(tachyon)throw Error('Turn off Tachyon Mode before starting RGB effects.')
       if(req.url==='/mode'&&input.mode!=='custom')throw Error('Expected onboard or custom mode')
       if(req.url==='/preset'&&input.sessionId!==sessionId)throw Error('Stale RGB editor session; preset was not applied')
-      if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);if(engine)engine.configure(profile);else engine=playback.start(profile);persist()}
+      if(req.url==='/preset'&&mode!=='custom')throw Error('Custom RGB is not running')
+      if(req.url==='/preset'&&input.expectedRevision!==undefined){
+        if(!Number.isInteger(input.expectedRevision)||input.expectedRevision<0)throw Error('Invalid custom revision')
+        if(input.expectedRevision!==customRevision)throw Object.assign(Error('Custom configuration changed in another editor. Your draft was preserved.'),{status:409})
+      }
+      if(req.url==='/preset'||(req.url==='/start'&&Object.keys(input).length)||(req.url==='/mode'&&input.profile)){profile=normalizeProfile(req.url==='/mode'||req.url==='/preset'?input.profile:input);customRevision++;if(engine)engine.configure(profile);else engine=playback.start(profile);if(req.url==='/preset')presetSave.schedule();else persist()}
       if(req.url==='/start'||req.url==='/mode'){if(mode==='rhythm')await bridge.stopRhythm();if(!profile)throw Error('Send a preset first');if(mode!=='custom'){engine=playback.start(profile);outputHeld.clear();pendingInputs.length=0}mode='custom';savedMode='custom';customFrames.clear();reusedFrames=windowRendered=renderFps=0;await bridge.startCustom();frameEncoder.reset();sessionId=randomUUID();frameSequence=0;publishFrame({enabled:true,connected,sessionId,sequence:0});reconnectAt=0;frames=0;packets=0;hallSnapshots=0;timeouts=0;maxGapMs=0;gapsOver100=0;lastLongGapAt=null;frameGaps.length=0;eventLoopDelay.reset();lastFrameAt=0;persist();log('Custom RGB started')}
       await syncHall()
     })
     json(200,status())
     if(req.url==='/shutdown')void shutdown()
-  }catch(e){json(400,{error:e instanceof Error?e.message:String(e)})}
+  }catch(e){json((e as {status?:number}).status===409?409:400,{error:e instanceof Error?e.message:String(e)})}
 })
 async function shutdown(exitCode=0){if(closing)return;closing=true;clearTimeout(timer);clearTimeout(firmwareRecoveryTimer);publishFrame({enabled:false,connected:false,shuttingDown:true});await exclusive(async()=>{await stopGamepad();await stop()}).catch(e=>log(String(e)));for(const client of frameClients)client.end();for(const client of gamepadClients)client.end();for(const client of gamepadInputClients.keys())client.end();for(const client of hallClients.keys())client.end();await exclusive(()=>bridge.close()).catch(()=>{});bridge.end();server.close(()=>process.exit(exitCode));setTimeout(()=>process.exit(exitCode),1000).unref()}
 async function restartForUpdate(){await shutdown(73)}

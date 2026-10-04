@@ -25,6 +25,8 @@ import MacroPage from './components/MacroPage'
 import { advancedEqual, mergeAdvanced, readAdvancedBindings, saveAdvancedBindings, type AdvancedBinding } from './protocol/hero68/advanced'
 import MyProfilePage from './components/MyProfilePage'
 import { mergeRgb, readRgbProfile, restoreStoredRgb, rgbChanges, rgbDirtyCount, saveRgbProfile, type RgbProfile } from './protocol/hero68/rgb'
+import { rgbService } from './protocol/rgbService'
+import { publishRgbServiceStatus } from './protocol/rgbServiceState'
 import { HERO68_KEY_IDS } from './keyboard/hero68Layout'
 import { loadOpenHeroState, saveOpenHeroState, type PersistedOpenHeroState, type ProfileDraft } from './state/persistence'
 import { createTranslator, I18nProvider, type LanguagePreference } from './i18n'
@@ -89,6 +91,7 @@ function App() {
   const [activePage, setActivePage] = useState(() => persistedState?.activePage ?? 'quick')
   const [activeSettingsPage, setActiveSettingsPage] = useState(() => persistedState?.activeSettingsPage ?? 'general')
   const [rgbCustomEntry, setRgbCustomEntry] = useState(false)
+  const [activeRgbTab, setActiveRgbTab] = useState<import('./components/RgbSettingsPage').RgbTab>('onboard')
   const [actuation, setActuation] = useState(1.6)
   const [rapidTrigger, setRapidTrigger] = useState(false)
   const [splitSensitivity, setSplitSensitivity] = useState(false)
@@ -946,7 +949,10 @@ function App() {
         const verified = await saveAdvancedBindings(hero68DeviceManager, profileSlot, advancedBindings, advancedBaseline)
         setAdvancedBaseline(verified)
       }
-      if (result.mode === 'sent' && rgbPending && !tachyon) await saveRgbProfile(hero68DeviceManager, rgb, rgbBaseline, setRgbBaseline)
+      if (result.mode === 'sent' && rgbPending && !tachyon) {
+        if(activePage==='rgb'&&activeRgbTab==='onboard'&&hero68DeviceManager.viaService){const result=await rgbService.mode('onboard');publishRgbServiceStatus(result)}
+        await saveRgbProfile(hero68DeviceManager, rgb, rgbBaseline, setRgbBaseline)
+      }
       if (result.mode === 'sent') {
         if(dirtyKeys.size)setDirtyKeys(new Set())
         if(dirtyRemaps.size){remapBaselineRef.current=structuredClone(remapLayers);setDirtyRemaps(new Set())}
@@ -1155,7 +1161,7 @@ function App() {
             </div>
 
             <div className="topbar-actions">
-              {showKeyboardArea && activePage === 'gamepad' ? <span className="profile-status">{tr('Changes apply automatically')}</span> : showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : saveState === 'staged' ? tr('Saved locally') : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
+              {showKeyboardArea && (activePage === 'gamepad' || activePage==='rgb'&&activeRgbTab!=='onboard') ? <span className="profile-status">{tr('Changes apply automatically')}</span> : showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : saveState === 'staged' ? tr('Saved locally') : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
             </div>
           </header>
         )}
@@ -1317,6 +1323,7 @@ function App() {
               onSetup={() => { setActiveSettingsPage('background-service'); setActiveRail('settings') }}
               initialCustom={rgbCustomEntry}
               onEntered={() => setRgbCustomEntry(false)}
+              onTabChange={setActiveRgbTab}
               advancedBindings={advancedBindings}
               profileSlot={profileSlot}
               rgb={rgb}
