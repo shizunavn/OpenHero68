@@ -553,8 +553,15 @@ const server=createServer(async(req,res)=>{
     }
     if(req.url==='/updates/tray-check'||req.url==='/updates/apply'){
       const update=setupUpdater.start()
-      if(req.url==='/updates/tray-check')plain(200,'started|'+(update.operationId??coreVersion))
-      else json(202,update)
+      if(req.url==='/updates/tray-check'){
+        // Wait for the check to settle so the launcher gets the real result:
+        // "none|version" when already up to date, "started|version" only when
+        // an installer is actually being downloaded and will restart the app.
+        await setupUpdater.settled()
+        const final=setupUpdater.status()
+        const kind=final.phase==='completed'?'none':'started'
+        plain(200,kind+'|'+(final.version??coreVersion))
+      }else json(202,update)
       return
     }
     if(req.url==='/tachyon'){
