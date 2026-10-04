@@ -260,6 +260,26 @@
 .gp-footer {
   order: 2;
 }
+.gp-auto-save {display:inline-flex;align-items:center;gap:7px;color:#91a1aa;font-size:12px}
+.gp-card .gp-digital-note {display:flex;align-items:flex-start;gap:8px;font-size:12px;margin:6px 0 0;flex-basis:100%;color:#aabbc5}
+.gp-digital-note svg {flex-shrink:0;margin-top:2px}
+.gp-empty-drag-image {position:fixed;left:0;top:0;width:1px;height:1px;pointer-events:none;opacity:0}
+.gamepad-page .gp-action {transition:transform 140ms ease,opacity 140ms ease,box-shadow 140ms ease}
+.gamepad-page .gp-action:hover:not(:disabled) {transform:translateY(-3px);box-shadow:0 5px 12px #0005}
+.gamepad-page .gp-action:active:not(:disabled) {transform:scale(.93)}
+.gamepad-page .gp-action.is-dragging {opacity:.35;transform:scale(.92);border-style:dashed}
+.gp-drag-cursor {position:fixed;top:0;left:0;z-index:10000;pointer-events:none;display:flex;align-items:center;gap:10px;will-change:transform}
+.gp-drag-tile {display:flex;align-items:center;justify-content:center;width:56px;height:56px;background:#353b3e;border:1px solid #ffd45a;border-radius:10px;box-shadow:0 10px 28px #0008;animation:gp-lift 220ms ease-out both}
+.gp-drag-tile .gp-control-icon {width:40px;height:40px}
+.gp-drag-cursor>span {font-size:11px;white-space:nowrap;color:#f4e3b2;background:#232729ef;border:1px solid #474b4d;padding:7px 10px;border-radius:6px}
+.gp-keyboard .hero-key {transition:transform 140ms ease,outline-color 140ms ease}
+.gp-keyboard .hero-key.gp-drop-target {outline:2px solid #ffd45a;outline-offset:1px;transform:translateY(-3px) scale(1.06);z-index:2}
+.gp-drop-preview {animation:gp-preview 650ms ease-in-out infinite alternate}
+.gp-assigned-pop {display:flex;animation:gp-snap 350ms cubic-bezier(.2,.8,.25,1.3) both}
+@keyframes gp-lift {from {opacity:.5;transform:scale(.85) rotate(-8deg)} to {opacity:1;transform:scale(1.04) rotate(3deg)}}
+@keyframes gp-preview {from {opacity:.6;transform:scale(.9)} to {opacity:1;transform:scale(1.06)}}
+@keyframes gp-snap {0% {opacity:.3;transform:translateY(-7px) scale(1.25)} 60% {opacity:1;transform:translateY(0) scale(.92)} 100% {transform:scale(1)}}
+@media(prefers-reduced-motion:reduce) {.gp-drag-tile,.gp-drop-preview,.gp-assigned-pop {animation:none}.gamepad-page .gp-action,.gp-keyboard .hero-key {transition:none}}
 .gp-status .on {
   color: #77dfac;
 }

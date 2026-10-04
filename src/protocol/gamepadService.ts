@@ -55,6 +55,8 @@ export type GamepadStatus = {
 };
 export type GamepadInputFrame = Pick<GamepadStatus, "enabled" | "armed" | "stale" | "xinputVerified" | "report" | "samples"> & { sequence: number };
 const endpoint = "http://127.0.0.1:16868";
+export const VIGEMBUS_RELEASE = "https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0";
+export const VIGEMBUS_DOWNLOAD = "https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe";
 async function request(path: string, value?: unknown): Promise<GamepadStatus> {
   const r = await fetchLocalService(
     endpoint + path,

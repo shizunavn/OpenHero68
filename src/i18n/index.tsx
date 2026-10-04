@@ -823,6 +823,7 @@ const VI: Record<string, string> = {
   "HERO68 send timed out (command={command}, zone={zone})": "HERO68 không nhận được lệnh kịp thời (lệnh={command}, vùng={zone})",
   "Auto group {group}/{total}": "Tự chuyển nhóm {group}/{total}",
   "Press a key": "Nhấn một phím",
+  "Changes apply automatically": "Thay đổi được áp dụng tự động",
 }
 
 export type TranslationVars = Record<string, string | number>

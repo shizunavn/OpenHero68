@@ -11,6 +11,7 @@ import GamepadKeyboardPreview from "../components/GamepadKeyboardPreview";
 import GamepadLiveControls from "../components/GamepadLiveControls";
 import {GamepadLiveStore} from "../protocol/gamepadLive";
 import GamepadControlIcon from "../components/GamepadControlIcon";
+import GamepadDragPreview from "../components/GamepadDragPreview";
 import { AppSelect } from "../app/components/AppSelect";
 import { useI18n } from "../i18n";
 import { HERO68_LAYOUT } from "../keyboard/hero68Layout";
@@ -26,8 +27,9 @@ import {
   type GamepadConfiguration,
   type CurvePoint,
 } from "../keyboard/gamepad";
-import { gamepadService, type GamepadStatus } from "../protocol/gamepadService";
+import { gamepadService, VIGEMBUS_DOWNLOAD, type GamepadStatus } from "../protocol/gamepadService";
 import { gamepadAccess } from "../protocol/gamepadAccess";
+import { GamepadAutoApply, type GamepadSaveState } from "../protocol/gamepadAutoApply";
 import "./GamepadPage.css";
 const storage = "openhero68:gamepad:v1";
 const neutralLighting = Object.fromEntries(
@@ -103,6 +105,14 @@ const actionLabel = (a: GamepadAction) =>
     }) as Record<string, string>
   )[a] ?? a;
 const VI: Record<string, string> = {
+  "Changes apply automatically": "Thay đổi được áp dụng tự động",
+  "Applying changes…": "Đang áp dụng…",
+  "Waiting to sync": "Đang chờ đồng bộ",
+  "Could not sync changes": "Chưa đồng bộ được thay đổi",
+  "Drop onto a key": "Thả vào phím để gán",
+  "Uses this key's Actuation Point and Rapid Trigger settings.": "Dùng Actuation Point và Rapid Trigger đã đặt cho phím này.",
+  "Digital button · Actuation Point + Rapid Trigger": "Nút digital · Actuation Point + Rapid Trigger",
+  "Analog stick and trigger travel is independent of Actuation Point and Rapid Trigger. Digital buttons follow the keyboard settings.": "Hành trình stick và trigger analog độc lập với Actuation Point và Rapid Trigger. Nút digital dùng cài đặt của bàn phím.",
 "Windows hook fallback":"Hook Windows dự phòng",
 "Off by default. Firmware blocking is preferred; enable this only when you need the Windows hook fallback.":"Mặc định tắt. Ưu tiên chặn từ firmware; chỉ bật khi cần dùng hook Windows dự phòng.",
 "Windows hooking can conflict with anti-cheat. Turn off Gamepad and this fallback before playing VALORANT or League of Legends (Vanguard), Fortnite (EAC), or other games using kernel anti-cheat. Other games may work if their rules allow it; user-mode anti-cheat is not a guarantee.":"Hook Windows có thể xung đột với anti-cheat. Hãy tắt Gamepad và phương án hook trước khi chơi VALORANT, League of Legends (Vanguard), Fortnite (EAC) hoặc game có anti-cheat kernel khác. Các game khác có thể dùng được nếu quy định cho phép; anti-cheat user mode không bảo đảm tương thích.",
@@ -208,6 +218,11 @@ export default function GamepadPage({
     [loading, setLoading] = useState(true),
     [serviceConnected, setServiceConnected] = useState(false),
     [connectionAttempt, setConnectionAttempt] = useState(0),
+    [saveState, setSaveState] = useState<GamepadSaveState>("saved"),
+    [dragged, setDragged] = useState<{action:GamepadAction;x:number;y:number}|null>(null),
+    [dropTarget, setDropTarget] = useState<string|null>(null),
+    [assigned, setAssigned] = useState<{keyId:string;sequence:number}|null>(null),
+    [curveDragging, setCurveDragging] = useState(false),
     [demo, setDemo] = useState(false),
     [demoSamples, setDemoSamples] = useState<
       Record<string, { distanceMm: number; pressed: boolean }>
@@ -218,9 +233,12 @@ export default function GamepadPage({
     drag = useRef<number | null>(null),
     mounted = useRef(true),
     restoreFromService = useRef(!hasDraft(slot));
+  const emptyDragImage = useRef<HTMLSpanElement>(null);
+  const curveBeforeDrag = useRef<CurvePoint[] | null>(null);
+  const autoApply = useRef<GamepadAutoApply<GamepadStatus> | null>(null);
   useEffect(() => {
-    save(slot, config);
-  }, [slot, config]);
+    if (!curveDragging) save(slot, config);
+  }, [slot, config, curveDragging]);
   useEffect(() => {
     mounted.current = true;
     let active = true,
@@ -286,6 +304,25 @@ export default function GamepadPage({
     setError("");
     setConnectionAttempt((n) => n + 1);
   };
+  useEffect(() => {
+    let active = true;
+    const queue = new GamepadAutoApply(
+      (draft) => gamepadService.configure(slot, draft),
+      (value) => { if (active) setStatus(value); },
+      (phase, failure) => {
+        if (!active) return;
+        setSaveState(phase);
+        if (phase === 'error') setError(failure instanceof Error ? failure.message : String(failure));
+        else if (phase === 'saving') setError('');
+      },
+    );
+    autoApply.current = queue;
+    return () => { active = false; queue.dispose(); };
+  }, [slot]);
+  useEffect(() => {
+    autoApply.current?.setAvailable(!locked && !profileBusy && !curveDragging);
+    autoApply.current?.update(config, status?.slot === slot ? status.configuration : undefined);
+  }, [config, locked, profileBusy, slot, curveDragging]);
   const liveStore=useMemo(()=>new GamepadLiveStore(),[]);
   useEffect(()=>{document.addEventListener("visibilitychange",liveStore.visibility);return()=>{document.removeEventListener("visibilitychange",liveStore.visibility);liveStore.dispose()}},[liveStore]);
   const samples = useMemo(
@@ -317,10 +354,7 @@ export default function GamepadPage({
   const measuredHz = measuredKeys.length
     ? Math.min(...measuredKeys.map((k) => k.hz)).toFixed(1)
     : "—";
-  const dirty =
-      JSON.stringify(config) !==
-      JSON.stringify(status?.slot === slot ? status.configuration : null),
-    disabled = busy || profileBusy || locked;
+  const disabled = busy || profileBusy || locked;
   function patch(next: Partial<GamepadConfiguration>) {
     restoreFromService.current = false;
     setConfig((c) => ({ ...c, ...next }));
@@ -335,7 +369,33 @@ export default function GamepadPage({
       ],
     }));
     setSelected(keyId);
+    setAssigned({keyId,sequence:Date.now()});
   }
+  useEffect(() => {
+    if (!assigned) return;
+    const timer = setTimeout(() => setAssigned(null), 700);
+    return () => clearTimeout(timer);
+  }, [assigned]);
+  useEffect(() => {
+    if (locked || profileBusy) { setDragged(null); setDropTarget(null); }
+    if ((locked || profileBusy) && drag.current !== null) finishCurve(true);
+  }, [locked, profileBusy]);
+  function finishCurve(cancel = false) {
+    if (drag.current === null) return;
+    if (cancel && curveBeforeDrag.current) patch({curve:curveBeforeDrag.current});
+    curveBeforeDrag.current = null;
+    drag.current = null;
+    setCurveDragging(false);
+  }
+  useEffect(() => {
+    if (!curveDragging) return;
+    if (tab !== 'configuration') { finishCurve(true); return; }
+    const cancel = () => finishCurve(true);
+    const visibility = () => { if (document.hidden) cancel(); };
+    window.addEventListener('blur', cancel);
+    document.addEventListener('visibilitychange', visibility);
+    return () => { window.removeEventListener('blur', cancel); document.removeEventListener('visibilitychange', visibility); };
+  }, [curveDragging, tab]);
   async function action(start: boolean) {
     if (locked) return;
     setBusy(true);
@@ -344,23 +404,9 @@ export default function GamepadPage({
     try {
       if (!status?.capabilities?.gamepad)
         throw Error(t("Update the Windows service to 0.4.0 or later."));
-      const v = start
-        ? await gamepadService.start(slot, config)
-        : await gamepadService.stop();
-      if (mounted.current) setStatus(v);
-    } catch (e) {
-      if (mounted.current) setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      if (mounted.current) setBusy(false);
-    }
-  }
-  async function apply() {
-    if (locked) return;
-    setBusy(true);
-    setError("");
-    try {
-      const v = await gamepadService.configure(slot, config);
-      if (mounted.current) setStatus(v);
+      await autoApply.current?.run(() => start
+        ? gamepadService.start(slot, config)
+        : gamepadService.stop());
     } catch (e) {
       if (mounted.current) setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -401,6 +447,8 @@ export default function GamepadPage({
   };
   return (
     <div className="gp-gate page-enter">
+      <span ref={emptyDragImage} className="gp-empty-drag-image" aria-hidden="true"/>
+      {dragged && <GamepadDragPreview {...dragged} label={t("Drop onto a key")}/>}
       <div
         className={`gamepad-page ${showGate ? "gp-locked" : ""}`}
         inert={locked}
@@ -452,13 +500,14 @@ export default function GamepadPage({
             selectedKeys={new Set(selected ? [selected] : [])}
             liveStore={liveStore}
             keyLabels={labels}
-            keyDecorations={Object.fromEntries(config.bindings.map(b=>[b.keyId,<GamepadControlIcon key={b.keyId} action={b.action}/>]))}
+            keyDecorations={{...Object.fromEntries(config.bindings.map(b=>[b.keyId,<span key={`${b.keyId}:${assigned?.keyId===b.keyId?assigned.sequence:0}`} className={assigned?.keyId===b.keyId?'gp-assigned-pop':''}><GamepadControlIcon action={b.action}/></span>])),...(dropTarget&&dragged?{[dropTarget]:<span className="gp-drop-preview"><GamepadControlIcon action={dragged.action}/></span>}:{})}}
+            keyClassNames={Object.fromEntries(HERO68_LAYOUT.flat().map(k=>[k.id,k.id===dropTarget&&dragged?'gp-drop-target':'']))}
             keyTooltips={Object.fromEntries(
               config.bindings.map((b) => [
                 b.keyId,
                 {
                   title: `${physicalLabel(b.keyId)} → ${actionLabel(b.action)}`,
-                  detail: `${b.startMm.toFixed(2)}–${b.endMm.toFixed(2)} mm`,
+                  detail: isAnalogAction(b.action) ? `${b.startMm.toFixed(2)}–${b.endMm.toFixed(2)} mm` : t("Digital button · Actuation Point + Rapid Trigger"),
                 },
               ]),
             )}
@@ -468,12 +517,15 @@ export default function GamepadPage({
             }}
             onDropKey={(id, e) => {
               e.preventDefault();
+              setDragged(null);setDropTarget(null);
               if (disabled) return;
               const a = e.dataTransfer.getData(
                 "application/x-openhero-gamepad",
               ) as GamepadAction;
               if (GAMEPAD_ACTIONS.includes(a)) assign(id, a);
             }}
+            onDragOverKey={(id,e)=>{if(dragged&&!disabled){e.dataTransfer.dropEffect='copy';setDropTarget(id)}}}
+            onDragLeaveKey={(id)=>setDropTarget(current=>current===id?null:current)}
             onRemoveKey={(id) => {
               if (!disabled)
                 patch({
@@ -516,7 +568,7 @@ export default function GamepadPage({
           <span>
             {measuredHz} Hz {t("Measured")}
           </span>
-          <span>{t(dirty ? "Unsaved changes" : "Applied")}</span>
+          <span role="status">{t(saveState === 'saving' ? "Applying changes…" : saveState === 'pending' ? "Waiting to sync" : saveState === 'error' ? "Could not sync changes" : "Applied")}</span>
         </div>
         {tab === "setup" && (
           <div
@@ -588,16 +640,17 @@ export default function GamepadPage({
                 {palette.map((a) => (
                   <button
                     key={a}
-                    className={"gp-action gp-action-" + a}
+                    className={"gp-action gp-action-" + a + (dragged?.action===a?' is-dragging':'')}
                     draggable={!disabled}
                     disabled={disabled}
                     aria-label={"Bind " + a}
-                    onDragStart={(e) =>
-                      e.dataTransfer.setData(
-                        "application/x-openhero-gamepad",
-                        a,
-                      )
-                    }
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/x-openhero-gamepad",a);
+                      e.dataTransfer.effectAllowed='copy';
+                      if(emptyDragImage.current)e.dataTransfer.setDragImage(emptyDragImage.current,0,0);
+                      setDragged({action:a,x:e.clientX,y:e.clientY});
+                    }}
+                    onDragEnd={()=>{setDragged(null);setDropTarget(null)}}
                     onClick={() => selected && assign(selected, a)}
                   >
                     <GamepadControlIcon action={a} />
@@ -610,7 +663,7 @@ export default function GamepadPage({
                     ? `${physicalLabel(binding.keyId)} → ${actionLabel(binding.action)}`
                     : t("No gamepad binding selected")}
                 </strong>
-                {binding && (
+                {binding && isAnalogAction(binding.action) && (
                   <>
                     <label>
                       {t("Start travel")}
@@ -660,6 +713,7 @@ export default function GamepadPage({
                     </label>
                   </>
                 )}
+                {binding && !isAnalogAction(binding.action) && <p className="gp-digital-note"><Info size={16}/>{t("Uses this key's Actuation Point and Rapid Trigger settings.")}</p>}
               </div>
               <label className="gp-switch">
                 {t("Keep keyboard keys")}
@@ -698,12 +752,9 @@ export default function GamepadPage({
                     (220 - ((e.clientY - rect.top) / rect.height) * 250) / 200,
                   );
                 }}
-                onPointerUp={() => {
-                  drag.current = null;
-                }}
-                onPointerCancel={() => {
-                  drag.current = null;
-                }}
+                onPointerUp={() => finishCurve()}
+                onPointerCancel={() => finishCurve(true)}
+                onLostPointerCapture={() => finishCurve(true)}
               >
                 {[0, 0.25, 0.5, 0.75, 1].map((n) => (
                   <g key={n}>
@@ -749,6 +800,10 @@ export default function GamepadPage({
                     r="6"
                     onPointerDown={(e) => {
                       setPoint(i);
+                        if(disabled || e.button!==0 || !e.isPrimary || i===0 || i===config.curve.length-1)return;
+                      curveBeforeDrag.current = config.curve.map(p=>[...p] as CurvePoint);
+                      autoApply.current?.setAvailable(false);
+                      setCurveDragging(true);
                       drag.current = i;
                       e.currentTarget.setPointerCapture(e.pointerId);
                     }}
@@ -868,7 +923,7 @@ export default function GamepadPage({
               </div>
               <p>
                 {t(
-                  "Gamepad response is independent of Actuation Point and Rapid Trigger.",
+                  "Analog stick and trigger travel is independent of Actuation Point and Rapid Trigger. Digital buttons follow the keyboard settings.",
                 )}
               </p>
               {(
@@ -1012,13 +1067,7 @@ export default function GamepadPage({
           </div>
         )}
         <div className="gp-footer">
-          <button
-            className="gp-primary"
-            disabled={disabled || !status || !dirty}
-            onClick={() => void apply()}
-          >
-            {t("Apply configuration")}
-          </button>
+          <span className="gp-auto-save"><Info size={15}/>{t("Changes apply automatically")}</span>
           <div className="gp-tools">
             <button disabled={disabled} onClick={() => file.current?.click()}>
               <Upload size={15} />
@@ -1065,7 +1114,7 @@ export default function GamepadPage({
               {access === "driver" ? (
                 <a
                   className="gp-lock-primary"
-                  href="https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0"
+                  href={VIGEMBUS_DOWNLOAD}
                   target="_blank"
                   rel="noreferrer"
                 >

@@ -30,9 +30,12 @@ export type Hero68PreviewProps = {
   highlightedKeys?: ReadonlySet<string>
   onToggleKey: (keyId: string) => void
   onDropKey?: (keyId:string,event:React.DragEvent<HTMLButtonElement>)=>void
+  onDragOverKey?: (keyId:string,event:React.DragEvent<HTMLButtonElement>)=>void
+  onDragLeaveKey?: (keyId:string)=>void
   onRemoveKey?: (keyId:string)=>void
   keyLabels?: Record<string, string>
   keyDecorations?: Record<string, ReactNode>
+  keyClassNames?: Record<string, string>
   advancedBindings?: AdvancedBinding[]
   keyTooltips?: Record<string, { title: string; detail?: string; raw?: string }>
   lightingFrame?: LightingFrame
@@ -52,9 +55,12 @@ export default function Hero68Preview({
   highlightedKeys,
   onToggleKey,
   onDropKey,
+  onDragOverKey,
+  onDragLeaveKey,
   onRemoveKey,
   keyLabels,
   keyDecorations,
+  keyClassNames,
   advancedBindings = [],
   keyTooltips = {},
   lightingFrame,
@@ -229,14 +235,15 @@ export default function Hero68Preview({
                         type="button"
                         aria-label={keyLabels?.[key.id] ?? key.label}
                         aria-description={advanced ? previewTooltips[key.id]?.title : undefined}
-                        className={`hero-key ${highlightedKeys?.has(key.id) ? "is-preset-highlighted" : ""} ${advanced ? 'has-advanced-binding' : ''} ${selected ? 'is-selected' : ''} ${overlayMode !== 'none' ? 'has-overlay' : ''} ${showActuationOverlay ? 'is-actuation-overlay' : ''} ${showRapidOverlay && rapidPreview?.active ? 'has-rapid-overlay' : ''} ${rapidDisabled || deadzoneDisabled ? 'is-feature-disabled' : ''} ${showDeadzoneOverlay && deadzonePreview?.active ? 'has-deadzone-overlay' : ''} ${showStreamOverlay ? 'is-stream-key' : ''} ${showStreamState ? 'has-stream-overlay' : ''} ${showStreamState && streamPreview?.releaseInferred ? 'has-stream-inferred-release' : ''}`}
+                        className={`hero-key ${keyClassNames?.[key.id] ?? ''} ${highlightedKeys?.has(key.id) ? "is-preset-highlighted" : ""} ${advanced ? 'has-advanced-binding' : ''} ${selected ? 'is-selected' : ''} ${overlayMode !== 'none' ? 'has-overlay' : ''} ${showActuationOverlay ? 'is-actuation-overlay' : ''} ${showRapidOverlay && rapidPreview?.active ? 'has-rapid-overlay' : ''} ${rapidDisabled || deadzoneDisabled ? 'is-feature-disabled' : ''} ${showDeadzoneOverlay && deadzonePreview?.active ? 'has-deadzone-overlay' : ''} ${showStreamOverlay ? 'is-stream-key' : ''} ${showStreamState ? 'has-stream-overlay' : ''} ${showStreamState && streamPreview?.releaseInferred ? 'has-stream-inferred-release' : ''}`}
                         style={{
                           '--key-rgb': keyColor,
                           '--rgb-label-color': rgbTextColor,
                           '--stream-travel': `${streamTravelPercent}%`,
                         } as React.CSSProperties}
                         onClick={() => onToggleKey(key.id)}
-                        onDragOver={event=>{if(onDropKey)event.preventDefault()}}
+                        onDragOver={event=>{if(onDropKey)event.preventDefault();onDragOverKey?.(key.id,event)}}
+                        onDragLeave={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))onDragLeaveKey?.(key.id)}}
                         onDrop={event=>onDropKey?.(key.id,event)}
                         onContextMenu={event=>{if(onRemoveKey){event.preventDefault();onRemoveKey(key.id)}}}
                         onPointerEnter={(event) => showKeyTooltip(key.id, event.currentTarget)}

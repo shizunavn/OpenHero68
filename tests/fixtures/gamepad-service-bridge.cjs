@@ -15,8 +15,8 @@ child.spawn=function(file,...args){
   if(line==='gamepad-status'){emit('gamepad-state:'+JSON.stringify(status()));return}
   if(line==='device-identity'){emit('device-identity:0066006900780074007500720065');return}
   const commands={'gamepad-start':'gamepad-ready','gamepad-stop':'gamepad-stopped','gamepad-pause':'gamepad-paused','gamepad-resume':'gamepad-resumed','rhythm-pause':'rhythm-paused','rhythm-resume':'rhythm-resumed','custom-stop':'custom-stopped','rhythm-stop':'rhythm-stopped','close':'closed'};
-  if(line==='gamepad-start-paused'){enabled=true;emit('gamepad-ready');return}
-  if(line==='gamepad-start')enabled=true;if(line==='gamepad-stop')enabled=false;
+  if(line==='gamepad-start-paused'){enabled=true;saved.starts=(saved.starts??0)+1;persist();emit('gamepad-ready');return}
+  if(line==='gamepad-start'){enabled=true;saved.starts=(saved.starts??0)+1;persist()}if(line==='gamepad-stop'){enabled=false;saved.stops=(saved.stops??0)+1;persist()}
   if(commands[line]){emit(commands[line]);return}
   if(line.startsWith('gamepad-config:')){emit('gamepad-configured');return}
   if(line.startsWith('hall-config:')){emit('hall-ready');return}
@@ -27,7 +27,7 @@ child.spawn=function(file,...args){
    if(b[1]===0x90)data.push(saved.slot);
    if(b[1]===0x10){saved.slot=b[7];persist()}
    if(b[1]===0x83)for(let i=7;i<7+b[6];i+=2){const pos=b.readUInt16BE(i),v=value(b[2],pos);data.push(pos>>8,pos&255,(v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255)}
-   if(b[1]===0x03){for(let i=7;i<7+b[6];i+=6)saved.remaps[`${saved.slot}:${b[2]}:${b.readUInt16BE(i)}`]=b.readUInt32BE(i+2);persist()}
+   if(b[1]===0x03){saved.writes=(saved.writes??0)+1;for(let i=7;i<7+b[6];i+=6)saved.remaps[`${saved.slot}:${b[2]}:${b.readUInt16BE(i)}`]=b.readUInt32BE(i+2);persist()}
    emit(report(b,data));return
   }
   emit('error:Unknown fixture command '+line);

@@ -33,7 +33,7 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 | Advanced Keys | SOCD, DKS, Mod Tap, Toggle, MPT and END bindings (Main Layer) |
 | Macros | Macro editor with a local library synced to the keyboard |
 | RGB Settings | On-board effects for keys and side light, plus **Custom Effects** and **Rhythm Sync** |
-| Gamepad | Setup & Remap, response curves, per-key travel, Snappy, circle/square, angle adjustment and a live tester with XInput verification |
+| Gamepad | Setup & Remap with automatic saves, analog response curves/travel, digital AP/RT, Snappy, circle/square, angle adjustment and a live tester with XInput verification |
 | Device settings | Polling rate (125 Hz – 8000 Hz), Tachyon Mode, OS mode, Windows key lock, Hall debounce, auto calibration, switch selector |
 | Interface | English and Vietnamese UI, optional advanced pages (Hall Stream), compact sidebar |
 
@@ -41,7 +41,7 @@ An open-source, browser-based configurator for the **AULA HERO68** Hall-effect k
 
 - **Custom Effects:** an Aurora base with composable effects (Comet, Pressure Wave, Ripple, Reaction, Touch, Jelly, AOE, Scan, Breath, Mixing, Trail, RT Display) and a layer editor.
 - **Rhythm Sync:** seven key modes driven by native system-audio capture, with live preview and a 60 FPS USB scheduler shared with Custom Effects.
-- **Gamepad:** one virtual Xbox controller through ViGEmBus 1.22.0, up to 200 Hz analog output, saved configurations for three HERO68 profiles and tray Start/Stop. The tester has a separate fast input stream; assigned keyboard keys can use firmware empty action with automatic remap recovery.
+- **Gamepad:** one virtual Xbox controller through ViGEmBus 1.22.0, up to 200 Hz analog output, automatically saved configurations for three HERO68 profiles and tray Start/Stop. Curve edits save on release; digital buttons follow keyboard AP/RT. The tester has a separate fast input stream; assigned keyboard keys can use firmware empty action with automatic remap recovery.
 - **Shared Hall:** one native scheduler polls active source keys only, sharing common samples between Gamepad, RGB, Hall Stream and visual feedback. RGB Hall demand stays 100 Hz; LED output retains its 60 FPS target.
 - **Keeps playing** when the browser is closed; AP, Rapid Trigger and deadzone stay editable while RGB runs.
 - **Try demo:** edit and preview effects locally without the service or a keyboard.

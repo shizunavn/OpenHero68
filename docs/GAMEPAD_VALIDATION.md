@@ -129,3 +129,23 @@ RGB or gamepad output pipeline.
   install/remove a driver, or run additional stress tests. Driver availability
   in the real service comes from its native ViGEm connection probe; the web
   requires explicit confirmation and asks for service restart after install.
+
+## Automatic configuration update — v0.4.3
+
+- All 518 automated tests passed in 65.08 seconds, including seven auto-apply
+  queue tests and digital AP/RT state mapping. Web and service TypeScript builds
+  passed; native Hall/mapping checks passed.
+- The held-curve regression produced zero configuration writes during movement
+  and pauses longer than its debounce window, then one final write on release.
+  The page suppresses local draft persistence during the same gesture and rolls
+  back canceled gestures. End-to-end pointer dragging was not automated because
+  this browser backend exposes only DOM interactions.
+- The simulated service integration verified live curve/rate edits keep the
+  same Xbox target, do not rewrite firmware, update Hall demand, and restore
+  removed bindings when the assignment scope changes.
+- Browser checks verified automatic binding saves, digital AP/RT explanatory
+  text without analog travel inputs, ready service/keyboard/driver statuses,
+  and Gamepad locking on missing ViGEmBus while RGB remains available.
+- Windows ZIP, signed core and production Pages ZIP passed package/checksum
+  validation. No physical input injection, driver installation, additional
+  hardware benchmark or extended stress run was performed for this update.

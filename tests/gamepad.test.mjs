@@ -60,6 +60,16 @@ test('Snappy uses strongest direction, ties neutral, subtraction combines opposi
   assert.equal(gp.mapGamepad(c,{KeyW:sample(3.4),KeyS:sample(1.75)}).ly,32767)
   c.snappy=false;assert.equal(gp.mapGamepad(c,{KeyW:sample(3.4),KeyS:sample(1.75)}).ly,16384)
 })
+
+test('digital buttons follow firmware AP/RT state, never the analog 0.1 mm travel',()=>{
+  const c=configuration([bind('Space','A')])
+  assert.equal(gp.mapGamepad(c,{Space:sample(.5,false)}).buttons,0)
+  assert.equal(gp.mapGamepad(c,{Space:sample(2,true)}).buttons,4096)
+  assert.equal(gp.mapGamepad(c,{Space:sample(1.8,false)}).buttons,0,'RT release may occur far above the rest position')
+  assert.equal(gp.mapGamepad(c,{Space:sample(1.9,true)}).buttons,4096,'RT can re-actuate before the prior AP')
+  c.bindings[0].startMm=3;c.bindings[0].endMm=3.4
+  assert.equal(gp.mapGamepad(c,{Space:sample(1.9,true)}).buttons,4096,'analog travel fields are ignored for digital output')
+})
 test('circle clamps diagonals, square reaches full axes, angle adjustment preserves magnitude',()=>{
   const c=configuration([bind('KeyW','LUp'),bind('KeyD','LRight')]),s={KeyW:sample(3.4),KeyD:sample(3.4)}
   const circle=gp.mapGamepad(c,s);assert.ok(Math.abs(Math.hypot(circle.lx,circle.ly)-32767)<1)

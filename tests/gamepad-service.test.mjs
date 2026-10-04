@@ -23,10 +23,24 @@ test('service atomically blocks/restores firmware; fast tester streams add no Ha
  const abort=new AbortController(),response=await fetch(base+'/gamepad/input/events',{signal:abort.signal}),reader=response.body.getReader();let frames=0,text='';const started=performance.now()
  while(performance.now()-started<300){text+=new TextDecoder().decode((await reader.read()).value);frames=text.split('data: ').length-1}assert.ok(frames>=10,`fast stream ${frames} frames in 300ms`);abort.abort()
  status=await(await fetch(base+'/gamepad/status')).json();assert.equal(status.hall.consumers.length,1);assert.equal(status.hall.consumers[0].id,'gamepad:analog')
+ // Live curve/rate edits keep the same target and perform no remap writes.
+ const beforeEdit=await read(),recoveryBefore=await readFile(path.join(state,'gamepad-remap-recovery.json'),'utf8')
+ const liveConfig={...config,rate:100,curve:[[0,0],[.3,.6],[1,1]]}
+ status=await post('/gamepad/config',{slot:0,configuration:liveConfig});assert.equal(status.enabled,true)
+ actual=await read();assert.equal(actual.starts,beforeEdit.starts);assert.equal(actual.stops,beforeEdit.stops);assert.equal(actual.writes,beforeEdit.writes)
+ assert.equal(await readFile(path.join(state,'gamepad-remap-recovery.json'),'utf8'),recoveryBefore)
+ assert.equal(status.hall.consumers[0].hz,100)
+ // Binding scope changes update firmware in place and restore removed keys.
+ const scopeConfig={...liveConfig,bindings:[liveConfig.bindings[0],{keyId:'Space',action:'A',startMm:.1,endMm:3.4}]}
+ status=await post('/gamepad/config',{slot:0,configuration:scopeConfig});assert.equal(status.enabled,true)
+ actual=await read();assert.equal(actual.starts,beforeEdit.starts);assert.equal(actual.stops,beforeEdit.stops)
+ assert.equal(actual.remaps['0:0:30'],0);assert.equal(actual.remaps['0:0:70'],0);assert.equal(actual.remaps['0:0:44'],0x10000+44)
+ status=await post('/gamepad/config',{slot:0,configuration:config});assert.equal(status.enabled,true)
+ assert.equal((await read()).remaps['0:0:70'],0x10000+70)
  // A settings read returns original actions while firmware still holds zero.
  const packet=Buffer.alloc(64);packet[0]=9;packet[1]=0x83;packet[4]=1;packet[6]=2;packet[8]=30;packet[63]=(255-[...packet.subarray(0,63)].reduce((a,b)=>a+b,0))&255
  const reply=await post('/device/request',{hex:packet.toString('hex')});assert.equal(Buffer.from(reply.hex,'hex').readUInt32BE(9),0x10000+30)
- assert.ok(Object.values((await read()).remaps).every(v=>v===0))
+ actual=await read();for(const e of journal.entries)assert.equal(actual.remaps[`0:${e.layer}:${e.pos}`],0)
  // A keyboard settings edit replaces the backed-up action, then reapplies zero.
  const write=Buffer.from(packet);write[1]=3;write[6]=6;write.writeUInt32BE(4,9);write[63]=(255-[...write.subarray(0,63)].reduce((a,b)=>a+b,0))&255
  await post('/device/request',{hex:write.toString('hex')});assert.equal((await read()).remaps['0:0:30'],0)

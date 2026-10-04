@@ -138,11 +138,15 @@ createServer(async (req, res) => {
   }
   if (
     url.pathname.startsWith("/gamepad/") ||
+    url.pathname === "/status" ||
     url.pathname === "/device/request"
   ) {
     if (offline) {
       json({ error: "Fixture service unavailable" }, 503);
       return;
+    }
+    if(url.pathname==='/status'){
+      json({enabled:false,connected:true,preset:false,fps:0,frameMs:0,frames:0,packets:0,hallSnapshots:0,timeouts:0,maxGapMs:0,lastError:null,apiVersion:6,mode:'onboard'});return;
     }
     if (url.pathname === "/gamepad/status") {
       if (responseDelayMs) await new Promise(resolve => setTimeout(resolve, responseDelayMs));

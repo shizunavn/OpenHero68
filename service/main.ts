@@ -473,6 +473,33 @@ const server=createServer(async(req,res)=>{
         clearTimeout(firmwareRecoveryTimer);firmwareRecoveryTimer=undefined
         if(req.url==='/gamepad/stop'){await stopGamepad();return}
         if(tachyon)throw Error('Turn off Tachyon Mode before starting Hall gamepad output.')
+        if(req.url==='/gamepad/config'&&JSON.stringify(config)===JSON.stringify(gamepadConfigurations[slot]))return
+        if(req.url==='/gamepad/config'&&slot===gamepadSlot&&gamepadState.enabled){
+          // Live edits keep the Xbox target attached. Neutralize while swapping
+          // mapping/subscriptions; firmware writes are needed only for key scope
+          // or suppression changes, never for a curve/angle/rate slider alone.
+          const previous=gamepadConfigurations[slot]
+          const scope=(c:GamepadConfiguration)=>JSON.stringify([c.suppressMappedKeys,c.keyboardSuppressionMode,[...new Set(c.bindings.map(b=>b.keyId))].sort()])
+          const remapChanged=scope(previous)!==scope(config)
+          const resume=mode!=='onboard'
+          await bridge.line('gamepad-pause')
+          if(resume)await bridge.line('rhythm-pause')
+          try{
+            if(remapChanged){
+              if(firmware.active)for(const binding of previous.bindings)onRgbKey(binding.keyId,false)
+              await firmware.restore()
+            }
+            await configureNativeGamepad(config,true)
+            gamepadConfigurations[slot]=config;persistGamepad()
+            if(remapChanged)await applyFirmware(config)
+            await syncHall()
+            await bridge.line('gamepad-resume')
+            const state=await bridge.line('gamepad-status');if(!state.startsWith('gamepad-state:'))throw Error(state)
+            gamepadState=JSON.parse(state.slice(14))
+          }catch(e){await stopGamepad().catch(()=>{});publishGamepad();throw e}
+          finally{if(resume)await bridge.line('rhythm-resume')}
+          return
+        }
         const active=req.url==='/gamepad/profile'||req.url==='/gamepad/start'||slot===gamepadSlot
         const run=active&&(gamepadState.enabled||req.url==='/gamepad/start')
         const resume=mode!=='onboard'

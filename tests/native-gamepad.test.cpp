@@ -31,6 +31,10 @@ int main(){
   r=gamepad::map(c,samples,105,stale,resting);assert(!stale&&resting);
   samples[30].distance=340;samples[44].distance=175;samples[29].distance=175;samples[70].pressed=true;
   r=gamepad::map(c,samples,110,stale,resting);assert(!stale&&!resting&&r.ly==32767&&r.lt==128&&r.buttons==4096);
+  samples[70].distance=180;samples[70].pressed=false;
+  r=gamepad::map(c,samples,110,stale,resting);assert(r.buttons==0);
+  samples[70].distance=190;samples[70].pressed=true;
+  r=gamepad::map(c,samples,110,stale,resting);assert(r.buttons==4096);
   samples[44].distance=340;r=gamepad::map(c,samples,110,stale,resting);assert(r.ly==0);
   c.snappy=false;samples[44].distance=175;r=gamepad::map(c,samples,110,stale,resting);assert(r.ly==16384);
   r=gamepad::map(c,samples,150,stale,resting);assert(stale&&r.ly==0&&r.lt==0&&r.buttons==0);

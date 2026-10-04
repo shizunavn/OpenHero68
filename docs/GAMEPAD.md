@@ -1,4 +1,4 @@
-# Gamepad and shared Hall — service 0.4.1 / API 6
+# Gamepad and shared Hall — service 0.4.3 / API 6
 
 ## Using gamepad
 
@@ -25,20 +25,28 @@ starts hardware polling.
   Snappy chooses the stronger opposing input and cancels ties. With Snappy
   disabled, opposing inputs subtract. Duplicate analog outputs take the maximum;
   duplicate digital buttons use OR. Analog does not depend on keyboard actuation
-  or Rapid Trigger; digital buttons follow the firmware's pressed bit.
+  or Rapid Trigger; digital buttons follow the firmware's pressed bit, using
+  the key's configured Actuation Point and Rapid Trigger. Analog travel inputs
+  are hidden for digital bindings.
 - **Tester:** live Hall travel, expected Xbox report, XInput verification, measured
   Hall/output rates, stale samples and active consumers. XInput may briefly lag
   a changing report or a newly enumerating controller; pending verification is
   displayed rather than assumed successful. Demo never starts hardware polling.
 
 Local drafts and service configurations are stored separately for HERO68 profile
-slots 0–2. Import/export accepts version 1 JSON. Apply replaces a configuration
-as one operation; applying an inactive slot does not disrupt the active slot.
+slots 0–2. Import/export accepts version 1 JSON. Changes apply automatically
+as one operation; editing an inactive slot does not disrupt the active slot.
+Rapid edits coalesce into one latest draft with at most one write in flight;
+Start/Stop use the same queue. Curve dragging updates the graph immediately
+but writes neither local storage nor service configuration until release.
+Canceled gestures restore the previous curve. Live edits neutralize output
+while replacing mapping/subscriptions, retain the existing Xbox target and
+rewrite firmware remaps only if assigned keys or suppression settings change.
 Selecting a physical HERO68 profile through the service also selects its gamepad
 configuration. A fresh editor loads the service configuration when there is no
 local draft for the current slot.
 
-Keyboard input stays enabled unless **Mapped-key override** is applied. Its
+Keyboard input stays enabled unless **Mapped-key override** is enabled. Its
 default backend writes the verified empty remap action `0x00000000` for assigned
 keys on all three layers. Before any write, the service flushes a recovery journal
 to disk with the exact original actions. Stop, changing profile/configuration,

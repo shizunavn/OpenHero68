@@ -1155,7 +1155,7 @@ function App() {
             </div>
 
             <div className="topbar-actions">
-              {showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : saveState === 'staged' ? tr('Saved locally') : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
+              {showKeyboardArea && activePage === 'gamepad' ? <span className="profile-status">{tr('Changes apply automatically')}</span> : showKeyboardArea && activePage === 'macros' ? <span className="profile-status">{tr('Local + HERO68 macro library')}</span> : <button className="apply-button" onClick={handleSaveAll} disabled={!deviceConnected || profileBusy || loadedProfileSlot !== profileSlot || (dirtyKeys.size === 0 && dirtyRemaps.size === 0 && rgbPending === 0 && !advancedPending)}>{profileBusy ? tr('Syncing…') : saveState === 'sent' ? tr('Saved to profile {slot}', { slot: profileSlot }) : saveState === 'staged' ? tr('Saved locally') : tr('Save to profile {slot}', { slot: profileSlot })}</button>}
             </div>
           </header>
         )}
@@ -1579,7 +1579,7 @@ function App() {
               </section>
             </div>
           ) : activeSettingsPage === 'background-service' ? (
-            <BackgroundServicePage onOpenCustom={() => { setRgbCustomEntry(true); setActivePage('rgb'); setActiveRail('keyboard') }} />
+            <BackgroundServicePage onOpenCustom={() => { setRgbCustomEntry(true); setActivePage('rgb'); setActiveRail('keyboard') }} onOpenGamepad={() => { setActivePage('gamepad'); setActiveRail('keyboard') }} />
           ) : activeSettingsPage === 'interface' ? (
             <div className="page settings-page page-enter">
               <div className="settings-hero">
