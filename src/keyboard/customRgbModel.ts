@@ -24,12 +24,12 @@ export const RGB_GRADIENT_PALETTES = {
 } as const
 export type RgbGradientPalette = keyof typeof RGB_GRADIENT_PALETTES
 export const LEGACY_RGB_EFFECTS = CUSTOM_RGB_EFFECTS.filter(e => !['aurora', 'comet', 'pressure-wave'].includes(e.id)).map(e => e.id)
-type EffectMetadata = { width?: string; speed?: string; duration?: string; direction?: boolean; hall?: boolean; gradient?: boolean; semanticColor?: boolean; defaults?: Partial<CustomRgbLayer> }
+type EffectMetadata = { width?: string; speed?: string; duration?: string; scanPause?: string; direction?: boolean; hall?: boolean; gradient?: boolean; semanticColor?: boolean; defaults?: Partial<CustomRgbLayer> }
 export const RGB_EFFECT_METADATA: Record<CustomRgbEffect, EffectMetadata> = {
   aurora: { width: 'Ribbon width', speed: '×', gradient: true, defaults: { color: [34,211,238], multicolor: true, palette: 'aurora', opacity: 75, width: 2.5, speed: .5 } },
   comet: { width: 'Width', speed: 'keys/s', duration: 'Tail duration', direction: true, gradient: true, defaults: { color: [103,232,249], multicolor: true, palette: 'ice', opacity: 85 } },
   'pressure-wave': { width: 'Width', speed: 'keys/s', duration: 'Fade duration', hall: true, defaults: { color: [34,211,238], opacity: 80, duration: 1200 } },
-  jelly: { width: 'Width', hall: true }, scan: { width: 'Width', speed: 'keys/s', direction: true },
+  jelly: { width: 'Width', hall: true }, scan: { width: 'Width', speed: 'keys/s', direction: true, scanPause: 'Pause at each end', defaults: { scanPauseMs: 0 } },
   breath: { speed: '×' }, ripple: { width: 'Width', speed: 'keys/s', duration: 'Fade duration' },
   touch: { hall: true }, reaction: { duration: 'Fade duration' }, aoe: { width: 'Radius', hall: true },
   mixing: { hall: true, semanticColor: true }, trail: { duration: 'Fade duration' }, rt: { duration: 'Fade duration', semanticColor: true },
@@ -52,6 +52,7 @@ export type CustomRgbLayer = {
   multicolor: boolean; opacity: number; width: number; speed: number
   duration: number; direction: 'horizontal' | 'vertical'; keys: string[]
   palette?: RgbGradientPalette
+  scanPauseMs?: number
 }
 export type CustomRgbBaseEffect = { effect: 'aurora'; palette: RgbGradientPalette; width: number; speed: number }
 export type CustomRgbConfiguration = { version: 1; enabled: boolean; base: RgbZone; baseEffect?: CustomRgbBaseEffect; layers: CustomRgbLayer[] }
@@ -93,6 +94,7 @@ export function restoreCustomRgb(value: unknown, profile: RgbProfile): CustomRgb
       multicolor: layer.multicolor === undefined ? defaults.multicolor : layer.multicolor === true, opacity: finite(layer.opacity, defaults.opacity, 0, 100),
       width: finite(layer.width, defaults.width, .25, 12), speed: finite(layer.speed, defaults.speed, .5, 30),
       duration: finite(layer.duration, defaults.duration, 100, 4000), direction: layer.direction === 'vertical' ? 'vertical' : 'horizontal',
+      ...(layer.effect==='scan' ? {scanPauseMs: finite(layer.scanPauseMs, 0, 0, 5000)} : {}),
       ...(RGB_EFFECT_METADATA[layer.effect].gradient ? {palette: layer.palette && Object.hasOwn(RGB_GRADIENT_PALETTES, layer.palette) ? layer.palette : defaults.palette} : {}),
       keys: Array.isArray(layer.keys) ? [...new Set(layer.keys.filter(id => HERO68_KEY_IDS.includes(id)))] : [...HERO68_KEY_IDS],
     }]

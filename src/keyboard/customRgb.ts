@@ -201,19 +201,21 @@ export class CustomRgbEngine {
     const cycleTints=new Map<string,RgbColor>()
     const scanBands=new Map<string,{center:number;colorPhase:number}>()
     for(const layer of this.config.layers){
-      if(!layer.enabled||!layer.multicolor)continue
+      if(!layer.enabled)continue
       if(layer.effect==='scan'){
         const {min,max}=bounds[layer.direction==='horizontal'?0:1], length=max-min
-        // Keep the same average keys/s and round-trip time, but ease both turns.
-        const phase=(this.time/1000*layer.speed/length)%2
+        const travel=length/layer.speed, pause=(layer.scanPauseMs??0)/1000
+        const phase=(this.time/1000)%(2*(travel+pause))
+        // Travel speed excludes the dwell; hold each endpoint before returning.
+        const position=phase<travel+pause?clamp(phase/travel,0,1):1-clamp((phase-travel-pause)/travel,0,1)
         scanBands.set(layer.id,{
-          center:min+length*(.5-.5*Math.cos(phase*Math.PI)),
+          center:min+length*(layer.multicolor ? .5-.5*Math.cos(position*Math.PI) : position),
           // Color drifts independently of travel speed so fast scans cannot flash.
           colorPhase:(this.time/1000/20)%1,
         })
         continue
       }
-      if(layer.effect!=='breath')continue
+      if(!layer.multicolor||layer.effect!=='breath')continue
       const period=6/layer.speed
       const cycle=Math.floor(this.time/1000/period)
       let entry=this.cycleColors.get(layer.id)
@@ -263,17 +265,15 @@ export class CustomRgbEngine {
             if(power>strength){strength=power;if(layer.multicolor)tint=randomTint(wave.colors,wave.id)}
           }
         } else if (layer.effect === 'scan') {
-          const band=scanBands.get(layer.id)
-          if(band){
+          const band=scanBands.get(layer.id)!
+          if(layer.multicolor){
             const offset=(axis-band.center)/layer.width
             // A soft envelope and a spectrum attached to the band remain continuous
             // through reversals. Adjacent palette stops avoid muddy complementary mixes.
             strength=Math.exp(-2*offset*offset)
             tint=sampleCustomRgbSpectrum(band.colorPhase+offset/8,this.colorPalettes.get(layer.id))
           }else{
-            const {min,max}=bounds[layer.direction==='horizontal'?0:1],length=max-min
-            const phase=(seconds*layer.speed)%(2*length),center=min+(phase<=length?phase:2*length-phase)
-            strength = smooth(1 - Math.abs(axis-center)/layer.width)
+            strength = smooth(1 - Math.abs(axis-band.center)/layer.width)
           }
         } else if (layer.effect === 'breath') strength = (.5-.5*Math.cos(seconds*layer.speed*Math.PI/3))
         else if (layer.effect === 'mixing') {

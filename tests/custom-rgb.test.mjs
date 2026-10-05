@@ -202,6 +202,49 @@ test('Scan reverses at its boundary instead of wrapping',()=>{
 const channels=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16))
 const frameDelta=(a,b)=>Math.max(...Object.keys(a).flatMap(id=>channels(a[id]).map((v,i)=>Math.abs(v-channels(b[id])[i]))))
 
+test('Scan pause holds both endpoints, then resumes at the configured speed in both directions',()=>{
+  for(const direction of ['horizontal','vertical'])for(const multicolor of [false,true]){
+    const p=profile('scan'),layer=p.custom.layers[0];Object.assign(layer,{direction,multicolor,scanPauseMs:800,width:.25})
+    const axis=direction==='horizontal'?0:1,entries=Object.entries(custom.CUSTOM_RGB_COORDINATES)
+    const min=Math.min(...entries.map(([,point])=>point[axis])),max=Math.max(...entries.map(([,point])=>point[axis]))
+    const left=entries.find(([,point])=>point[axis]===min)[0],right=entries.find(([,point])=>point[axis]===max)[0]
+    const travel=(max-min)/layer.speed*1000,e=new custom.CustomRgbEngine(p)
+    let first
+    for(const offset of [0,200,700,800]){
+      e.advance(travel+offset);const frame=e.frame().keys
+      assert.ok(energy(frame[right])>200,'arrival and the entire pause keep the far edge lit')
+      assert.equal(frame[left],'#000000')
+      if(!multicolor&&first)assert.deepEqual(frame,first,'single color is stationary throughout the dwell')
+      if(multicolor&&offset===700)assert.notEqual(frame[right],first[right],'the spectrum keeps drifting during a pause')
+      first??=frame
+    }
+    e.advance(travel+800+travel/2)
+    assert.equal(e.frame().keys[right],'#000000','return travel begins after the pause')
+    for(const offset of [0,200,700,800]){
+      e.advance(2*travel+800+offset);const frame=e.frame().keys
+      assert.ok(energy(frame[left])>200,'the near edge also pauses before starting the next sweep')
+      assert.equal(frame[right],'#000000')
+    }
+    e.advance(2*travel+1600+travel/2);assert.equal(e.frame().keys[left],'#000000','the next sweep resumes')
+  }
+})
+
+test('Scan pause survives preset restoration, defaults to zero and validates stored values',()=>{
+  const p=profile('scan'),layer=p.custom.layers[0]
+  assert.equal(layer.scanPauseMs,0)
+  delete layer.scanPauseMs;assert.equal(custom.restoreCustomRgb(p.custom,p).layers[0].scanPauseMs,0)
+  for(const [input,expected] of [[750,750],[-100,0],[9000,5000],[NaN,0],[Infinity,0],['500',0]]){
+    layer.scanPauseMs=input;assert.equal(custom.restoreCustomRgb(p.custom,p).layers[0].scanPauseMs,expected)
+  }
+  layer.scanPauseMs=1250;assert.deepEqual(custom.restoreCustomRgb(JSON.parse(JSON.stringify(p.custom)),p),p.custom)
+  const zero=profile('scan'),legacy=structuredClone(zero);delete legacy.custom.layers[0].scanPauseMs
+  for(const multicolor of [false,true]){
+    zero.custom.layers[0].multicolor=multicolor;legacy.custom.layers[0].multicolor=multicolor
+    const a=new custom.CustomRgbEngine(zero),b=new custom.CustomRgbEngine(legacy)
+    for(const time of [110,700,2500,5000]){a.advance(time);b.advance(time);assert.deepEqual(a.frame(),b.frame())}
+  }
+})
+
 test('Multicolor Scan has no frame-sized color jump at either turn or the spectrum seam',()=>{
   for(const direction of ['horizontal','vertical']){
     const p=profile('scan'),layer=p.custom.layers[0];layer.multicolor=true;layer.direction=direction

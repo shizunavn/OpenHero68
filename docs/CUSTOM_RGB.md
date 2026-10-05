@@ -66,6 +66,10 @@ host behaviors:
   eased turns, a soft light envelope and a continuously flowing spectrum. Color
   takes 20 seconds per cycle independently of travel speed; rendering skipped
   frames does not change its hues. Single-color Scan retains its original motion.
+  Pause at each end adds an adjustable 0–5000 ms dwell before reversing, for
+  both single-color and Multicolor Scan in either direction. It defaults to 0 ms
+  for new and existing presets. Speed controls travel independently of the pause;
+  the Multicolor spectrum continues to drift while the band rests at an edge.
 - Aurora is a Custom Base option with brightness, ribbon width, speed and palettes.
   It drifts continuous vertical color curtains across the five-row layout without
   shimmer. Brightness affects the base independently of FX. Existing Aurora FX
