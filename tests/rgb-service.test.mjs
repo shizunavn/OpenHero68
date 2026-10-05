@@ -46,3 +46,23 @@ test('packed Aurora gradients remain stable between ticks within the packet limi
   }
   assert.ok(maxJump<=16,`palette caused a ${maxJump}-level color jump`)
 })
+
+test('encoded Multicolor Scan over Aurora stays continuous at turns and within the HID packet budget',async()=>{
+  async function load(input){const b=await rolldown({input});try{const c=await b.generate({format:'esm'});return import(`data:text/javascript;base64,${Buffer.from(c.output[0].code).toString('base64')}`)}finally{await b.close()}}
+  const {CustomRgbEngine,defaultCustomRgb,createRgbLayer,CUSTOM_RGB_COORDINATES}=await load('src/keyboard/customRgb.ts')
+  const {defaultRgb}=await load('src/protocol/hero68/rgb.ts')
+  const p=defaultRgb();p.custom=defaultCustomRgb(p);p.custom.baseEffect={effect:'aurora',palette:'aurora',width:2.5,speed:.5};p.custom.base.mix=true
+  const layer=createRgbLayer('scan','scan');layer.multicolor=true;p.custom.layers=[layer]
+  const x=Object.values(CUSTOM_RGB_COORDINATES).map(point=>point[0]),halfCycle=(Math.max(...x)-Math.min(...x))/layer.speed*1000
+  const engine=new CustomRgbEngine(p),encoder=new RgbFrameEncoder(),rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16))
+  for(const turn of [halfCycle,2*halfCycle,3*halfCycle,4*halfCycle]){
+    let previous,maxJump=0
+    for(let offset=-3;offset<=3;offset++){
+      engine.advance(turn+offset*1000/60);const result=encoder.prepare(engine.frame().keys)
+      assert.ok(new Set(Object.values(result.keys)).size<=32);assert.ok(result.packets.length<=4)
+      if(previous)for(const id of keys)maxJump=Math.max(maxJump,...rgb(result.keys[id]).map((v,i)=>Math.abs(v-rgb(previous[id])[i])))
+      previous=result.keys
+    }
+    assert.ok(maxJump<=24,`encoded turn caused a ${maxJump}-level jump`)
+  }
+})

@@ -5,7 +5,7 @@ async function bundle(path) {const b=await rolldown({input:path});try{const {out
 const custom=await bundle('src/keyboard/customRgb.ts')
 const rgb=await bundle('src/protocol/hero68/rgb.ts')
 const {FirmwareRgbPreview}=await bundle('src/keyboard/rgbPreview.ts')
-const {pickCustomRgbColor,CUSTOM_RGB_PALETTE,blendCustomRgbColor}=await bundle('src/keyboard/customRgbColors.ts')
+const {pickCustomRgbColor,CUSTOM_RGB_PALETTE,blendCustomRgbColor,customRgbContrastPalette,sampleCustomRgbSpectrum}=await bundle('src/keyboard/customRgbColors.ts')
 function profile(effect='reaction') {
   const p=rgb.defaultRgb();p.colors=Object.fromEntries(Object.keys(p.colors).map(id=>[id,[0,0,0]]))
   p.custom=custom.defaultCustomRgb(p);p.custom.enabled=true;p.custom.layers=[custom.createRgbLayer(effect,'one')]
@@ -199,6 +199,62 @@ test('Scan reverses at its boundary instead of wrapping',()=>{
   const a=new custom.CustomRgbEngine(p),b=new custom.CustomRgbEngine(p);a.advance(3500);b.advance(4500)
   assert.deepEqual(a.frame().keys,b.frame().keys)
 })
+const channels=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16))
+const frameDelta=(a,b)=>Math.max(...Object.keys(a).flatMap(id=>channels(a[id]).map((v,i)=>Math.abs(v-channels(b[id])[i]))))
+
+test('Multicolor Scan has no frame-sized color jump at either turn or the spectrum seam',()=>{
+  for(const direction of ['horizontal','vertical']){
+    const p=profile('scan'),layer=p.custom.layers[0];layer.multicolor=true;layer.direction=direction
+    const coordinates=Object.values(custom.CUSTOM_RGB_COORDINATES).map(point=>point[direction==='horizontal'?0:1])
+    const halfCycle=(Math.max(...coordinates)-Math.min(...coordinates))/layer.speed*1000
+    const e=new custom.CustomRgbEngine(p)
+    for(const turn of [halfCycle,2*halfCycle,3*halfCycle,4*halfCycle]){
+      e.advance(turn-1000/120);const before=e.frame().keys
+      e.advance(turn+1000/120);const after=e.frame().keys
+      assert.ok(frameDelta(before,after)<=3,`${direction}: abrupt recolor or reversal at ${turn}ms`)
+      assert.ok(Object.values(after).some(hex=>energy(hex)>200),'the band stays lit through a turn')
+    }
+    // A broad band isolates color continuity from the fastest spatial changes.
+    layer.width=12;e.configure(p)
+    e.advance(20000-1000/120);const before=e.frame().keys
+    e.advance(20000+1000/120);assert.ok(frameDelta(before,e.frame().keys)<=12,'spectrum wraps smoothly')
+  }
+})
+
+test('Multicolor Scan is independent of random choices, render cadence and repeated frame reads',()=>{
+  const p=profile('scan');p.custom.layers[0].multicolor=true
+  const regular=new custom.CustomRgbEngine(p),skipped=new custom.CustomRgbEngine(p)
+  for(let time=110;time<2300;time+=1000/60){regular.advance(time);regular.frame()}
+  regular.advance(2300);skipped.advance(2300)
+  const frame=regular.frame()
+  assert.deepEqual(frame,skipped.frame(),'a skipped preview frame must not change the scan colors')
+  assert.deepEqual(frame,regular.frame(),'reading a frame must not recolor the band')
+  regular.configure(structuredClone(p));assert.deepEqual(frame,regular.frame(),'resaving the layer keeps the current scan')
+  regular.advance(2400);assert.notDeepEqual(frame.keys,regular.frame().keys)
+})
+
+test('Multicolor Scan carries multiple hues in one band and respects selection, opacity and direction',()=>{
+  const p=profile('scan'),layer=p.custom.layers[0];layer.multicolor=true;layer.width=4
+  const e=new custom.CustomRgbEngine(p);e.advance(1000)
+  const horizontal=e.frame().keys
+  const hues=new Set(Object.values(horizontal).filter(hex=>energy(hex)>150).map(hex=>{
+    const rgb=channels(hex),peak=Math.max(...rgb)
+    return rgb.map(v=>Math.round(v/peak*10)).join(',')
+  }))
+  assert.ok(hues.size>=3,'multicolor must be a spectrum within the illuminated band')
+  layer.direction='vertical';e.configure(p);assert.notDeepEqual(e.frame().keys,horizontal)
+  layer.keys=['KeyW'];e.configure(p)
+  assert.ok(energy(e.frame().keys.KeyW)>0)
+  assert.ok(Object.entries(e.frame().keys).every(([id,hex])=>id==='KeyW'||hex==='#000000'))
+  const full=energy(e.frame().keys.KeyW);layer.opacity=50;e.configure(p)
+  assert.ok(Math.abs(energy(e.frame().keys.KeyW)-full/2)<=2)
+  p.custom.base={...p.custom.base,mode:1,rgb:[40,100,180],mix:false,brightness:20}
+  for(const patch of [{opacity:0},{opacity:100,enabled:false}]){
+    Object.assign(layer,patch);e.configure(p);e.advance(e.milliseconds+110)
+    assert.ok(Object.values(e.frame().keys).every(hex=>hex==='#2864b4'),'inactive Scan preserves the base')
+  }
+})
+
 test('RT display shows reported press/release transitions, not analog pressure',()=>{
   const p=profile('rt'),e=new custom.CustomRgbEngine(p)
   e.advance(110);e.setTravel({KeyW:1.7});assert.equal(e.frame().keys.KeyW,'#000000')
@@ -226,6 +282,43 @@ test('Multicolor picks contrasting saturated hues with variety and no immediate 
     assert.ok(tint.every(Number.isInteger));seen.add(tint.join(','))
   }
   assert.ok(seen.size>=3)
+})
+
+test('Scan and triggered Multicolor reserve hues outside the entire Aurora color range',()=>{
+  const stops=[[34,211,238],[139,92,246],[236,72,153]]
+  const backgrounds=stops.slice(0,-1).flatMap((stop,i)=>Array.from({length:17},(_,s)=>stop.map((v,c)=>v+(stops[i+1][c]-v)*s/16)))
+  const palette=customRgbContrastPalette(backgrounds)
+  const chromatic=c=>{const low=Math.min(...c),span=Math.max(...c)-low;return c.map(v=>(v-low)/span*255)}
+  const separation=c=>Math.min(...backgrounds.map(bg=>Math.hypot(...chromatic(c).map((v,i)=>v-chromatic(bg)[i]))))
+  assert.equal(palette.length,4)
+  for(const direction of ['horizontal','vertical']){
+    const p=profile('scan');p.custom.baseEffect={effect:'aurora',palette:'aurora',width:2.5,speed:.5};p.custom.base.mix=true
+    const layer=p.custom.layers[0];layer.multicolor=true;layer.direction=direction
+    const axis=direction==='horizontal'?0:1
+    const entries=Object.entries(custom.CUSTOM_RGB_COORDINATES)
+    const min=Math.min(...entries.map(([,point])=>point[axis])),max=Math.max(...entries.map(([,point])=>point[axis]))
+    const e=new custom.CustomRgbEngine(p)
+    for(let turn=1;turn<=6;turn++){
+      e.advance(turn*(max-min)/layer.speed*1000)
+      const edge=entries.find(([,point])=>point[axis]===(turn%2?max:min))[0]
+      assert.ok(separation(channels(e.frame().keys[edge]))>120,`${direction}: actual Scan output must stand out on Aurora`)
+    }
+  }
+  for(let i=0;i<=200;i++){
+    assert.ok(separation(sampleCustomRgbSpectrum(i/200,palette))>120,'the continuous band must avoid every Aurora hue')
+    assert.ok(separation(pickCustomRgbColor(backgrounds[i%backgrounds.length],i/200,undefined,palette))>120)
+  }
+  for(const effect of ['breath','ripple','reaction','trail','jelly','aoe','touch','pressure-wave']){
+    const p=profile(effect);p.custom.baseEffect={effect:'aurora',palette:'aurora',width:2.5,speed:.5};p.custom.base.mix=true
+    const layer=p.custom.layers[0];layer.multicolor=true
+    const e=new custom.CustomRgbEngine(p);e.advance(110);e.setTravel({KeyW:0});e.advance(130);e.setTravel({KeyW:3.4});e.event('KeyW',true);e.frame()
+    const tint=e.previousColors.get(layer.id)
+    assert.ok(tint&&separation(tint)>120,`${effect}: hue must contrast with the full animated palette`)
+    // The same rule applies to legacy Aurora FX under this effect.
+    delete p.custom.baseEffect;p.custom.base.mode=0;p.custom.layers.unshift(custom.createRgbLayer('aurora','underlay'))
+    const legacy=new custom.CustomRgbEngine(p);legacy.advance(110);legacy.event('KeyW',true);legacy.frame()
+    assert.ok(separation(legacy.previousColors.get(layer.id))>120,`${effect}: legacy Aurora layer must also be considered`)
+  }
 })
 
 test('Multicolor held reaction keeps its hue through animated base changes and long holds',()=>{

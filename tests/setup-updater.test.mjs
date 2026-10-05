@@ -41,6 +41,20 @@ test('one request starts one operation; setup is streamed, verified and handed t
   const first=updater.start(),second=updater.start();assert.equal(first.operationId,second.operationId)
   await updater.settled();assert.equal(workers,1);assert.equal(net.calls.length,3);assert.equal(updater.status().phase,'completed')
 }))
+
+test('signed four-part setup versions update from a three-part install and persist correctly',async()=>fixture(async f=>{
+  const manifest=signed('0.5.2.1');assert.equal(verifySetup(manifest,bytes,key).version,'0.5.2.1')
+  const net=network(manifest);let workers=0
+  const updater=createSetupUpdater({...f,version:'0.5.2',fetch:net.fetch,publicKey:key,runWorker:async folder=>{
+    workers++;assert.deepEqual(await readFile(path.join(folder,asset)),bytes)
+    commitInstall(f.root,{schemaVersion:1,active:'0.5.2.1',previous:'0.5.2',desktop:true,autostart:false})
+    saveUpdateStatus(f.stateDir,{phase:'completed',version:'0.5.2.1'})
+  }})
+  updater.start();await updater.settled();assert.equal(workers,1);assert.equal(net.calls.length,3)
+  assert.equal(updater.status().phase,'completed');assert.equal(readInstall(f.root).active,'0.5.2.1')
+  const unchanged=createSetupUpdater({...f,version:'0.5.2.1',fetch:net.fetch,publicKey:key,runWorker:async()=>assert.fail('same version must not reinstall')})
+  unchanged.start();await unchanged.settled();assert.equal(net.calls.length,4)
+}))
 test('up-to-date and older releases do not download or launch setup',async()=>{
   for(const v of ['0.5.0','0.4.6'])await fixture(async f=>{
     const net=network(signed(v));const u=createSetupUpdater({...f,version:'0.5.0',fetch:net.fetch,publicKey:key,runWorker:async()=>assert.fail('worker must not run')})

@@ -744,7 +744,7 @@ const VI: Record<string, string> = {
   "Jelly": "Thạch mềm",
   "The illuminated area expands with analog key travel.": "Vùng sáng mở rộng theo hành trình analog của phím.",
   "Scan": "Quét",
-  "A moving band sweeps back and forth across the keyboard.": "Một dải sáng quét qua lại trên bàn phím.",
+  "A moving band sweeps back and forth. Multicolor flows through a spectrum with smooth turns.": "Một dải sáng quét qua lại. Chế độ đa màu chuyển sắc liên tục và đổi hướng nhẹ nhàng.",
   "Breath": "Nhịp thở",
   "The layer gently fades in and out.": "Layer sáng lên và mờ đi nhẹ nhàng.",
   "Ripple": "Gợn sóng",

@@ -88,7 +88,7 @@ const shortcut=path.join(desktop,'OpenHero68 Setup Test.lnk')
 let ready=false
 try{
  await stop()
- const initial=await build('0.5.0'),next=await build('0.5.1'),third=await build('0.5.2'),bad=await build('0.5.3',{unhealthy:true})
+ const initial=await build('0.5.0'),next=await build('0.5.1'),third=await build('0.5.2.1'),bad=await build('0.5.3',{unhealthy:true})
  await run(initial.setup,['/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',`/DIR=${install}`,'/TASKS=desktopicon',`/LOG=${path.join(base,'install.log')}`,`/TESTREPORT=${path.join(base,'missing-driver.txt')}`]);ready=true
  assert.equal(await readFile(path.join(base,'missing-driver.txt'),'utf8'),'1|1')
  assert.equal(JSON.parse(await readFile(path.join(install,'installation.json'))).desktop,true)
@@ -97,9 +97,9 @@ try{
  await run(path.join(install,'OpenHero68.exe'),[]);await status('0.5.0')
  await update(next,'completed');await status('0.5.1')
  assert.equal(JSON.parse(await readFile(path.join(install,'installation.json'))).active,'0.5.1')
- await update(third,'completed');await status('0.5.2')
- const failed=await update(bad,'failed');assert.match(failed.error,/healthy/);await status('0.5.2')
- assert.equal(JSON.parse(await readFile(path.join(install,'installation.json'))).active,'0.5.2')
+ await update(third,'completed');await status('0.5.2.1')
+ const failed=await update(bad,'failed');assert.match(failed.error,/healthy/);await status('0.5.2.1')
+ assert.equal(JSON.parse(await readFile(path.join(install,'installation.json'))).active,'0.5.2.1')
  assert.equal(JSON.parse(await readFile(path.join(state,'preset.json'))).saved,'preserved')
  assert.ok((await readFile(shortcut)).length>0)
  // Simulate power loss at the commit boundary: the starter points at an uncommitted
@@ -112,8 +112,8 @@ try{
  await writeFile(path.join(install,'installation.json'),JSON.stringify({...previousRecord,active:'0.5.3'}))
  await writeFile(path.join(install,'active-version.txt'),'0.5.3')
  await writeFile(path.join(install,'update-transaction.json'),JSON.stringify({operationId:completed.operationId,root:install,stateDir:state,previous:previousRecord,target:'0.5.3',apiVersion:6,setup:bad.setup,phase:'restarting',backupReady:true,hadInstallation:true}))
- await run(path.join(install,'OpenHero68.exe'),[]);await status('0.5.2')
- assert.equal(JSON.parse(await readFile(path.join(install,'installation.json'))).active,'0.5.2')
+ await run(path.join(install,'OpenHero68.exe'),[]);await status('0.5.2.1')
+ assert.equal(JSON.parse(await readFile(path.join(install,'installation.json'))).active,'0.5.2.1')
  await assert.rejects(readFile(path.join(install,'update-transaction.json')))
  console.log('PASS: interrupted commit recovers using copied runtime and starts the previous app.')
  console.log('PASS: Unicode install, shortcut, two full updates, independent worker, app restart, health rollback, data preservation.')

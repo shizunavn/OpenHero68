@@ -9,7 +9,10 @@ for(const [input,name] of [['service/main.ts','service.cjs'],['service/bootstrap
  const bundle=await rolldown({input,external:/^node:/})
  try{await bundle.write({format:'cjs',file:path.join(out,name)})}finally{await bundle.close()}
 }
-const header='#pragma once\n#define HERO68_VERSION_W L"'+version.version+'"\n#define HERO68_VERSION_TEXT "'+version.version+'\\0"\n#define HERO68_VERSION_NUMBERS '+version.version.replaceAll('.',',')+',0\n'
+const versionNumbers=version.version.split('.')
+if(!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(version.version)||versionNumbers.some(v=>Number(v)>65535))throw Error('Invalid Windows version')
+while(versionNumbers.length<4)versionNumbers.push('0')
+const header='#pragma once\n#define HERO68_VERSION_W L"'+version.version+'"\n#define HERO68_VERSION_TEXT "'+version.version+'\\0"\n#define HERO68_VERSION_NUMBERS '+versionNumbers.join(',')+'\n'
 await writeFile(path.join(out,'version.h'),header)
 let vcvars=process.env.HERO68_VCVARS
 if(!vcvars){

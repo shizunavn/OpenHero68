@@ -62,7 +62,10 @@ key centers, individual key scopes, enabled flags and opacity. This is a visual
 reconstruction, not Wooting source code. User-provided FX notes guided these
 host behaviors:
 
-- Scan reverses at the edges; Breath oscillates over time.
+- Scan reverses at the edges; Breath oscillates over time. Multicolor Scan has
+  eased turns, a soft light envelope and a continuously flowing spectrum. Color
+  takes 20 seconds per cycle independently of travel speed; rendering skipped
+  frames does not change its hues. Single-color Scan retains its original motion.
 - Aurora is a Custom Base option with brightness, ribbon width, speed and palettes.
   It drifts continuous vertical color curtains across the five-row layout without
   shimmer. Brightness affects the base independently of FX. Existing Aurora FX
@@ -88,8 +91,15 @@ host behaviors:
   colors different from the base at the trigger key and avoiding consecutive
   repeats. A press keeps one hue throughout its ripple/reaction/trail; analog
   Jelly/AOE keep it until travel returns to rest. Touch keeps one hue for the
-  whole active bar, even when the deepest key changes. Scan/Breath choose once
-  per animation cycle. The underlying color is reduced slightly inside active
+  whole active bar, even when the deepest key changes. Breath chooses once
+  per animation cycle, while Scan interpolates continuously. Over an Aurora
+  base or lower Aurora/Comet gradient layer, automatic hues reserve a contiguous
+  four-color range away from the full gradient, including intermediate colors.
+  This avoids choosing a matching hue when the animated base changes later.
+  Scan traverses the reserved range back and forth without crossing excluded
+  hues. The selection is computed at configuration time, never per frame.
+  Comet retains its explicitly selected palette; selecting the same palette as
+  Aurora can still reduce their separation. The underlying color is reduced slightly inside active
   Multicolor FX so their shapes stand out on rainbow bases; fades remain smooth.
   Mixing's RGB components and RT Display's status colors retain their semantics.
 - RT Display shows green/red from the reported Hall pressed flag. The flag's

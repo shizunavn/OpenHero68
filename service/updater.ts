@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto'
 import {mkdir,readFile,writeFile,rename} from 'node:fs/promises'
 import path from 'node:path'
-import {CORE_API_VERSION,newer,inspectManifest,verifyCore,type CoreManifest} from './updatePackage'
+import {CORE_API_VERSION,newer,validVersion,inspectManifest,verifyCore,type CoreManifest} from './updatePackage'
 
 const releaseApi='https://api.github.com/repos/shizunavn/OpenHero68/releases/latest'
 // Keep the original repository alias for older releases, and the canonical name
@@ -29,7 +29,7 @@ export function createServiceUpdater(options:UpdateOptions){
     if(!response.ok)throw Error(`GitHub release check failed (${response.status})`)
     const release=await response.json() as {tag_name:string;assets:ReleaseAsset[]}
     const version=release.tag_name?.replace(/^v/,'')
-    if(!/^\d+\.\d+\.\d+$/.test(version)||!Array.isArray(release.assets))throw Error('Invalid release version or assets')
+    if(!validVersion(version)||!Array.isArray(release.assets))throw Error('Invalid release version or assets')
     const manifest=release.assets.find(asset=>asset.name==='OpenHero68-RGB-core.json')
     const core=release.assets.find(asset=>asset.name==='OpenHero68-RGB-core.cjs')
     const fullPackage=release.assets.find(asset=>asset.name==='OpenHero68-RGB-Windows-x64.zip')

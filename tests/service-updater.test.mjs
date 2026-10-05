@@ -9,7 +9,7 @@ import {rolldown} from 'rolldown'
 async function bundle(input){const b=await rolldown({input,external:/^node:/});try{const {output}=await b.generate({format:'esm',codeSplitting:false});return import(`data:text/javascript;base64,${Buffer.from(output[0].code).toString('base64')}`)}finally{await b.close()}}
 const {createServiceUpdater}=await bundle('service/updater.ts')
 const {superviseCore}=await bundle('service/coreSupervisor.ts')
-const {verifyCore}=await bundle('service/updatePackage.ts')
+const {verifyCore,validVersion,newer}=await bundle('service/updatePackage.ts')
 const pair=generateKeyPairSync('ed25519'),publicKey=pair.publicKey.export({format:'pem',type:'spki'}).toString()
 const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex')
 const prefix='https://github.com/shizunavn/OpenHero68-RGB-Service/releases/download/v'
@@ -27,6 +27,16 @@ function fixture({version='0.2.3',minLauncher='0.2.3',apiVersion=6,coreVersion='
   return {options:{coreVersion,launcherVersion,fetch:request,publicKey},calls,release,values,zip,core,signed}
 }
 async function withUpdater(config,run){const stateDir=await mkdtemp(path.join(os.tmpdir(),'hero68-update-test-'));const f=fixture(config);try{await run(createServiceUpdater({...f.options,stateDir}),f,stateDir)}finally{await rm(stateDir,{recursive:true,force:true})}}
+
+test('version ordering supports fourth-part hotfixes and zero-pads existing releases',()=>{
+  for(const version of ['0.5.2','0.5.2.1','0.5.2.10'])assert.ok(validVersion(version))
+  for(const version of ['0.5','0.5.2.1.1','v0.5.2.1','0.5.2-beta','../0.5.2','0.5.2.'])assert.equal(validVersion(version),false)
+  for(const [a,b] of [['0.5.2.1','0.5.2'],['0.5.2.10','0.5.2.2'],['0.5.3','0.5.2.99'],['0.6.0','0.5.99.99']]){
+    assert.equal(newer(a,b),true);assert.equal(newer(b,a),false)
+  }
+  assert.equal(newer('0.5.2.0','0.5.2'),false);assert.equal(newer('0.5.2','0.5.2.0'),false)
+  assert.equal(newer('0.5.2.1','0.5.2.1'),false);assert.equal(newer('bad','0.5.2'),false)
+})
 
 test('updater considers native compatibility even when the core already equals latest',async()=>{
   for(const [coreVersion,launcherVersion,version,minLauncher,available,requiresFullPackage] of [

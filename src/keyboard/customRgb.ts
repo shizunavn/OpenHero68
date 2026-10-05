@@ -2,7 +2,7 @@ import { HERO68_KEY_IDS, HERO68_LAYOUT } from './hero68Layout'
 import { FirmwareRgbPreview } from './rgbPreview'
 import type { RgbColor, RgbProfile } from '../protocol/hero68/rgb'
 import { restoreCustomRgb, RGB_GRADIENT_PALETTES, type CustomRgbConfiguration, type CustomRgbLayer } from './customRgbModel'
-import { pickCustomRgbColor, blendCustomRgbColor } from './customRgbColors'
+import { pickCustomRgbColor, blendCustomRgbColor, sampleCustomRgbSpectrum, customRgbContrastPalette } from './customRgbColors'
 export * from './customRgbModel'
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v))
 
@@ -49,6 +49,7 @@ export class CustomRgbEngine {
   private analogColors = new Map<string, Colors>()
   private cycleColors = new Map<string, {cycle:number;colors:Colors}>()
   private previousColors = new Map<string, RgbColor>()
+  private colorPalettes = new Map<string, readonly RgbColor[]>()
   private touchColors: Colors = {}
   private touchSource: string | undefined
   private config: CustomRgbConfiguration
@@ -59,6 +60,27 @@ export class CustomRgbEngine {
   constructor(private profile: RgbProfile) {
     this.config = restoreCustomRgb(profile.custom, profile)
     this.base = new FirmwareRgbPreview(this.baseProfile())
+    this.configureColorPalettes()
+  }
+  private configureColorPalettes() {
+    const backgrounds:RgbColor[]=[]
+    const addGradient=(palette:string)=>{
+      const stops=gradientStops[palette]
+      for(let i=0;i<stops.length-1;i++)for(let step=0;step<=8;step++)
+        backgrounds.push(stops[i].map((v,c)=>v+(stops[i+1][c]-v)*step/8) as RgbColor)
+    }
+    if(this.config.baseEffect&&this.config.base.brightness>0){
+      if(this.config.base.mix)addGradient(this.config.baseEffect.palette)
+      else backgrounds.push(this.config.base.rgb)
+    }
+    this.colorPalettes.clear()
+    for(const layer of this.config.layers){
+      this.colorPalettes.set(layer.id,customRgbContrastPalette(backgrounds))
+      if(layer.enabled&&layer.opacity>0&&layer.keys.length&&['aurora','comet'].includes(layer.effect)){
+        if(layer.multicolor)addGradient(layer.palette??(layer.effect==='comet'?'ice':'aurora'))
+        else backgrounds.push(layer.color)
+      }
+    }
   }
   private baseProfile(): RgbProfile {
     // Aurora replaces every main-key pixel. Keep the firmware timeline and side
@@ -68,6 +90,7 @@ export class CustomRgbEngine {
   configure(profile: RgbProfile) {
     this.profile = profile; this.config = restoreCustomRgb(profile.custom, profile)
     this.base.configure(this.baseProfile())
+    this.configureColorPalettes()
     const pressureIds = new Set(this.config.layers.filter(l=>l.enabled&&l.effect==='pressure-wave').map(l=>l.id))
     this.pressureWaves = this.pressureWaves.filter(w=>pressureIds.has(w.layerId))
     for (const key of this.emissions.keys()) if (!pressureIds.has(key.slice(0,key.lastIndexOf(':')))) this.emissions.delete(key)
@@ -127,7 +150,7 @@ export class CustomRgbEngine {
   releaseAll() { for (const id of [...this.held]) this.event(id, false); this.travel = {}; this.strikes.clear();this.hallVersions.clear() }
   private randomColor(colors:Colors, layerId:string, background:RgbColor):RgbColor {
     if (!colors[layerId]) {
-      colors[layerId]=pickCustomRgbColor(background,Math.random(),this.previousColors.get(layerId))
+      colors[layerId]=pickCustomRgbColor(background,Math.random(),this.previousColors.get(layerId),this.colorPalettes.get(layerId))
       this.previousColors.set(layerId,colors[layerId])
     }
     return colors[layerId]
@@ -176,10 +199,22 @@ export class CustomRgbEngine {
     if(!deepestKey){this.touchColors={};this.touchSource=undefined}
     else if(!this.touchSource)this.touchSource=deepestKey.id
     const cycleTints=new Map<string,RgbColor>()
+    const scanBands=new Map<string,{center:number;colorPhase:number}>()
     for(const layer of this.config.layers){
-      if(!layer.enabled||!layer.multicolor||!['scan','breath'].includes(layer.effect))continue
-      const {min,max}=bounds[layer.direction==='horizontal'?0:1]
-      const period=layer.effect==='breath'?6/layer.speed:2*(max-min)/layer.speed
+      if(!layer.enabled||!layer.multicolor)continue
+      if(layer.effect==='scan'){
+        const {min,max}=bounds[layer.direction==='horizontal'?0:1], length=max-min
+        // Keep the same average keys/s and round-trip time, but ease both turns.
+        const phase=(this.time/1000*layer.speed/length)%2
+        scanBands.set(layer.id,{
+          center:min+length*(.5-.5*Math.cos(phase*Math.PI)),
+          // Color drifts independently of travel speed so fast scans cannot flash.
+          colorPhase:(this.time/1000/20)%1,
+        })
+        continue
+      }
+      if(layer.effect!=='breath')continue
+      const period=6/layer.speed
       const cycle=Math.floor(this.time/1000/period)
       let entry=this.cycleColors.get(layer.id)
       if(!entry||entry.cycle!==cycle){entry={cycle,colors:{}};this.cycleColors.set(layer.id,entry)}
@@ -228,9 +263,18 @@ export class CustomRgbEngine {
             if(power>strength){strength=power;if(layer.multicolor)tint=randomTint(wave.colors,wave.id)}
           }
         } else if (layer.effect === 'scan') {
-          const {min,max}=bounds[layer.direction==='horizontal'?0:1],length=max-min
-          const phase=(seconds*layer.speed)%(2*length),center=min+(phase<=length?phase:2*length-phase)
-          strength = smooth(1 - Math.abs(axis-center)/layer.width)
+          const band=scanBands.get(layer.id)
+          if(band){
+            const offset=(axis-band.center)/layer.width
+            // A soft envelope and a spectrum attached to the band remain continuous
+            // through reversals. Adjacent palette stops avoid muddy complementary mixes.
+            strength=Math.exp(-2*offset*offset)
+            tint=sampleCustomRgbSpectrum(band.colorPhase+offset/8,this.colorPalettes.get(layer.id))
+          }else{
+            const {min,max}=bounds[layer.direction==='horizontal'?0:1],length=max-min
+            const phase=(seconds*layer.speed)%(2*length),center=min+(phase<=length?phase:2*length-phase)
+            strength = smooth(1 - Math.abs(axis-center)/layer.width)
+          }
         } else if (layer.effect === 'breath') strength = (.5-.5*Math.cos(seconds*layer.speed*Math.PI/3))
         else if (layer.effect === 'mixing') {
           const components=[depth('ArrowLeft'),depth('ArrowDown'),depth('ArrowRight')]

@@ -6,7 +6,7 @@ export const CUSTOM_RGB_EFFECTS = [
   { id: 'comet', name: 'Comet', detail: 'Bright shooting stars leave gently fading tails.' },
   { id: 'pressure-wave', name: 'Pressure Wave', detail: 'Faster strikes emit brighter waves, then settle while held. Strike strength is estimated from Hall motion.' },
   { id: 'jelly', name: 'Jelly', detail: 'The illuminated area expands with analog key travel.' },
-  { id: 'scan', name: 'Scan', detail: 'A moving band sweeps back and forth across the keyboard.' },
+  { id: 'scan', name: 'Scan', detail: 'A moving band sweeps back and forth. Multicolor flows through a spectrum with smooth turns.' },
   { id: 'breath', name: 'Breath', detail: 'The layer gently fades in and out.' },
   { id: 'ripple', name: 'Ripple', detail: 'Expanding rings follow each key press.' },
   { id: 'touch', name: 'Touch', detail: 'The number row displays the deepest analog key travel as a bar.' },

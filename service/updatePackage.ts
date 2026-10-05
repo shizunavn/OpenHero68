@@ -8,11 +8,15 @@ export const LAUNCHER_VERSION=validVersion(process.env.OPENHERO68_LAUNCHER_VERSI
 export const CORE_VERSION=releaseVersion.version
 export const CORE_API_VERSION=releaseVersion.apiVersion
 export type CoreManifest={payload:{version:string;apiVersion:number;minLauncher:string;sha256:string;size:number;asset:string};signature:string}
-export function validVersion(version:string){return /^\d+\.\d+\.\d+$/.test(version)}
+export function validVersion(version:string){return /^\d+\.\d+\.\d+(?:\.\d+)?$/.test(version)}
 export function newer(a:string,b:string){
   if(!validVersion(a)||!validVersion(b))return false
   const left=a.split('.').map(Number),right=b.split('.').map(Number)
-  return left.some((value,i)=>value>right[i]&&left.slice(0,i).every((earlier,j)=>earlier===right[j]))
+  for(let i=0;i<4;i++){
+    const delta=(left[i]??0)-(right[i]??0)
+    if(delta!==0)return delta>0
+  }
+  return false
 }
 export function inspectManifest(manifest:CoreManifest,publicKey:string=UPDATE_PUBLIC_KEY){
   const payload=manifest?.payload

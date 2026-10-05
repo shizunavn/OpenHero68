@@ -3,7 +3,7 @@ import {copyFile,mkdir,open,rename,rm,writeFile} from 'node:fs/promises'
 import {createReadStream,existsSync} from 'node:fs'
 import {spawn} from 'node:child_process'
 import path from 'node:path'
-import {newer} from './updatePackage'
+import {newer,validVersion} from './updatePackage'
 import {inspectSetupManifest,MAX_SETUP_SIZE,SETUP_ASSET,SETUP_MANIFEST,type SetupManifest} from './setupManifest'
 import {installationRoot,readUpdateStatus,saveUpdateStatus,terminal,transactionFile,type UpdateStatus} from './installState'
 
@@ -46,7 +46,7 @@ export function createSetupUpdater(options:{version:string;stateDir:string;direc
     const response=await request('https://api.github.com/repos/shizunavn/OpenHero68/releases/latest',{headers:{Accept:'application/vnd.github+json','User-Agent':'OpenHero68'},signal:AbortSignal.timeout(10000)})
     if(!response.ok)throw Error(`GitHub release check failed (${response.status})`)
     const release=await response.json() as Release,version=release.tag_name?.replace(/^v/,'')
-    if(!/^\d+\.\d+\.\d+$/.test(version)||release.draft||release.prerelease||!Array.isArray(release.assets))throw Error('Invalid stable release')
+    if(!validVersion(version)||release.draft||release.prerelease||!Array.isArray(release.assets))throw Error('Invalid stable release')
     if(!newer(version,options.version)){save({operationId,phase:'completed',version:options.version});return}
     const json=release.assets.find(a=>a.name===SETUP_MANIFEST),exe=release.assets.find(a=>a.name===SETUP_ASSET)
     if(!json||!exe||json.size<1||json.size>8192)throw Error('Release has no signed setup')
