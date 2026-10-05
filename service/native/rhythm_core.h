@@ -39,17 +39,17 @@ inline std::array<Key, 68> geometry() {
 }
 struct Config {
   int keyMode = 428, sideMode = 500, palette = 1, window = 0, spatialRadius = 8;
-  double brightness = 80, sensitivity = 4, releaseMs = 80, db = 35;
+  double brightness = 80, sensitivity = 4, releaseMs = 80, db = 35, syncOffsetMs = 0;
   Color color{246,17,165}; std::string endpoint = "default";
 };
 inline bool valid(const Config& c) {
   const auto has = [](int n, std::initializer_list<int> list) { return std::find(list.begin(), list.end(), n) != list.end(); };
-  return has(c.keyMode,{169,170,171,172,173,180,428}) && has(c.sideMode,{500,501,502,503}) &&
+  return has(c.keyMode,{169,170,171,172,173,180,428,430}) && has(c.sideMode,{500,501,502,503}) &&
     c.palette >= 0 && c.palette <= 3 && c.window >= 0 && c.window <= 2 && c.spatialRadius >= 0 && c.spatialRadius <= 16 &&
     std::isfinite(c.brightness) && c.brightness >= 0 && c.brightness <= 100 &&
     std::isfinite(c.sensitivity) && c.sensitivity >= .1 && c.sensitivity <= 10 &&
     std::isfinite(c.releaseMs) && c.releaseMs >= 0 && c.releaseMs <= 200 &&
-    std::isfinite(c.db) && c.db >= 0 && c.db <= 100 && !c.endpoint.empty() && c.endpoint.size() <= 512;
+    std::isfinite(c.db) && c.db >= 0 && c.db <= 100 && std::isfinite(c.syncOffsetMs) && c.syncOffsetMs >= -100 && c.syncOffsetMs <= 150 && !c.endpoint.empty() && c.endpoint.size() <= 512;
 }
 inline Color scale(Color c, double value) {
   for (auto& n : c) n = uint8_t(std::clamp(std::lround(n * value), 0L, 255L));

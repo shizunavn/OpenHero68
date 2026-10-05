@@ -8,10 +8,17 @@ const {nativeRhythmCommand}=await bundle('service/rhythm.ts')
 const {HERO68_KEY_POSITIONS}=await bundle('src/protocol/hero68/keyPositions.ts')
 test('rhythm defaults use low-latency controls and reject invalid persisted/API configuration',()=>{
   const c=defaultRhythm();assert.deepEqual(validateRhythm(c),c);assert.equal(c.releaseMs,80);assert.equal(c.spectrum.window,'hann');assert.equal(c.spectrum.db,35)
-  for(const patch of [{version:2},{keyMode:168},{sideMode:504},{brightness:101},{sensitivity:0},{releaseMs:201},{color:'#xyzxyz'},{endpoint:'x\nstop'},{palette:'unknown'},{spectrum:{...c.spectrum,spatialRadius:1.5}},{spectrum:{...c.spectrum,window:'unknown'}},{brightness:NaN}])assert.throws(()=>validateRhythm({...c,...patch}))
+  for(const patch of [{version:2},{keyMode:168},{sideMode:504},{brightness:101},{sensitivity:0},{releaseMs:201},{color:'#xyzxyz'},{endpoint:'x\nstop'},{palette:'unknown'},{spectrum:{...c.spectrum,spatialRadius:1.5}},{spectrum:{...c.spectrum,window:'unknown'}},{brightness:NaN},{syncOffsetMs:151},{syncOffsetMs:-101},{syncOffsetMs:NaN}])assert.throws(()=>validateRhythm({...c,...patch}))
+  const legacy={...c};delete legacy.syncOffsetMs;assert.equal(validateRhythm(legacy).syncOffsetMs,0)
+  assert.equal(validateRhythm({...c,keyMode:430,syncOffsetMs:-40}).syncOffsetMs,-40)
+  assert.equal(validateRhythm({...c,keyMode:430,sensitivity:.1}).sensitivity,1)
+  assert.equal(validateRhythm({...c,keyMode:169,sensitivity:.1}).sensitivity,.1)
 })
 test('native command preserves endpoint UTF-8 and all control fields, gates unverified side output',()=>{
   const c={...defaultRhythm(),endpoint:'Thiết bị âm thanh;test'};const fields=nativeRhythmCommand(c).slice(7).split(';');assert.equal(fields.length,14);assert.equal(Buffer.from(fields[13],'hex').toString('utf8'),c.endpoint);assert.equal(+fields[4],80)
+  assert.equal(nativeRhythmCommand({...c,keyMode:430}).slice(7).split(';').length,15)
+  assert.equal(nativeRhythmCommand({...c,keyMode:430}).slice(7).split(';')[14],'0')
+  assert.equal(nativeRhythmCommand({...c,keyMode:430,syncOffsetMs:-35}).slice(7).split(';')[14],'-35')
   for(const sideMode of [501,502,503])assert.throws(()=>nativeRhythmCommand({...c,sideMode}),/not been verified/)
 })
 test('native color order exactly matches all web key IDs and real POS, including AltRight',()=>{
@@ -20,7 +27,7 @@ test('native color order exactly matches all web key IDs and real POS, including
   assert.deepEqual(positions,Object.values(HERO68_KEY_POSITIONS));assert.equal(positions.length,68);assert.equal(new Set(positions).size,68)
 })
 test('illustrative demo covers every mode and all keys without hardware or hidden 168',()=>{
-  assert.equal(RHYTHM_MODES.length,7);assert.ok(!RHYTHM_MODES.some(m=>m.id===168))
+  assert.equal(RHYTHM_MODES.length,8);assert.ok(RHYTHM_MODES.some(m=>m.id===430&&m.name==='Beat Pulse'));assert.ok(!RHYTHM_MODES.some(m=>m.id===168))
   for(const mode of RHYTHM_MODES){const f=rhythmDemo({...defaultRhythm(),keyMode:mode.id},250);assert.deepEqual(Object.keys(f.keys),Object.keys(HERO68_KEY_POSITIONS));assert.equal(f.side.length,18);assert.ok(f.level>=0&&f.level<=1)}
   assert.ok(Object.values(rhythmDemo({...defaultRhythm(),keyMode:180,palette:'fixed'},0).keys).every(c=>c==='#000000'))
 })

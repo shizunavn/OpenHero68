@@ -41,7 +41,24 @@ jobs:
           if (!(Test-Path 'docs/releases/v${{ steps.toolchain.outputs.version }}.md')) { throw 'Missing release notes' }
       - run: npm ci
       - run: npm test
+      - name: Test native Rhythm and Beat Pulse
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'MSVC toolchain not found' }
+          $env:HERO68_VCVARS = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          & cmd.exe /c tools\check-native-rhythm.cmd
+          if ($LASTEXITCODE -ne 0) { throw 'Native Rhythm tests failed' }
       - run: npm run build
+      - run: node tools/package-pages.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-pages
+          path: |
+            open-hero68-pages.zip
+            open-hero68-pages.zip.sha256
+          if-no-files-found: error
       - run: npm run prepare:setup
       - run: npm run build:setup
       - run: npm run test:setup

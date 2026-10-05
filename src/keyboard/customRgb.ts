@@ -1,7 +1,7 @@
 import { HERO68_KEY_IDS, HERO68_LAYOUT } from './hero68Layout'
 import { FirmwareRgbPreview } from './rgbPreview'
 import type { RgbColor, RgbProfile } from '../protocol/hero68/rgb'
-import { restoreCustomRgb, RGB_GRADIENT_PALETTES, type CustomRgbConfiguration, type CustomRgbLayer } from './customRgbModel'
+import { restoreCustomRgb, RGB_EFFECT_METADATA, RGB_GRADIENT_PALETTES, type CustomRgbConfiguration, type CustomRgbLayer } from './customRgbModel'
 import { pickCustomRgbColor, blendCustomRgbColor, sampleCustomRgbSpectrum, customRgbContrastPalette } from './customRgbColors'
 export * from './customRgbModel'
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v))
@@ -23,9 +23,58 @@ const gradientStops = Object.fromEntries(Object.entries(RGB_GRADIENT_PALETTES).m
   [id,palette.colors.map(hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16))) ]))
 function gradient(layer: CustomRgbLayer, phase: number): RgbColor {
   if (!layer.multicolor) return layer.color
-  const stops = gradientStops[layer.palette ?? (layer.effect==='comet'?'ice':'aurora')]
+  const stops = gradientStops[layer.palette ?? RGB_EFFECT_METADATA[layer.effect].defaults?.palette ?? 'aurora']
   const position = clamp(phase,0,1)*(stops.length-1), index = Math.min(stops.length-2,Math.floor(position)), mix = position-index
   return stops[index].map((v,i)=>v+(stops[index+1][i]-v)*mix) as RgbColor
+}
+
+// Ambient and rhythmic effects; their time and input history determine each frame.
+// Deterministic by design: every shape is a pure function of time, so a dropped frame or a
+// different frame rate can never change what the animation looks like.
+const fract = (v: number) => v - Math.floor(v)
+const hash = (a: number, b = 0, c = 0) => fract(Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453)
+const mixNumber = (a: number, b: number, t: number) => a + (b - a) * t
+const ease = (v: number) => { const t = clamp(v, 0, 1); return t * t * (3 - 2 * t) }
+function valueNoise(x: number, y: number) {
+  const xi = Math.floor(x), yi = Math.floor(y), u = ease(x - xi), v = ease(y - yi)
+  return mixNumber(mixNumber(hash(xi, yi), hash(xi + 1, yi), u), mixNumber(hash(xi, yi + 1), hash(xi + 1, yi + 1), u), v)
+}
+const WHITE: RgbColor = [255, 244, 224]
+const lighten = (color: RgbColor, amount: number) => color.map((c, i) => mixNumber(c, WHITE[i], clamp(amount, 0, 1))) as RgbColor
+const KEY_INDEX = Object.fromEntries(HERO68_KEY_IDS.map((id, i) => [id, i]))
+const FLAME_SPARKS = 7
+type Spark = { x: number; y: number; power: number }
+type GlowSource = { x: number; y: number; heat: number }
+type GlowTransition = { at: number; pressed: boolean; heat: number }
+function glowHeat(change: GlowTransition, time: number, duration: number) {
+  return change.pressed
+    ? change.heat + (1 - change.heat) * ease((time - change.at) / 70)
+    : change.heat * Math.pow(1 - clamp((time - change.at) / duration, 0, 1), 1.5)
+}
+// After this age the envelope is too dim to round a channel up from black.
+const PULSE_TAIL_SECONDS = Math.log(1024) / 1.7
+
+/** Heat of the fire at a point: strong at the bottom edge, licking upward in uneven tongues. */
+function flameHeat(x: number, y: number, seconds: number, height: number) {
+  const reach = clamp(1 - (4.5 - y) / height, 0, 1), base = reach * .72
+  const tongues = valueNoise(x * .55 + 1.3, y * .7 + seconds * 1.15) * .65 + valueNoise(x * 1.3 + 7.1, y * 1.6 + seconds * 2.1) * .35
+  return clamp(base + (tongues - .5) * .95 * ease(reach), 0, 1)
+}
+/** A handful of embers that detach from the bed of the fire, wander sideways and burn out. */
+function flameSparks(seconds: number, speed: number): Spark[] {
+  const sparks: Spark[] = []
+  for (let i = 0; i < FLAME_SPARKS; i++) {
+    const phase = seconds * speed / (2.2 + hash(i, 1) * 2) + hash(i, 2) * 8
+    const cycle = Math.floor(phase), life = fract(phase) / .62
+    if (life >= 1) continue
+    const rise = 2.4 + hash(i, cycle, 4) * 1.8
+    sparks.push({
+      x: .8 + hash(i, cycle, 3) * 13.4 + Math.sin(life * 6 + hash(i, cycle, 5) * 6) * .5,
+      y: 4.5 - life * rise,
+      power: Math.pow(1 - life, 1.2) * ease(life / .08),
+    })
+  }
+  return sparks
 }
 function aurora(layer: CustomRgbLayer, x: number, y: number, seconds: number) {
   const t=seconds*layer.speed, span=bounds[0].max-bounds[0].min+1
@@ -43,6 +92,7 @@ export class CustomRgbEngine {
   private held = new Set<string>()
   private releases = new Map<string, number>()
   private transitions = new Map<string, {at:number;pressed:boolean}>()
+  private glows = new Map<string, Map<string, GlowTransition>>()
   private travel: Record<string, number> = {}
   private hallVersions=new Map<string,{sequence:number;timestampMs:number}>()
   private keyColors = new Map<string, Colors>()
@@ -76,8 +126,8 @@ export class CustomRgbEngine {
     this.colorPalettes.clear()
     for(const layer of this.config.layers){
       this.colorPalettes.set(layer.id,customRgbContrastPalette(backgrounds))
-      if(layer.enabled&&layer.opacity>0&&layer.keys.length&&['aurora','comet'].includes(layer.effect)){
-        if(layer.multicolor)addGradient(layer.palette??(layer.effect==='comet'?'ice':'aurora'))
+      if(layer.enabled&&layer.opacity>0&&layer.keys.length&&RGB_EFFECT_METADATA[layer.effect].gradient){
+        if(layer.multicolor)addGradient(layer.palette??RGB_EFFECT_METADATA[layer.effect].defaults?.palette??'aurora')
         else backgrounds.push(layer.color)
       }
     }
@@ -97,6 +147,9 @@ export class CustomRgbEngine {
     const ids = new Set(this.config.layers.map(l=>l.id))
     for (const key of this.cycleColors.keys()) if (!ids.has(key)) this.cycleColors.delete(key)
     for (const key of this.previousColors.keys()) if (!ids.has(key)) this.previousColors.delete(key)
+    const glowIds = new Set(this.config.layers.filter(l=>l.enabled&&l.effect==='afterglow').map(l=>l.id))
+    for (const id of this.glows.keys()) if (!glowIds.has(id)) this.glows.delete(id)
+    for (const id of glowIds) if (!this.glows.has(id)) this.glows.set(id,new Map([...this.held].map(key=>[key,{at:this.time,pressed:true,heat:0}])))
   }
   get milliseconds() { return this.time }
   get activeWaveCount() { return this.pressureWaves.length }
@@ -111,6 +164,7 @@ export class CustomRgbEngine {
     const point = CUSTOM_RGB_COORDINATES[id]
     if (!point) return
     if (pressed && !this.held.has(id)) {
+      this.glowEvent(id,true)
       const colors:Colors={}; this.keyColors.set(id,colors)
       this.events.push({ id, at: this.time, x: point[0], y: point[1], colors })
       this.events = this.events.slice(-64); this.held.add(id); this.releases.delete(id)
@@ -118,7 +172,16 @@ export class CustomRgbEngine {
       this.transitions.set(id,{at:this.time,pressed:true})
       // Browser clicks/typing simulate a firm strike; Hall playback measures motion.
       if(!this.analogInput)this.strikes.set(id,{mm:3.4,at:this.time,peak:1,hitAt:this.time})
-    } else if (!pressed && this.held.delete(id)) { this.releases.set(id, this.time); this.transitions.set(id,{at:this.time,pressed:false}); this.base.event(id, false) }
+    } else if (!pressed && this.held.delete(id)) { this.glowEvent(id,false); this.releases.set(id, this.time); this.transitions.set(id,{at:this.time,pressed:false}); this.base.event(id, false) }
+  }
+  private glowEvent(id: string, pressed: boolean) {
+    for (const layer of this.config.layers) {
+      if (!layer.enabled || layer.effect !== 'afterglow') continue
+      let changes = this.glows.get(layer.id)
+      if (!changes) { changes = new Map(); this.glows.set(layer.id,changes) }
+      const previous = changes.get(id)
+      changes.set(id,{at:this.time,pressed,heat:previous?glowHeat(previous,this.time,layer.duration):0})
+    }
   }
   setTravel(values: Record<string, number>, samples?:Record<string,{sequence:number;timestampMs:number}>) {
     if(!this.analogInput){this.analogInput=true;this.strikes.clear()}
@@ -200,8 +263,22 @@ export class CustomRgbEngine {
     else if(!this.touchSource)this.touchSource=deepestKey.id
     const cycleTints=new Map<string,RgbColor>()
     const scanBands=new Map<string,{center:number;colorPhase:number}>()
+    const sparks=new Map<string,Spark[]>()
+    const glowSources=new Map<string,GlowSource[]>()
     for(const layer of this.config.layers){
       if(!layer.enabled)continue
+      if(layer.effect==='ember'){sparks.set(layer.id,flameSparks(this.time/1000,layer.speed));continue}
+      if(layer.effect==='afterglow'){
+        // A held key stays white-hot; after release its heat falls away over the cool-down.
+        const sources:GlowSource[]=[]
+        for(const [id,change] of this.glows.get(layer.id)??[]){
+          const point=CUSTOM_RGB_COORDINATES[id]
+          if(!point)continue
+          const heat=glowHeat(change,this.time,layer.duration)
+          if(heat>.01)sources.push({x:point[0],y:point[1],heat})
+        }
+        glowSources.set(layer.id,sources);continue
+      }
       if(layer.effect==='scan'){
         const {min,max}=bounds[layer.direction==='horizontal'?0:1], length=max-min
         const travel=length/layer.speed, pause=(layer.scanPauseMs??0)/1000
@@ -274,6 +351,53 @@ export class CustomRgbEngine {
             tint=sampleCustomRgbSpectrum(band.colorPhase+offset/8,this.colorPalettes.get(layer.id))
           }else{
             strength = smooth(1 - Math.abs(axis-band.center)/layer.width)
+          }
+        } else if (layer.effect === 'ember') {
+          const heat=flameHeat(x,y,seconds*layer.speed,layer.width)
+          // Slow, shallow flicker like a candle; fast flicker would read as a fault on LEDs.
+          const flicker=.9+.1*valueNoise(seconds*layer.speed*4,3.7)
+          strength=heat<.05?0:ease(heat/.3)*(.3+.7*Math.pow(heat,.9))*flicker
+          tint=layer.multicolor?gradient(layer,heat):lighten(layer.color,(heat-.7)/.3*.45)
+          for(const spark of sparks.get(layer.id)??[]){
+            const power=Math.exp(-(Math.pow(x-spark.x,2)+Math.pow(y-spark.y,2))/(2*.42*.42))*spark.power
+            if(power>strength){strength=power;tint=layer.multicolor?gradient(layer,1):lighten(layer.color,.55)}
+          }
+        } else if (layer.effect === 'starlight') {
+          const k=KEY_INDEX[id], phase=seconds*layer.speed/(3.2+hash(k,5)*4.5)+hash(k,6)*10
+          const cycle=Math.floor(phase), life=fract(phase)
+          if(hash(k,cycle,7)<clamp(layer.width/10,.03,.95)){
+            // Quick glint, then a long fade; the faint shimmer keeps a lit star alive.
+            const envelope=life<.18?ease(life/.18):Math.pow(1-(life-.18)/.82,2.2)
+            strength=envelope*(.9+.1*Math.sin(seconds*7+k*1.7))
+            tint=lighten(layer.multicolor?gradient(layer,hash(k,cycle,8)):layer.color,Math.pow(envelope,3)*.7)
+          }
+        } else if (layer.effect === 'afterglow') {
+          // Heat decays with distance from each source, so the core is the hottest part of the glow.
+          let heat=0
+          for(const source of glowSources.get(layer.id)??[]){
+            const fall=Math.exp(-Math.pow(Math.hypot(x-source.x,y-source.y)/layer.width,2))*source.heat
+            heat=1-(1-heat)*(1-fall)
+          }
+          strength=clamp(heat*1.25,0,1)
+          const sample=layer.multicolor?gradient(layer,heat):layer.color
+          tint=lighten(sample,(heat-.8)/.2*.6)
+        } else if (layer.effect === 'pulse') {
+          const beatLength=60/layer.speed, beat=Math.floor(seconds/beatLength)
+          const centerX=(bounds[0].min+bounds[0].max)/2, centerY=(bounds[1].min+bounds[1].max)/2
+          const distance=Math.hypot(x-centerX,(y-centerY)*1.25)
+          const history = Math.ceil(PULSE_TAIL_SECONDS / beatLength) + 1
+          for(let back=0;back<history;back++){
+            const index=beat-back
+            if(index<0)continue
+            const age=seconds-index*beatLength, accent=index%4===0
+            const loudness=accent?1:.6
+            const ring=Math.exp(-Math.pow((distance-age*(accent?10:7.5))/layer.width,2))*Math.exp(-age*(accent?1.7:2.4))*loudness
+            const core=Math.exp(-age*9)*Math.exp(-Math.pow(distance/2.2,2))*loudness*.6
+            const power=Math.max(ring,core)
+            if(power>strength){
+              strength=power
+              tint=layer.multicolor?gradient(layer,accent?0:(index%4)/3):accent?lighten(layer.color,.35):layer.color
+            }
           }
         } else if (layer.effect === 'breath') strength = (.5-.5*Math.cos(seconds*layer.speed*Math.PI/3))
         else if (layer.effect === 'mixing') {

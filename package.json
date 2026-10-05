@@ -1,7 +1,7 @@
 {
   "name": "openhero68-ui",
   "private": true,
-  "version": "0.9.55",
+  "version": "0.9.56",
   "type": "module",
   "scripts": {
     "build:service": "tsc --project service/tsconfig.json && node service/build.mjs",

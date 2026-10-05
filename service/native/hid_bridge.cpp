@@ -19,6 +19,7 @@
 #include <deque>
 #include <sstream>
 #include "rhythm_audio.h"
+#include "rhythm_pulse.h"
 #include "gamepad_output.h"
 #include "ipc_output.h"
 #include "frame_telemetry.h"
@@ -180,7 +181,7 @@ int main() {
     HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     std::mutex queueMutex;std::deque<std::string> queue;std::atomic<bool> ended{false};
     std::thread reader([&] { std::string line;while(std::getline(std::cin,line)) { {std::lock_guard<std::mutex> lock(queueMutex);queue.push_back(std::move(line));}SetEvent(ready); }ended=true;SetEvent(ready); });
-    rhythm::Capture capture;rhythm::Engine engine;bool rhythmActive=false,rhythmPaused=false,customActive=false;
+    rhythm::Capture capture;rhythm::Engine engine;rhythm::PulseEffect pulse;rhythm::PulseEffect::Settings pulseSettings;bool rhythmActive=false,rhythmPaused=false,customActive=false;
     hall::Scheduler hallScheduler;gamepad::Config gamepadConfig;gamepad::Output gamepadOutput;
     powerGamepad=&gamepadOutput;
     bool gamepadPaused=false,hallFault=false,ioPaused=false,wasSuspended=false,wasGamepadEnabled=false;
@@ -254,7 +255,9 @@ int main() {
         if(now-nextFrame>=1000./60)dropped+=uint64_t((now-nextFrame)/(1000./60));
         nextFrame+=1000./60;if(nextFrame<=now)nextFrame=now+1000./60;
         if(now>=reconnectAt) {
-          auto audio=capture.snapshot();const auto frame=engine.render(audio.audio,now);const double renderedAt=rhythm::clockMs();const auto encoded=rhythm::encode(frame);const double encodedAt=rhythm::clockMs();
+          auto audio=capture.snapshot();rhythm::Frame frame;
+          if(engine.config().keyMode==rhythm::PulseEffect::kMode){std::vector<rhythm::BeatEvent> beatEvents;rhythm::BeatState beatState;bool beatReset=false;capture.drainBeat(beatEvents,beatState,beatReset);if(beatReset)pulse.reset();pulse.feed(beatEvents,beatState);frame=pulse.render(now,pulseSettings);}
+          else frame=engine.render(audio.audio,now);const double renderedAt=rhythm::clockMs();const auto encoded=rhythm::encode(frame);const double encodedAt=rhythm::clockMs();
           bool okay=true;for(const auto& p:encoded.packets)if(!writeReport(p)){okay=false;break;}
           if(okay) {
             const double completed=rhythm::clockMs();std::ostringstream event;
@@ -297,21 +300,22 @@ int main() {
       if(line=="audio-devices"){emitLine("audio-devices:"+rhythm::audioDevices());continue;}
       if(line=="custom-start"){rhythmActive=false;capture.stop();customActive=true;customBatch.clear();submission=lastSubmission=reusedFrames=dropped=0;customTelemetry={};customTicks=0;lastCustomTick=customTickMaxGap=0;output.queue.clear(ipc::Channel::CustomFrame);output.queue.clear(ipc::Channel::RhythmFrame);output.queue.clear(ipc::Channel::CustomTick);lastFrame=0;rhythmPaused=false;nextFrame=rhythm::clockMs();emitLine("custom-ready");continue;}
       if(line=="custom-stop"){customActive=false;customBatch.clear();output.queue.clear(ipc::Channel::CustomFrame);output.queue.clear(ipc::Channel::CustomTick);emitLine("custom-stopped");continue;}
-      if(line=="rhythm-stop"){rhythmActive=false;rhythmPaused=false;capture.stop();engine.reset();output.queue.clear(ipc::Channel::RhythmFrame);emitLine("rhythm-stopped");continue;}
+      if(line=="rhythm-stop"){rhythmActive=false;rhythmPaused=false;capture.stop();engine.reset();pulse.reset();output.queue.clear(ipc::Channel::RhythmFrame);emitLine("rhythm-stopped");continue;}
       if(line=="rhythm-pause"){rhythmPaused=true;setGamepadPause();emitLine("rhythm-paused");continue;}
       if(line=="rhythm-resume"){rhythmPaused=false;setGamepadPause();nextFrame=rhythm::clockMs();emitLine("rhythm-resumed");continue;}
       if(line.rfind("rhythm:",0)==0) {
         try {
           rhythm::Config c;std::vector<std::string> fields;std::istringstream parts(line.substr(7));std::string part;while(std::getline(parts,part,';'))fields.push_back(part);
-          if(fields.size()!=14)throw std::runtime_error("Invalid rhythm command");
+          if(fields.size()!=14&&fields.size()!=15)throw std::runtime_error("Invalid rhythm command");
           c.keyMode=std::stoi(fields[0]);c.sideMode=std::stoi(fields[1]);c.brightness=std::stod(fields[2]);c.sensitivity=std::stod(fields[3]);c.releaseMs=std::stod(fields[4]);
           for(int i=0;i<3;++i){int n=std::stoi(fields[5+i]);if(n<0||n>255)throw std::runtime_error("Invalid color");c.color[i]=uint8_t(n);}
           c.palette=std::stoi(fields[8]);c.db=std::stod(fields[9]);c.window=std::stoi(fields[10]);c.spatialRadius=std::stoi(fields[11]);
           // Side protocol is not yet verified on the target board; reject activation honestly.
           if(fields[12]!="1"||c.sideMode!=500)throw std::runtime_error("Side rhythm is not hardware-verified");
+          if(fields.size()==15)c.syncOffsetMs=std::stod(fields[14]);
           c.endpoint.clear();if(fields[13].size()%2)throw std::runtime_error("Invalid endpoint");
           for(size_t i=0;i<fields[13].size();i+=2)c.endpoint+=char(std::stoi(fields[13].substr(i,2),nullptr,16));
-          engine.configure(c);capture.start(c.endpoint);customActive=false;customBatch.clear();output.queue.clear(ipc::Channel::CustomFrame);output.queue.clear(ipc::Channel::CustomTick);if(!rhythmActive){dropped=0;lastFrame=0;rhythmTelemetry={};output.queue.clear(ipc::Channel::RhythmFrame);nextFrame=rhythm::clockMs();}rhythmActive=true;emitLine("rhythm-ready");
+          if(c.keyMode!=engine.config().keyMode)pulse.reset();engine.configure(c);pulseSettings.brightness=c.brightness;pulseSettings.palette=c.palette;pulseSettings.color=c.color;pulseSettings.offsetMs=c.syncOffsetMs;capture.setSensitivity(c.sensitivity);capture.setBeatEnabled(c.keyMode==rhythm::PulseEffect::kMode);capture.start(c.endpoint);customActive=false;customBatch.clear();output.queue.clear(ipc::Channel::CustomFrame);output.queue.clear(ipc::Channel::CustomTick);if(!rhythmActive){dropped=0;lastFrame=0;rhythmTelemetry={};output.queue.clear(ipc::Channel::RhythmFrame);nextFrame=rhythm::clockMs();}rhythmActive=true;emitLine("rhythm-ready");
         }catch(const std::exception& e){emitLine("error:"+std::string(e.what()));}
         continue;
       }

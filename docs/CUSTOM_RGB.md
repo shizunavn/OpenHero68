@@ -106,6 +106,26 @@ host behaviors:
   Aurora can still reduce their separation. The underlying color is reduced slightly inside active
   Multicolor FX so their shapes stand out on rainbow bases; fades remain smooth.
   Mixing's RGB components and RT Display's status colors retain their semantics.
+- Ember, Starlight and Tempo Pulse (BPM) animate without input. Afterglow reacts to
+  press/release events without measuring analog depth. Animation depends on elapsed
+  time and input history (hash-based, never `Math.random`), so skipped frames do not
+  alter the animation at a given time.
+  - Ember: value-noise tongues of heat rise from the bottom row (Flame height sets
+    how far they reach, from 0.75 to 5 keys; noise follows the same height envelope) over a slow candle flicker, with seven sparks that detach,
+    wander sideways and burn out. Ramp: Ember palette, dim red to gold.
+  - Starlight: each key rolls its own 3-8 s cycle and is lit in a cycle with
+    probability Density/10 (Density ranges from 0.3 to 9.5). A star glints in 18% of the cycle, then fades slowly;
+    the brightest moment tints toward white.
+  - Afterglow: a held key warms over 70 ms; after release its actual heat falls as (1-t)^1.5 over
+    Cool-down. Quick taps and re-presses preserve the current heat without a release flash. Heat spreads to neighbors with a Gaussian halo (Halo radius), and the
+    pixel's color is the palette sampled at its own heat, so the core is hotter than
+    the edge of the glow. Neighboring glows combine like screened light.
+  - Tempo Pulse (BPM): tempo in BPM (40-200). Each beat sends a ring from the board center;
+    the first beat of every four is the accent (larger, brighter, first palette
+    color). Ring history covers the visible tail even at 200 BPM. It is a visual metronome, not audio-reactive; use Rhythm Sync for audio.
+  New palettes Ember, Ocean, Sakura and Synthwave are available to Aurora, Comet and
+  the new effects. An installed app that predates these effects reports a shorter
+  `supportedEffects`, so the editor asks the user to update instead of starting.
 - RT Display shows green/red from the reported Hall pressed flag. The flag's
   exact correspondence to the firmware RT output state is not established.
 

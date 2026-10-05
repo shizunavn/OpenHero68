@@ -12,8 +12,8 @@ await build({configFile:false,plugins:[react(),{
 let online=false,legacy=false,failApply=false,enabled=false,sessionId='fixture-session',savedOpacity=null,mode='onboard',rhythmConfiguration=null,customConfiguration=null,customRevision=0,sequence=0
 const frameClients=new Set()
 const requests=[]
-const effects=['aurora','comet','pressure-wave','jelly','scan','breath','ripple','touch','reaction','aoe','mixing','trail','rt']
-const status=()=>({apiVersion:legacy?4:6,...(!legacy?{customRevision,customConfiguration:customConfiguration??undefined}:{}),...(!legacy?{supportedEffects:effects,supportedBaseEffects:["aurora"],supportedModes:['onboard','custom','rhythm'],supportedRhythmModes:[169,170,171,172,173,180,428],supportedRhythmSideModes:[500]}:{}),sessionId,enabled,mode:enabled?mode:'onboard',connected:true,preset:true,fps:60,targetFps:60,frameMs:1,frames:0,packets:0,hallSnapshots:0,timeouts:0,maxGapMs:17,lastError:null,rhythmConfiguration,sideOutput:false})
+const effects=['aurora','comet','pressure-wave','jelly','scan','breath','ripple','touch','reaction','aoe','mixing','trail','rt','ember','starlight','afterglow','pulse']
+const status=()=>({apiVersion:legacy?4:6,...(!legacy?{customRevision,customConfiguration:customConfiguration??undefined}:{}),...(!legacy?{supportedEffects:effects,supportedBaseEffects:["aurora"],supportedModes:['onboard','custom','rhythm'],supportedRhythmModes:[169,170,171,172,173,180,428,430],supportedRhythmSideModes:[500]}:{}),sessionId,enabled,mode:enabled?mode:'onboard',connected:true,preset:true,fps:60,targetFps:60,frameMs:1,frames:0,packets:0,hallSnapshots:0,timeouts:0,maxGapMs:17,lastError:null,rhythmConfiguration,sideOutput:false})
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.woff2':'font/woff2'}
 setInterval(()=>{if(!enabled)return;const keys=Object.fromEntries(Object.entries(customConfiguration?.colors??{}).map(([id,c])=>[id,'#'+c.map(x=>x.toString(16).padStart(2,'0')).join('')]));for(const res of frameClients)if(!res.writableLength)res.write('data: '+JSON.stringify({...status(),keys,sequence:++sequence})+'\n\n')},1000/60).unref()
 createServer(async(req,res)=>{

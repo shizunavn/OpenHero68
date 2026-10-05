@@ -3,6 +3,15 @@
 UI and Windows service versions are independent. Historical notes below retain
 their original validation scope; they are not claims of new hardware testing.
 
+## Service 0.5.3 / UI 0.9.56 — new Custom and Rhythm effects
+
+- Add Ember, Starlight, Afterglow and Tempo Pulse (BPM) effects, and Ember, Ocean, Sakura and Synthwave palettes.
+- Fix Ember height, Starlight density bounds, Afterglow tap/re-press continuity and high-BPM Tempo Pulse tails; include new gradient underlays in automatic color contrast.
+- Effects can now declare their own width/speed ranges, speed label and width unit (Tempo Pulse uses 40-200 BPM).
+- Add audio Beat Pulse (Rhythm mode 430), sample-clock timing, source-specific beat corrections, complete reset and prediction cancellation on unlock.
+- Rebuild the Windows service so `supportedEffects` includes the new effects; older installed apps are asked to update.
+- Ship Beat Pulse with the updated native helper through the complete Windows installer and signed setup update. Legacy core-only packages cannot add native mode 430.
+
 ## UI 0.9.55 — repository cleanup
 
 - Pin the existing dependency versions and declare the build/test toolchain.

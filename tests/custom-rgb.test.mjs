@@ -427,3 +427,102 @@ for(const effect of custom.CUSTOM_RGB_EFFECTS)test(`${effect.name}: outputs vali
   const p=profile(effect.id);const e=new custom.CustomRgbEngine(p);e.advance(110);e.event('KeyW',true);e.advance(250)
   assert.equal(Object.keys(e.frame().keys).length,68);assert.ok(Object.values(e.frame().keys).every(c=>/^#[0-9a-f]{6}$/.test(c)))
 })
+
+test('Ember, Starlight and Tempo Pulse (BPM) animate by themselves and are deterministic in time',()=>{
+  for(const effect of ['ember','starlight','pulse']){
+    const run=()=>{const e=new custom.CustomRgbEngine(profile(effect));e.advance(110);const seen=new Set(),frames=[];let lit=0
+      for(let t=110;t<6000;t+=250){e.advance(t);const keys=e.frame().keys;const frame=JSON.stringify(keys);frames.push(frame);seen.add(frame);lit+=Object.values(keys).filter(c=>energy(c)>0).length}
+      return {seen:seen.size,lit,frames}}
+    const a=run(),b=run()
+    assert.ok(a.seen>10,`${effect} must keep changing without input`);assert.ok(a.lit>0,`${effect} must light keys`)
+    assert.deepEqual(a,b,`${effect} must not depend on randomness or wall-clock time`)
+  }
+})
+
+test('Afterglow release and re-press preserve the actual heat of a fast tap',()=>{
+  const p=profile('afterglow'),e=new custom.CustomRgbEngine(p)
+  e.advance(110);e.event('KeyG',true);e.advance(115)
+  const pressed=e.frame().keys;assert.ok(energy(pressed.KeyG)>0)
+  e.event('KeyG',false);assert.deepEqual(e.frame().keys,pressed,'release must not jump to full heat')
+  e.advance(200);const fading=e.frame().keys
+  e.event('KeyG',true);assert.deepEqual(e.frame().keys,fading,'re-press must continue from the remaining glow')
+  e.advance(300);assert.ok(energy(e.frame().keys.KeyG)>energy(fading.KeyG))
+  e.event('KeyG',false);e.advance(1700);assert.equal(e.frame().keys.KeyG,'#000000')
+})
+
+test('Afterglow layers preserve separate cool-downs and do not change RT release colors',()=>{
+  const p=profile('afterglow'),fast=p.custom.layers[0],slow=custom.createRgbLayer('afterglow','slow')
+  Object.assign(fast,{keys:['KeyG'],duration:200});Object.assign(slow,{keys:['KeyH'],duration:2000})
+  p.custom.layers.push(slow)
+  const e=new custom.CustomRgbEngine(p);e.advance(110);e.event('KeyG',true);e.advance(400);e.event('KeyG',false);e.advance(700)
+  const before=e.frame().keys;assert.equal(before.KeyG,'#000000');assert.ok(energy(before.KeyH)>0)
+  e.event('KeyG',true);assert.deepEqual(e.frame().keys,before)
+  const rt=profile('rt'),display=new custom.CustomRgbEngine(rt);display.advance(110);display.event('KeyG',true)
+  assert.equal(display.frame().keys.KeyG,'#00ff00');display.event('KeyG',false);assert.equal(display.frame().keys.KeyG,'#ff0000')
+})
+
+test('Ember height controls the flame reach while detached sparks remain independent',()=>{
+  const totals=[]
+  for(const width of [.75,5]){const p=profile('ember');p.custom.layers[0].width=width;const e=new custom.CustomRgbEngine(p);let top=0
+    for(let t=110;t<8110;t+=200){e.advance(t);top+=energy(e.frame().keys.Digit5)}totals.push(top)}
+  assert.ok(totals[1]>totals[0]+200,'a tall flame must illuminate the upper row more than a low flame')
+})
+
+test('Starlight density restores inside its effective range and increases lit coverage',()=>{
+  const p=profile('starlight')
+  for(const [width,expected] of [[12,9.5],[0,.3]])assert.equal(custom.restoreCustomRgb({...p.custom,layers:[{...p.custom.layers[0],width}]},p).layers[0].width,expected)
+  const totals=[]
+  for(const width of [.3,9.5]){p.custom.layers[0].width=width;const e=new custom.CustomRgbEngine(p);let lit=0
+    for(let t=110;t<5110;t+=250){e.advance(t);lit+=Object.values(e.frame().keys).filter(c=>energy(c)>20).length}totals.push(lit)}
+  assert.ok(totals[1]>totals[0]*5)
+})
+
+test('Tempo Pulse retains a visible outer ring across a beat boundary at 200 BPM',()=>{
+  const p=profile('pulse');p.custom.layers[0].speed=200;const e=new custom.CustomRgbEngine(p)
+  e.advance(899.99);const before=e.frame().keys.Escape;e.advance(900.01);const after=e.frame().keys.Escape
+  assert.ok(energy(after)>20,'the previous accent still reaches the board edge')
+  assert.ok(Math.abs(energy(before)-energy(after))<=3,'an outer tail must not disappear when the next beat starts')
+})
+
+test('new gradient underlays participate in Scan and random-effect contrast palettes',()=>{
+  const stops=Object.fromEntries(Object.entries(custom.RGB_GRADIENT_PALETTES).map(([id,p])=>[id,p.colors.map(hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)))]))
+  for(const effect of ['ember','starlight','afterglow','pulse']){
+    const p=profile('scan'),underlay=custom.createRgbLayer(effect,'underlay');p.custom.layers.unshift(underlay)
+    const backgrounds=[];const colors=stops[underlay.palette]
+    for(let i=0;i<colors.length-1;i++)for(let step=0;step<=8;step++)backgrounds.push(colors[i].map((v,c)=>v+(colors[i+1][c]-v)*step/8))
+    const e=new custom.CustomRgbEngine(p)
+    assert.deepEqual(e.colorPalettes.get('one'),customRgbContrastPalette(backgrounds),`${effect} palette must be included`)
+    underlay.enabled=false;const without=new custom.CustomRgbEngine(p)
+    assert.deepEqual(without.colorPalettes.get('one'),customRgbContrastPalette([]),'disabled underlays must not restrict colors')
+  }
+})
+test('Ember is hottest on the bottom row and Starlight keeps most keys dark',()=>{
+  const e=new custom.CustomRgbEngine(profile('ember'));let top=0,bottom=0
+  for(let t=110;t<8000;t+=100){e.advance(t);const keys=e.frame().keys;top+=energy(keys.KeyQ)+energy(keys.Digit5);bottom+=energy(keys.KeyZ)+energy(keys.KeyN)+energy(keys.KeyV)}
+  assert.ok(bottom>top*1.5,'fire should burn stronger near the bottom edge')
+  const s=new custom.CustomRgbEngine(profile('starlight'));s.advance(110);let max=0
+  for(let t=110;t<8000;t+=500){s.advance(t);max=Math.max(max,Object.values(s.frame().keys).filter(c=>energy(c)>20).length)}
+  assert.ok(max>0&&max<34,'stars are sparse: some keys lit, never most of the board')
+})
+test('Afterglow stays white-hot while held, then cools to zero after the cool-down',()=>{
+  const p=profile('afterglow');p.custom.layers[0].duration=1000
+  const e=new custom.CustomRgbEngine(p);e.advance(110);e.event('KeyG',true);e.advance(400)
+  const held=e.frame().keys;e.advance(800);assert.equal(e.frame().keys.KeyG,held.KeyG,'held key keeps constant heat')
+  assert.ok(energy(held.KeyG)>energy(held.KeyH),'neighbors are cooler than the pressed key')
+  e.event('KeyG',false);let previous=Infinity
+  for(let t=900;t<=1800;t+=150){e.advance(t);const now=energy(e.frame().keys.KeyG);assert.ok(now<=previous);previous=now}
+  e.advance(2000);assert.equal(e.frame().keys.KeyG,'#000000');assert.equal(e.frame().keys.KeyH,'#000000')
+})
+test('Tempo Pulse (BPM) accents the first beat of each bar and honors tempo',()=>{
+  const p=profile('pulse');p.custom.layers[0].speed=120;p.custom.layers[0].multicolor=false
+  const peak=(at)=>{const e=new custom.CustomRgbEngine(p);e.advance(at);return Math.max(...Object.values(e.frame().keys).map(energy))}
+  assert.ok(peak(30)>peak(30+500),'beat 0 is an accent; beat 1 (500 ms at 120 BPM) is softer')
+  assert.equal(custom.restoreCustomRgb({...p.custom,layers:[{...p.custom.layers[0],speed:9999}]},p).layers[0].speed,200,'tempo is clamped to 200 BPM')
+  assert.equal(custom.restoreCustomRgb({...p.custom,layers:[{...p.custom.layers[0],speed:1}]},p).layers[0].speed,40,'tempo is clamped to 40 BPM')
+})
+test('new palettes restore and old services are told to update for the new effects',()=>{
+  const p=profile('ember');p.custom.baseEffect={effect:'aurora',palette:'synthwave',width:2.5,speed:.5}
+  assert.equal(custom.restoreCustomRgb(JSON.parse(JSON.stringify(p.custom)),p).baseEffect.palette,'synthwave')
+  for(const id of ['ember','starlight','afterglow','pulse'])assert.ok(!custom.LEGACY_RGB_EFFECTS.includes(id))
+  for(const id of ['ember','starlight','afterglow','pulse']){const layer=custom.createRgbLayer(id,'x');assert.equal(layer.multicolor,true);assert.ok(layer.palette)}
+})

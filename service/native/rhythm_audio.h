@@ -13,6 +13,7 @@
 #include <thread>
 #include <sstream>
 #include "rhythm_core.h"
+#include "rhythm_beat.h"
 
 namespace rhythm {
 using Microsoft::WRL::ComPtr;
@@ -49,8 +50,13 @@ class Capture {
   std::mutex mutex_;CaptureState state_;
   std::thread thread_;HANDLE stop_=CreateEventW(nullptr,TRUE,FALSE,nullptr);
   std::string requested_;
+  std::mutex beatMutex_;BeatTracker beat_;std::vector<BeatEvent> beatEvents_;bool beatReset_=false,beatEnabled_=false;double beatRate_=48000;BeatState beatState_;
   uint64_t generation_=0,sequence_=0;
-  void state(const std::string& value,const std::string& error="") { std::lock_guard<std::mutex> lock(mutex_);state_.state=value;state_.error=error;if(value=="connecting"||value=="unavailable"){state_.audio={};state_.audio.generation=++generation_;} }
+  void resetBeat() { std::lock_guard<std::mutex> lock(beatMutex_);beat_.reset(beatRate_);beatEvents_.clear();beatState_={};beatReset_=true; }
+  void state(const std::string& value,const std::string& error="") {
+    {std::lock_guard<std::mutex> lock(mutex_);state_.state=value;state_.error=error;if(value=="connecting"||value=="unavailable"){state_.audio={};state_.audio.generation=++generation_;}}
+    if(value=="connecting"||value=="unavailable")resetBeat();
+  }
   void run() {
     HRESULT init=CoInitializeEx(nullptr,COINIT_MULTITHREADED);DWORD task=0;HANDLE mmcss=AvSetMmThreadCharacteristicsW(L"Audio",&task);
     while(WaitForSingleObject(stop_,0)!=WAIT_OBJECT_0) {
@@ -76,8 +82,9 @@ class Capture {
     struct Event {HANDLE h;~Event(){CloseHandle(h);}} cleanup{event};
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,AUDCLNT_STREAMFLAGS_LOOPBACK|AUDCLNT_STREAMFLAGS_EVENTCALLBACK,0,0,raw,nullptr),"Cannot initialize event-driven loopback");
     check(client->SetEventHandle(event),"Cannot bind loopback event");check(client->GetService(IID_PPV_ARGS(&capture)),"Cannot open capture client");
-    std::array<float,256> ring{};size_t offset=0;double lastDefaultCheck=clockMs();
+    std::array<float,256> ring{};size_t offset=0;double lastDefaultCheck=clockMs(),lastBeatSampleMs=0;std::vector<float> block;
     { std::lock_guard<std::mutex> lock(mutex_);state_={};state_.state="listening";state_.endpoint=id;state_.sampleRate=raw->nSamplesPerSec;state_.channels=raw->nChannels;state_.audio.generation=++generation_; }
+    {std::lock_guard<std::mutex> lock(beatMutex_);beatRate_=raw->nSamplesPerSec;beat_.reset(beatRate_);beatEvents_.clear();beatState_={};beatReset_=true;}
     check(client->Start(),"Cannot start loopback capture");
     HANDLE events[]={stop_,event};
     try {
@@ -89,15 +96,19 @@ class Capture {
           BYTE* data=nullptr;UINT32 count=0;DWORD flags=0;UINT64 position=0,qpc=0;
           check(capture->GetBuffer(&data,&count,&flags,&position,&qpc),"Cannot read loopback buffer");
           double peak=0,sum=0;UINT32 peakIndex=0;const unsigned bytes=raw->wBitsPerSample/8;
-          if(flags&AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY){ring.fill(0);offset=0;++generation_;}
+          if(flags&AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY){ring.fill(0);offset=0;lastBeatSampleMs=0;++generation_;resetBeat();}
+          block.resize(count);
           for(UINT32 i=0;i<count;++i) {
             double mono=0;
             if(!(flags&AUDCLNT_BUFFERFLAGS_SILENT))mono=monoSample(data+i*raw->nBlockAlign,raw->nChannels,bytes,floating);
-            if(mono>peak){peak=mono;peakIndex=i;}sum+=mono;ring[offset]=float(mono);offset=(offset+1)%256;
+            if(mono>peak){peak=mono;peakIndex=i;}sum+=mono;ring[offset]=float(mono);offset=(offset+1)%256;block[i]=float(mono);
           }
           Audio a;for(size_t i=0;i<256;++i)a.samples[i]=ring[(offset+i)%256];
           a.envelope=peak>0?std::max(0.,peak-(count?sum/count:0)):0;a.sampleQpcMs=(flags&AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)?0:double(qpc)/10000+double(peakIndex)*1000/raw->nSamplesPerSec;
           a.receivedMs=clockMs();a.generation=generation_;a.sequence=++sequence_;
+          const double firstSampleMs=(flags&AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)?0:double(qpc)/10000;
+          lastBeatSampleMs=beatPacketEndMs(firstSampleMs,count,raw->nSamplesPerSec,a.receivedMs,lastBeatSampleMs);
+          {std::lock_guard<std::mutex> lock(beatMutex_);if(beatEnabled_){beat_.push(block.data(),block.size(),lastBeatSampleMs);auto ev=beat_.takeEvents();beatEvents_.insert(beatEvents_.end(),ev.begin(),ev.end());if(beatEvents_.size()>256)beatEvents_.erase(beatEvents_.begin(),beatEvents_.end()-256);beatState_=beat_.state();}}
           check(capture->ReleaseBuffer(count),"Cannot release loopback buffer");
           {std::lock_guard<std::mutex> lock(mutex_);state_.audio=a;state_.state=peak>.0001?"active":"silent";}
           check(capture->GetNextPacketSize(&size),"Loopback capture interrupted");
@@ -110,7 +121,11 @@ class Capture {
 public:
   ~Capture(){stop();CloseHandle(stop_);}
   void start(const std::string& endpoint) { if(thread_.joinable()&&requested_==endpoint)return;stop();requested_=endpoint;ResetEvent(stop_);thread_=std::thread([this]{run();}); }
-  void stop(){SetEvent(stop_);if(thread_.joinable())thread_.join();std::lock_guard<std::mutex> lock(mutex_);state_={};}
+  void stop(){SetEvent(stop_);if(thread_.joinable())thread_.join();{std::lock_guard<std::mutex> lock(mutex_);state_={};}resetBeat();}
   CaptureState snapshot(){std::lock_guard<std::mutex> lock(mutex_);return state_;}
+  void setSensitivity(double value){std::lock_guard<std::mutex> lock(beatMutex_);beat_.setSensitivity(value);}
+  void setBeatEnabled(bool enabled){std::lock_guard<std::mutex> lock(beatMutex_);if(beatEnabled_==enabled)return;beatEnabled_=enabled;beat_.reset(beatRate_);beatEvents_.clear();beatState_={};beatReset_=true;}
+  // Moves the beat events collected since the last call. `reset` is true when the stream restarted or had a gap.
+  void drainBeat(std::vector<BeatEvent>& events,BeatState& state,bool& reset){std::lock_guard<std::mutex> lock(beatMutex_);events.swap(beatEvents_);beatEvents_.clear();state=beatState_;reset=beatReset_;beatReset_=false;}
 };
 }

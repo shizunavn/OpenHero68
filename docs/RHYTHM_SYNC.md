@@ -22,6 +22,7 @@ and does not capture audio or write USB.
 | 172 | Gurgling Stream |
 | 173 | Blooming Passion |
 | 428 | Dynamic Spectrum |
+| 430 | Beat Pulse |
 | 180 | Off |
 
 The HERO68 profile uses all 68 real POS values, including AltRight/POS71.
@@ -35,6 +36,36 @@ and 503 (rise/fall light field) have renderers and protocol tests, but **live
 side capability is false**. Starting them is rejected by both API and native
 helper. Count, LED order, RGB channel order, `0E/01`, `0E/02` and restoration
 still need physical verification; demo's 18 positions are illustrative.
+
+## Beat Pulse (mode 430)
+
+Unlike the stock modes, which react to loudness, Beat Pulse reacts to **events**. `rhythm_beat.h` analyses every
+loopback packet while mode 430 is active (not the 256-sample snapshot): 2048-point FFT, hop 512, log-compressed spectral flux in three bands
+(kick 35–150 Hz, snare 150 Hz–2.5 kHz, hat 4–12 kHz), an adaptive threshold built from past frames only, a refractory
+time per band, kick/snare classification by band balance with next-hop correction, and a tempo tracker (autocorrelation
+of the onset curve, 60–200 BPM, octave-biased toward 125 BPM) driving a phase-locked beat grid.
+`rhythm_pulse.h` draws the events: kick → shockwave ring from the space bar (white leading edge), snare → light slash
+alternating direction, hat → short sparkles, number row → beat clock (one sweep per beat; a 4-step playhead only when a
+clear accent pattern gives the bar position). Each event has its own hue, so consecutive beats are distinguishable.
+
+Timing: effects use audio sample QPC time, with a continuous sample timeline fallback for invalid packet timestamps. The renderer samples the animation at 60 Hz; USB scheduling and physical LED latency still apply. Detector delay is about 12–20 ms
+(measured on synthetic audio). "Light timing" (-100…+150 ms, protocol field 15) shifts the light; negative values are
+possible because grid beats are emitted up to 120 ms ahead. Reactive kick/snare/hat hits cannot be pulled earlier than
+detection; a negative offset advances their animation age only after detection. Positive offsets delay all events.
+Sensitivity for this mode ranges from 1–10 (older values below 1 normalize to 1); the envelope Release control does not apply.
+Corrections retain source event IDs, so a retract/amend cannot affect a later downbeat or another hit. Stream restarts
+clear detector/render state, and losing tempo lock discards pending predicted beats.
+Existing modes retain their 14-field native command; only mode 430 appends the timing field.
+Beat Pulse requires the updated native helper and service core together in the next complete Windows package.
+
+Safety: at most three large events per second at full amplitude (further ones are halved), peak 75 % for red palettes,
+and a soft clip; no full-board strobe exists. Synthetic measurements: ≤3 luminance rises ≥10 % in any second at 128 BPM.
+This is a conservative design, not a WCAG conformance test of the physical keyboard.
+
+Verified only on synthetic drum audio (`tests/native-beat.test.cpp`, `tests/native-pulse.test.cpp`): hit detection
+(kick or snare, class ignored) precision >0.9 and recall >0.95 and kick/snare class accuracy >0.75 at 100–170 BPM, tempo
+within 3 % (measured ≤0.3 %; a 200 BPM track is reported as its 100 BPM half-time), lock in about 3 s, silence/noise/steady tones produce no
+grid. Real music (dense mixes, swing, tempo changes, half-time) and hardware light latency are **not** verified.
 
 ## Native pipeline
 

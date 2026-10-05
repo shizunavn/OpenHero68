@@ -9,5 +9,5 @@ export function nativeRhythmCommand(input: RhythmConfiguration) {
     ...[1,3,5].map(i=>parseInt(c.color.slice(i,i+2),16)),
     ['fixed','rainbow','aurora','fire'].indexOf(c.palette),c.spectrum.db,
     ['hann','hamming','blackman'].indexOf(c.spectrum.window),c.spectrum.spatialRadius,1,
-    Buffer.from(c.endpoint,'utf8').toString('hex')].join(';')
+    Buffer.from(c.endpoint,'utf8').toString('hex'),...(c.keyMode===430?[c.syncOffsetMs]:[])].join(';')
 }
