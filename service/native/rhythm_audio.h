@@ -45,7 +45,7 @@ inline std::string audioDevices() {
   }
   devices.Reset();en.Reset();if(SUCCEEDED(init))CoUninitialize();return out;
 }
-struct CaptureState { Audio audio;std::string state="stopped",error,endpoint;unsigned sampleRate=0,channels=0; };
+struct CaptureState { Audio audio;std::string state="stopped",error,endpoint;unsigned sampleRate=0,channels=0;double level=0; };
 class Capture {
   std::mutex mutex_;CaptureState state_;
   std::thread thread_;HANDLE stop_=CreateEventW(nullptr,TRUE,FALSE,nullptr);
@@ -54,7 +54,7 @@ class Capture {
   uint64_t generation_=0,sequence_=0;
   void resetBeat() { std::lock_guard<std::mutex> lock(beatMutex_);beat_.reset(beatRate_);beatEvents_.clear();beatState_={};beatReset_=true; }
   void state(const std::string& value,const std::string& error="") {
-    {std::lock_guard<std::mutex> lock(mutex_);state_.state=value;state_.error=error;if(value=="connecting"||value=="unavailable"){state_.audio={};state_.audio.generation=++generation_;}}
+    {std::lock_guard<std::mutex> lock(mutex_);state_.state=value;state_.error=error;if(value=="connecting"||value=="unavailable"){state_.audio={};state_.level=0;state_.audio.generation=++generation_;}}
     if(value=="connecting"||value=="unavailable")resetBeat();
   }
   void run() {
@@ -95,13 +95,13 @@ class Capture {
         while(size) {
           BYTE* data=nullptr;UINT32 count=0;DWORD flags=0;UINT64 position=0,qpc=0;
           check(capture->GetBuffer(&data,&count,&flags,&position,&qpc),"Cannot read loopback buffer");
-          double peak=0,sum=0;UINT32 peakIndex=0;const unsigned bytes=raw->wBitsPerSample/8;
+          double peak=0,sum=0,inputPeak=0;UINT32 peakIndex=0;const unsigned bytes=raw->wBitsPerSample/8;
           if(flags&AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY){ring.fill(0);offset=0;lastBeatSampleMs=0;++generation_;resetBeat();}
           block.resize(count);
           for(UINT32 i=0;i<count;++i) {
             double mono=0;
             if(!(flags&AUDCLNT_BUFFERFLAGS_SILENT))mono=monoSample(data+i*raw->nBlockAlign,raw->nChannels,bytes,floating);
-            if(mono>peak){peak=mono;peakIndex=i;}sum+=mono;ring[offset]=float(mono);offset=(offset+1)%256;block[i]=float(mono);
+            inputPeak=std::max(inputPeak,std::abs(mono));if(mono>peak){peak=mono;peakIndex=i;}sum+=mono;ring[offset]=float(mono);offset=(offset+1)%256;block[i]=float(mono);
           }
           Audio a;for(size_t i=0;i<256;++i)a.samples[i]=ring[(offset+i)%256];
           a.envelope=peak>0?std::max(0.,peak-(count?sum/count:0)):0;a.sampleQpcMs=(flags&AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)?0:double(qpc)/10000+double(peakIndex)*1000/raw->nSamplesPerSec;
@@ -110,13 +110,13 @@ class Capture {
           lastBeatSampleMs=beatPacketEndMs(firstSampleMs,count,raw->nSamplesPerSec,a.receivedMs,lastBeatSampleMs);
           {std::lock_guard<std::mutex> lock(beatMutex_);if(beatEnabled_){beat_.push(block.data(),block.size(),lastBeatSampleMs);auto ev=beat_.takeEvents();beatEvents_.insert(beatEvents_.end(),ev.begin(),ev.end());if(beatEvents_.size()>256)beatEvents_.erase(beatEvents_.begin(),beatEvents_.end()-256);beatState_=beat_.state();}}
           check(capture->ReleaseBuffer(count),"Cannot release loopback buffer");
-          {std::lock_guard<std::mutex> lock(mutex_);state_.audio=a;state_.state=peak>.0001?"active":"silent";}
+          {std::lock_guard<std::mutex> lock(mutex_);state_.audio=a;state_.level=std::clamp(inputPeak,0.,1.);state_.state=inputPeak>.0001?"active":"silent";}
           check(capture->GetNextPacketSize(&size),"Loopback capture interrupted");
         }
       }
     }catch(...){client->Stop();throw;}
     client->Stop();
-    {std::lock_guard<std::mutex> lock(mutex_);state_.audio={};state_.audio.generation=++generation_;}
+    {std::lock_guard<std::mutex> lock(mutex_);state_.audio={};state_.level=0;state_.audio.generation=++generation_;}
   }
 public:
   ~Capture(){stop();CloseHandle(stop_);}

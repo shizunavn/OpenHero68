@@ -3,6 +3,13 @@
 UI and Windows service versions are independent. Historical notes below retain
 their original validation scope; they are not claims of new hardware testing.
 
+## Service 0.5.3.1 — Beat Pulse input fixes
+
+- Normalize quiet PCM gradually before Beat Pulse spectral analysis, preserving transient attacks and existing noise rejection.
+- Analyze high-rate audio at no more than 48 kHz; 192 kHz endpoints previously could never fill the required tempo history.
+- Report captured PCM amplitude in the Audio meter instead of rendered LED brightness. Detect audio activity from both positive and negative sample peaks.
+- Validate beat lock and tempo with 44.1–192 kHz PCM and quiet playback at -50 dB. Physical LED alignment and accuracy across all music remain unverified.
+
 ## Service 0.5.3 / UI 0.9.56 — new Custom and Rhythm effects
 
 - Add Ember, Starlight, Afterglow and Tempo Pulse (BPM) effects, and Ember, Ocean, Sakura and Synthwave palettes.

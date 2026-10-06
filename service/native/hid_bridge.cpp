@@ -265,7 +265,7 @@ int main() {
             for(size_t i=0;i<encoded.keys.size();++i){if(i)event<<',';char color[8];sprintf_s(color,"#%02x%02x%02x",encoded.keys[i][0],encoded.keys[i][1],encoded.keys[i][2]);event<<rhythm::jsonString(color);}
             event<<"],\"packets\":"<<encoded.packets.size()<<",\"frameMs\":"<<completed-now<<",\"gapMs\":"<<(lastFrame?completed-lastFrame:0)<<",\"droppedFrames\":"<<dropped;
             event<<",\"renderMs\":"<<renderedAt-now<<",\"encodeMs\":"<<encodedAt-renderedAt<<",\"writeMs\":"<<completed-encodedAt;
-            event<<",\"audioLevel\":"<<frame.level<<",\"audioState\":"<<rhythm::jsonString(audio.state)<<",\"audioError\":"<<rhythm::jsonString(audio.error)<<",\"sampleRate\":"<<audio.sampleRate<<",\"audioEndpoint\":"<<rhythm::jsonString(audio.endpoint);
+            event<<",\"audioLevel\":"<<audio.level<<",\"audioState\":"<<rhythm::jsonString(audio.state)<<",\"audioError\":"<<rhythm::jsonString(audio.error)<<",\"sampleRate\":"<<audio.sampleRate<<",\"audioEndpoint\":"<<rhythm::jsonString(audio.endpoint);
             // Silence and repeatedly rendered snapshots are not latency samples.
             const bool freshAudio=audio.audio.sequence!=lastAudioSequence&&audio.audio.envelope>.0001&&audio.audio.sampleQpcMs>0&&completed-audio.audio.receivedMs<100;
             const double sampleLatency=completed-audio.audio.sampleQpcMs;

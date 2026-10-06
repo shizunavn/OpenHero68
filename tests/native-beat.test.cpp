@@ -101,6 +101,18 @@ int main(int argc, char** argv) {
     check(pct(aerr, .95) < 30, "grid jitter p95 < 30 ms");
     check(downAll == 0 || double(downOk) / downAll > .8, "downbeat flag mostly correct");
   }
+  // WASAPI can expose high-rate endpoints and very quiet playback. The original
+  // detector never reached its 3-second tempo history at 192 kHz and missed
+  // almost every hit at -50 dB. Exercise real PCM rates, not mocked events.
+  for(double fs:{44100.,48000.,88200.,96000.,192000.})for(double gain:{1.,.00316}) {
+    Song s=makeSong(fs,128,18,896);for(auto& x:s.pcm)x*=float(gain);
+    const auto r=run(s,size_t(fs/100)+13);
+    int classified=0;const auto hits=matchHits(r.ev,s.beats,6,classified,s.kicks);
+    std::printf("rate/level regression: fs %.0f gain %.5f bpm %.1f lock %.1f\n",fs,gain,r.bpm,r.lockTime);
+    check(r.lockTime>=0&&r.lockTime<6,"high-rate and quiet PCM locks within six seconds");
+    check(std::abs(r.bpm-128)<2,"high-rate and quiet PCM retains tempo");
+    check(hits.tp>0&&double(hits.tp)/(hits.tp+hits.fn)>.85,"quiet/high-rate beat recall exceeds 85 percent");
+  }
   // Capture receipt jitter must not change event timing when sample QPC is valid.
   {Song s=makeSong(48000,128,12,896);std::vector<BeatEvent> reference;
     for(int scenario=0;scenario<3;++scenario){BeatTracker tr(s.fs);std::vector<BeatEvent> events;double previous=0;

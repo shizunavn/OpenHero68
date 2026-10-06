@@ -48,7 +48,9 @@ public:
   explicit BeatTracker(double sampleRate = 48000.) { reset(sampleRate); }
   void setSensitivity(double sensitivity) { sens_ = std::clamp(sensitivity / 4., .25, 4.); }
   void reset(double sampleRate) {
-    fs_ = sampleRate > 8000 ? sampleRate : 48000.;
+    inputFs_ = std::isfinite(sampleRate) && sampleRate > 8000 ? sampleRate : 48000.;
+    fs_ = std::min(inputFs_, 48000.);
+    resamplePhase_ = resampleSum_ = levelRms_ = 0;
     ring_.fill(0); ringPos_ = sinceHop_ = 0; total_ = hopIndex_ = 0;
     for (int n = 0; n < kFft; ++n) window_[n] = float(.5 - .5 * std::cos(2 * 3.14159265358979323846 * n / kFft));
     for (unsigned i = 0, bits = 11; i < kFft; ++i) { unsigned r = 0; for (unsigned b = 0; b < bits; ++b) if (i >> b & 1) r |= 1u << (bits - 1 - b); rev_[i] = r; }
@@ -69,10 +71,20 @@ public:
 
   void push(const float* mono, size_t count, double nowMs) {
     for (size_t i = 0; i < count; ++i) {
-      ring_[ringPos_] = std::isfinite(mono[i]) ? mono[i] : 0.f; ringPos_ = (ringPos_ + 1) % kFft; ++total_;
-      if (++sinceHop_ == kHop) {
-        sinceHop_ = 0;
-        if (total_ >= kFft) analyze(nowMs - double(count - 1 - i) * 1000. / fs_);
+      const float sample = std::isfinite(mono[i]) ? mono[i] : 0.f;
+      const double at = nowMs - double(count - 1 - i) * 1000. / inputFs_;
+      if (inputFs_ == fs_) append(sample, at);
+      else {
+        // Integrate input samples over each output interval. The phase survives
+        // packet boundaries, including noninteger rates such as 88.2 kHz.
+        const double step = fs_ / inputFs_;
+        resampleSum_ += sample * step;
+        resamplePhase_ += step;
+        if (resamplePhase_ >= 1. - 1e-9) {
+          const double excess = std::max(0., resamplePhase_ - 1.);
+          append(float(resampleSum_ - sample * excess), at - excess * 1000. / fs_);
+          resamplePhase_ = excess; resampleSum_ = sample * excess;
+        }
       }
     }
   }
@@ -81,7 +93,8 @@ public:
 
 private:
   using Cx = std::complex<float>;
-  double fs_ = 48000, sens_ = 1;
+  double fs_ = 48000, inputFs_ = 48000, sens_ = 1;
+  double resamplePhase_ = 0, resampleSum_ = 0, levelRms_ = 0;
   std::array<float, kFft> ring_{}, window_{};
   size_t ringPos_ = 0, sinceHop_ = 0; uint64_t total_ = 0; long hopIndex_ = 0;
   std::array<unsigned, kFft> rev_{}; std::array<Cx, kFft / 2> tw_{};
@@ -112,12 +125,25 @@ private:
   static constexpr double kFloor[kBands] = {.25, .20, .12}, kRefractMs[kBands] = {120, 95, 45}, kStd[kBands] = {1.2, 1.2, 1.2}, kWeight[kBands] = {1., .7, .3};
   static constexpr double kRel = 2.5;
 
+  void append(float sample, double at) {
+    ring_[ringPos_] = sample; ringPos_ = (ringPos_ + 1) % kFft; ++total_;
+    if (++sinceHop_ == kHop) { sinceHop_ = 0; if (total_ >= kFft) analyze(at); }
+  }
   void analyze(double hopTime) {
     static thread_local std::array<Cx, kFft> a;
+    double energy = 0;
+    for (float x : ring_) energy += double(x) * x;
+    const double rms = std::sqrt(energy / kFft);
+    const double hopMs = 1000. * kHop / fs_;
+    levelRms_ += (rms - levelRms_) * (levelRms_ == 0 ? 1. : 1. - std::exp(-hopMs / 2000.));
+    // Normalize quiet playback before log compression. Smooth gain over two
+    // seconds so individual drums retain their attack instead of being leveled
+    // independently; cap gain to avoid amplifying digital silence indefinitely.
+    const float gain = float(std::clamp(.04 / std::max(levelRms_, .000625), 1., 64.));
     for (int n = 0; n < kFft; ++n) a[n] = Cx(ring_[(ringPos_ + n) % kFft] * window_[n], 0.f);
     fft(a);
     std::array<float, kBins> L{};
-    for (int k = 1; k < kBins; ++k) L[k] = std::log1p(1000.f * std::abs(a[k]) / (kFft / 4.f));
+    for (int k = 1; k < kBins; ++k) L[k] = std::log1p(1000.f * gain * std::abs(a[k]) / (kFft / 4.f));
     float flux[kBands];
     for (int b = 0; b < kBands; ++b) {
       double s = 0;
@@ -125,7 +151,6 @@ private:
       flux[b] = float(s / (hi_[b] - lo_[b] + 1));
     }
     prevL_ = L; ++hopIndex_;
-    const double hopMs = 1000. * kHop / fs_;
 
     // 1) Detect against the threshold built from PAST frames only, then update the history.
     bool fire[kBands]{}; float strength[kBands]{}, weight[kBands]{};
