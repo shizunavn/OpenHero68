@@ -21,7 +21,7 @@ import {LAUNCHER_VERSION,CORE_VERSION,CORE_API_VERSION} from './updatePackage'
 import {createSetupUpdater} from './setupUpdater'
 import {serviceControlPanel} from './controlPanel'
 import {readUpdateStatus,terminal} from './installState'
-import {defaultRhythm,validateRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SIDE_VERIFIED,type RhythmConfiguration} from './rhythm'
+import {defaultRhythm,validateRhythm,restoreRhythm,nativeRhythmCommand,RHYTHM_MODES,RHYTHM_SIDE_VERIFIED,type RhythmConfiguration} from './rhythm'
 import {latestSse} from './latestSse'
 import {profileRequest} from './profileSelection'
 import {CustomPlayback} from './customPlayback'
@@ -77,7 +77,7 @@ const tachyonLighting=new TachyonLighting(tachyonSnapshot, snapshot=>{tachyonLig
 let profile:RgbProfile|null=null, mode:'onboard'|'custom'|'rhythm'='onboard', connected=false, closing=false, updating=false
 let customRevision=0
 let rhythmConfig:RhythmConfiguration=defaultRhythm(),savedMode:'onboard'|'custom'|'rhythm'='onboard',configurationBusy=false
-try{rhythmConfig=validateRhythm(JSON.parse(readFileSync(path.join(stateDir,'rhythm-preset.json'),'utf8')))}catch{}
+try{rhythmConfig=restoreRhythm(JSON.parse(readFileSync(path.join(stateDir,'rhythm-preset.json'),'utf8')))}catch{}
 function persistRhythm(){const file=path.join(stateDir,'rhythm-preset.json');writeFileSync(file+'.tmp',JSON.stringify(rhythmConfig));renameSync(file+'.tmp',file)}
 try{const saved=JSON.parse(readFileSync(path.join(stateDir,'preset.json'),'utf8'));if(saved.profile)profile=normalizeProfile(saved.profile);savedMode=saved.savedMode??saved.mode??(saved.enabled?'custom':'onboard');mode=saved.mode==='rhythm'?'rhythm':saved.mode==='custom'||(saved.mode===undefined&&saved.enabled===true)?'custom':'onboard'}catch{}
 if(tachyon){

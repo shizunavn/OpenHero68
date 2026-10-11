@@ -3,7 +3,7 @@ import { AudioLines, Play, Square, RotateCcw, SlidersHorizontal, Layers, Downloa
 import Hero68Preview from './Hero68Preview'
 import RgbColorPicker from './RgbColorPicker'
 import { RgbPreviewPanel, RgbToolbarSlot } from './RgbWorkspace'
-import { defaultRhythm, validateRhythm, rhythmDemo, RHYTHM_MODES, RHYTHM_SIDE_MODES, type RhythmConfiguration } from '../keyboard/rhythm'
+import { defaultRhythm, validateRhythm, restoreRhythm, rhythmDemo, RHYTHM_MODES, RHYTHM_SIDE_MODES, type RhythmConfiguration } from '../keyboard/rhythm'
 import { HERO68_KEY_IDS } from '../keyboard/hero68Layout'
 import type { AdvancedBinding } from '../protocol/hero68/advanced'
 import { rgbService, type AudioEndpoint, type RgbServiceFrame } from '../protocol/rgbService'
@@ -18,10 +18,10 @@ import './RhythmSyncEditor.css'
 
 const draftKey='openhero68:rhythm-draft:v1'
 const darkKeys=Object.fromEntries(HERO68_KEY_IDS.map(id=>[id,'#161a1e']))
-function readDraft(){try{return validateRhythm(JSON.parse(localStorage.getItem(draftKey)??'null'))}catch{return defaultRhythm()}}
+function readDraft(){try{return restoreRhythm(JSON.parse(localStorage.getItem(draftKey)??'null'))}catch{return defaultRhythm()}}
 function Thumbnail({shape}:{shape:string}) {
   return <svg viewBox="0 0 104 48" aria-hidden="true" className={`rhythm-thumb rhythm-thumb-${shape}`}>
-    {shape==='pulse'?<g fill="none" stroke="currentColor"><ellipse cx="52" cy="40" rx="14" ry="7"/><ellipse cx="52" cy="40" rx="30" ry="16" opacity=".6"/><path d="M18 10L36 6M62 6L86 10" strokeWidth="2" strokeLinecap="round"/><path d="M24 24L44 24" strokeWidth="4" strokeLinecap="round" opacity=".5"/></g>:shape==='rings'||shape==='bloom'?<g fill="none" stroke="currentColor"><ellipse cx={shape==='rings'?52:38} cy="24" rx="9" ry="5"/><ellipse cx={shape==='rings'?52:38} cy="24" rx="21" ry="12"/><ellipse cx={shape==='rings'?52:38} cy="24" rx="36" ry="21"/></g>:
+    {shape==='rings'||shape==='bloom'?<g fill="none" stroke="currentColor"><ellipse cx={shape==='rings'?52:38} cy="24" rx="9" ry="5"/><ellipse cx={shape==='rings'?52:38} cy="24" rx="21" ry="12"/><ellipse cx={shape==='rings'?52:38} cy="24" rx="36" ry="21"/></g>:
       shape==='field'?<rect x="10" y="8" width="84" height="32" rx="6" fill="currentColor" opacity=".6"/>:
       shape==='off'?<path d="M34 8L70 40M70 8L34 40" stroke="currentColor" strokeWidth="2"/>:
       Array.from({length:12},(_,i)=><rect key={i} x={10+i*7} y={40-(shape==='spectrum'?8+Math.sin(i*.8)*12+16:10+Math.sin(i*.6)*9+12)} width="4" height={shape==='spectrum'?8+Math.sin(i*.8)*12+16:10+Math.sin(i*.6)*9+12} rx="2" fill="currentColor" opacity={.4+i*.05}/>)}
@@ -70,14 +70,14 @@ export default function RhythmSyncEditor({onSetup,visible=true,advancedBindings=
   const live=status?.mode==='rhythm'&&status.enabled
   const applied=!!session&&status?.sessionId===session&&live
   const sideSupported=config.sideMode===500||!!status?.supportedRhythmSideModes?.includes(config.sideMode)
-  const keySupported=status?.supportedRhythmModes?.includes(config.keyMode)??config.keyMode!==430
+  const keySupported=status?.supportedRhythmModes?.includes(config.keyMode)??true
   // Rejoin the service's current configuration. Merely opening this editor never
   // writes the old local draft or restarts audio capture.
   useEffect(()=>{
     if(busy||demo)return
     if(compatible&&live&&status.sessionId&&status.rhythmConfiguration&&session!==status.sessionId){
       action.current++;queue.current?.close();queue.current=null
-      setConfig(validateRhythm(status.rhythmConfiguration));setSession(status.sessionId);setError(null)
+      setConfig(restoreRhythm(status.rhythmConfiguration));setSession(status.sessionId);setError(null)
     }else if(session&&(!live||status?.sessionId!==session)){
       action.current++;queue.current?.close();queue.current=null;setSession(null)
     }
@@ -104,7 +104,7 @@ export default function RhythmSyncEditor({onSetup,visible=true,advancedBindings=
   function change(patch:Partial<RhythmConfiguration>){
     const next=validateRhythm({...current.current,...patch});current.current=next;setError(null);setConfig(next)
     if(applied&&!demo){
-      if(!(status?.supportedRhythmModes?.includes(next.keyMode)??next.keyMode!==430)){setError(tr('Update the background app to use this rhythm mode.'));return}
+      if(!(status?.supportedRhythmModes?.includes(next.keyMode)??true)){setError(tr('Update the background app to use this rhythm mode.'));return}
       if(next.sideMode!==500&&!status?.supportedRhythmSideModes?.includes(next.sideMode)){
         setError(tr('This firmware does not support live side rhythm. Keys keep playing with the last supported settings.'));return
       }
@@ -120,7 +120,7 @@ export default function RhythmSyncEditor({onSetup,visible=true,advancedBindings=
     try{
       const fresh=await refreshRgbService()
       if(!fresh||(fresh.apiVersion??0)<5)throw Error(tr('Update the Windows background app to 0.3.0 or later.'))
-      if(!(fresh.supportedRhythmModes?.includes(current.current.keyMode)??current.current.keyMode!==430))throw Error(tr('Update the background app to use this rhythm mode.'))
+      if(!(fresh.supportedRhythmModes?.includes(current.current.keyMode)??true))throw Error(tr('Update the background app to use this rhythm mode.'))
       if(hero68HallStream.getSnapshot().active||hero68HallStream.getSnapshot().starting)await hero68HallStream.stop()
       if(hero68DeviceManager.connected&&!hero68DeviceManager.viaService)await hero68DeviceManager.disconnect()
       if(token!==action.current)return
@@ -153,15 +153,13 @@ export default function RhythmSyncEditor({onSetup,visible=true,advancedBindings=
     </RgbToolbarSlot>
     <section className={`rhythm-editor custom-rgb-content${locked?' is-locked':''}`} inert={locked} aria-label="Rhythm Sync">
     <RhythmPreview configuration={config} demo={demo} live={!!live} paused={locked||!visible} sessionId={status?.sessionId} advancedBindings={advancedBindings}/>
-    <div className="rhythm-layout"><div className="settings-card rhythm-modes"><h3>{tr('Key rhythm')}</h3><div className="rhythm-mode-grid">{RHYTHM_MODES.map(mode=><button type="button" key={mode.id} className={config.keyMode===mode.id?'active':''} aria-pressed={config.keyMode===mode.id} onClick={()=>change({keyMode:mode.id})} disabled={busy||!demo&&!(status?.supportedRhythmModes?.includes(mode.id)??mode.id!==430)} title={!demo&&!(status?.supportedRhythmModes?.includes(mode.id)??mode.id!==430)?tr('Update the background app to use this rhythm mode.'):undefined}><Thumbnail shape={mode.shape}/><strong>{tr(mode.name)}</strong><span>{tr(mode.description)}</span></button>)}</div>
+    <div className="rhythm-layout"><div className="settings-card rhythm-modes"><h3>{tr('Key rhythm')}</h3><div className="rhythm-mode-grid">{RHYTHM_MODES.map(mode=><button type="button" key={mode.id} className={config.keyMode===mode.id?'active':''} aria-pressed={config.keyMode===mode.id} onClick={()=>change({keyMode:mode.id})} disabled={busy||!demo&&!(status?.supportedRhythmModes?.includes(mode.id)??true)} title={!demo&&!(status?.supportedRhythmModes?.includes(mode.id)??true)?tr('Update the background app to use this rhythm mode.'):undefined}><Thumbnail shape={mode.shape}/><strong>{tr(mode.name)}</strong><span>{tr(mode.description)}</span></button>)}</div>
       <h3>{tr('Side rhythm')}</h3><div className="rhythm-side-modes" role="group" aria-label={tr('Side rhythm')}>{RHYTHM_SIDE_MODES.map(mode=><button type="button" key={mode.id} className="secondary-button" aria-pressed={config.sideMode===mode.id} disabled={busy||!demo&&mode.id!==500&&!status?.supportedRhythmSideModes?.includes(mode.id)} title={!demo&&mode.id!==500&&!status?.supportedRhythmSideModes?.includes(mode.id)?tr('Requires firmware with live side rhythm support'):undefined} onClick={()=>change({sideMode:mode.id})}>{tr(mode.name)}</button>)}</div></div>
       <section className="settings-card rhythm-controls"><div className="rhythm-control-heading"><h3><SlidersHorizontal size={17}/> {tr(selected.name)}</h3><button type="button" className="rhythm-reset" aria-label={tr('Reset mode parameters')} title={tr('Reset mode parameters')} onClick={()=>change({...defaultRhythm(),keyMode:config.keyMode,sideMode:config.sideMode,endpoint:config.endpoint})}><RotateCcw size={16}/></button></div>
-        {config.keyMode===430&&<p className="custom-rgb-description">{tr('Automatic tempo may differ from the track BPM. Locking to the beat can take a few seconds.')}</p>}
         <label className="rhythm-select">{tr('Audio source')}<AppSelect label={tr('Audio source')} value={config.endpoint} disabled={busy} onChange={endpoint=>change({endpoint})} options={[{value:'default',label:tr('Follow Windows default')},...(!endpoints.some(d=>d.id===config.endpoint)&&config.endpoint!=='default'?[{value:config.endpoint,label:tr('Saved device · unavailable')}]:[]),...endpoints.map(d=>({value:d.id,label:d.name+(d.default?' (default)':'')}))]} /><small>{tr('Captures music playing through your speakers or headphones.')}</small></label>
         <div className="rgb-parameters rhythm-sliders"><label>{tr('Brightness')} <strong>{config.brightness}%</strong><input aria-label={tr('Rhythm brightness')} type="range" min={0} max={100} value={config.brightness} onChange={e=>change({brightness:+e.target.value})}/></label>
-          <label>{config.keyMode===428?tr('Spectrum sensitivity'):tr('Sensitivity')} <strong>{config.keyMode===428?config.spectrum.db:`${config.sensitivity.toFixed(1)}×`}</strong><input aria-label={tr('Rhythm sensitivity')} type="range" min={config.keyMode===428?0:config.keyMode===430?1:.1} max={config.keyMode===428?100:10} step={config.keyMode===428?1:.1} value={config.keyMode===428?config.spectrum.db:config.sensitivity} onChange={e=>config.keyMode===428?change({spectrum:{...config.spectrum,db:+e.target.value}}):change({sensitivity:+e.target.value})}/></label>
-          {config.keyMode===430&&<label>{tr('Light timing')} <strong>{config.syncOffsetMs>0?'+':''}{config.syncOffsetMs} ms</strong><input aria-label={tr('Beat Pulse light timing')} type="range" min={-100} max={150} step={5} value={config.syncOffsetMs} onChange={e=>change({syncOffsetMs:+e.target.value})}/><small>{tr('Negative shifts predicted beats earlier. Detected hits start after detection; positive delays all light.')}</small></label>}
-          {config.keyMode!==430&&<label>{tr('Release / smoothing')} <strong>{config.releaseMs} ms</strong><input aria-label={tr('Rhythm release time')} type="range" min={0} max={200} step={5} value={config.releaseMs} onChange={e=>change({releaseMs:+e.target.value})}/><small>{tr('Fast attack. Release only softens the fade.')}</small></label>}</div>
+          <label>{config.keyMode===428?tr('Spectrum sensitivity'):tr('Sensitivity')} <strong>{config.keyMode===428?config.spectrum.db:`${config.sensitivity.toFixed(1)}×`}</strong><input aria-label={tr('Rhythm sensitivity')} type="range" min={config.keyMode===428?0:.1} max={config.keyMode===428?100:10} step={config.keyMode===428?1:.1} value={config.keyMode===428?config.spectrum.db:config.sensitivity} onChange={e=>config.keyMode===428?change({spectrum:{...config.spectrum,db:+e.target.value}}):change({sensitivity:+e.target.value})}/></label>
+          <label>{tr('Release / smoothing')} <strong>{config.releaseMs} ms</strong><input aria-label={tr('Rhythm release time')} type="range" min={0} max={200} step={5} value={config.releaseMs} onChange={e=>change({releaseMs:+e.target.value})}/><small>{tr('Fast attack. Release only softens the fade.')}</small></label></div>
         <label className="rhythm-select">{tr('Colors')}<AppSelect<RhythmConfiguration['palette']> label={tr('Colors')} value={config.palette} onChange={palette=>change({palette})} options={[{value:'fixed',label:tr('Single color')},{value:'rainbow',label:tr('Rainbow')},{value:'aurora',label:tr('Aurora')},{value:'fire',label:tr('Fire')}]} /></label>
         {config.palette==='fixed'&&<div className="rhythm-color"><RgbColorPicker label={tr('Rhythm color')} value={config.color} onChange={color=>change({color})}/><span>{config.color.toUpperCase()}</span></div>}
         <details className="rhythm-advanced"><summary>{tr('Details')}</summary>

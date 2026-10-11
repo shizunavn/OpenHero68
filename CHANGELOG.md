@@ -3,6 +3,12 @@
 UI and Windows service versions are independent. Historical notes below retain
 their original validation scope; they are not claims of new hardware testing.
 
+## Service 0.5.3.2 / UI 0.9.57 — remove Beat Pulse
+
+- Remove audio Beat Pulse from Rhythm Sync because beat detection was unreliable on real music. Remove its native detector, renderer and timing controls.
+- Migrate saved Beat Pulse presets and web drafts to Dynamic Spectrum, retaining shared settings; reject new requests for removed mode 430.
+- Keep the existing Rhythm loudness/spectrum modes and Custom Tempo Pulse (manual BPM).
+
 ## Service 0.5.3.1 — Beat Pulse input fixes
 
 - Normalize quiet PCM gradually before Beat Pulse spectral analysis, preserving transient attacks and existing noise rejection.

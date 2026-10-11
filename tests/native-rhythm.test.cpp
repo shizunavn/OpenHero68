@@ -6,6 +6,8 @@
 #include <numeric>
 using namespace rhythm;
 int main() {
+  Config removed;removed.keyMode=430;assert(!valid(removed));
+  Engine rejected;bool failed=false;try{rejected.configure(removed);}catch(const std::exception&){failed=true;}assert(failed);
   assert(std::set<uint8_t>(positions.begin(),positions.end()).size()==68);
   assert(positions[62]==71); // AltRight is a real LED, not a layout placeholder.
   for(const auto& groups:bloomPatterns){std::set<uint8_t> seen;for(const auto& g:groups)seen.insert(g.begin(),g.end());for(auto p:positions)assert(seen.count(p));}

@@ -41,7 +41,7 @@ jobs:
           if (!(Test-Path 'docs/releases/v${{ steps.toolchain.outputs.version }}.md')) { throw 'Missing release notes' }
       - run: npm ci
       - run: npm test
-      - name: Test native Rhythm and Beat Pulse
+      - name: Test native Rhythm
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
