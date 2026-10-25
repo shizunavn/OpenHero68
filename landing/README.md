@@ -48,6 +48,18 @@ only this page to a different hostname does not require service origin changes.
 The download buttons open the latest stable GitHub release page so users can
 read the release notes and choose an installer from its assets.
 
+## Search Console
+
+The homepage includes a Google Search Console verification meta tag and
+`WebSite` structured data naming OpenHero68. Keep the verification tag in future
+deployments to retain ownership verification. The build generates `robots.txt`
+and `sitemap.xml` with the configured canonical origin.
+
+The URL-prefix property is `https://openhero68-site.pages.dev/`. Submit
+`https://openhero68-site.pages.dev/sitemap.xml` in Search Console and use URL
+Inspection on the homepage to request indexing after substantive updates.
+Verification and a sitemap do not guarantee indexing or a search position.
+
 ## Real keyboard demos
 
 `media/` contains the maintainer's RGB and Gamepad recordings, encoded as
