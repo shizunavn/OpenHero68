@@ -1,0 +1,183 @@
+name: "Request keyboard support"
+description: "Help add a new model or hardware revision: identity, firmware, layout and optional protocol captures."
+title: "[Keyboard support] Brand / exact model"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping expand OpenHero68! You do not need reverse-engineering experience.
+        Fill in the basic information first; **Unknown** is fine where indicated. Technical evidence is optional.
+        OpenHero68 currently targets the AULA HERO68. A similar name, USB ID or layout does not confirm compatibility.
+        A request does not enable device writes or mean the model is supported.
+
+        [Submission guide: finding IDs, firmware and useful captures](https://github.com/shizunavn/OpenHero68/blob/main/docs/SUBMIT_A_BOARD.md)
+        Please hide serial numbers, account details and personal paths in public attachments.
+
+  - type: input
+    id: model
+    attributes:
+      label: Brand and exact model
+      description: "Copy the full name from the underside label or box, including HE, Pro, Max, Air or other suffixes."
+      placeholder: "AULA HERO84 HE"
+    validations:
+      required: true
+
+  - type: input
+    id: revision
+    attributes:
+      label: Hardware revision and switches
+      description: "Revision/batch if printed, switch name, and Hall-effect / TMR / optical / mechanical if known. Do not open the keyboard just to find this."
+      placeholder: "Revision unknown; Hall-effect; stock switches"
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection being requested
+      description: "Select the modes you can actually test. Each transport may need a separate implementation."
+      multiple: true
+      options:
+        - "Wired USB"
+        - "2.4 GHz USB receiver"
+        - "Bluetooth"
+        - "Unknown"
+    validations:
+      required: true
+
+  - type: textarea
+    id: usb-identity
+    attributes:
+      label: USB identity for each connection
+      description: "Paste Device Manager Hardware Ids or VID:PID in hex. Label wired and receiver IDs separately. Include MI/interface IDs if shown. Write Unknown if you need help; see the guide."
+      placeholder: |
+        Wired USB: VID_....&PID_...., MI_..
+        2.4 GHz receiver: not tested
+    validations:
+      required: true
+
+  - type: input
+    id: firmware-version
+    attributes:
+      label: Installed keyboard firmware version
+      description: "Copy the exact value from the official app, including leading zeros or hex notation. Write Unknown if unavailable. No update is needed to submit."
+      placeholder: "Exact displayed version, or Unknown"
+    validations:
+      required: true
+
+  - type: textarea
+    id: firmware-evidence
+    attributes:
+      label: Firmware evidence and official update package (optional)
+      description: "Attach the version screen. If available, link the official firmware/updater download and note its version, target model/revision and source page. Include receiver firmware separately. See the guide for file hashes. No firmware dump or flashing required."
+      placeholder: |
+        Installed keyboard firmware screenshot:
+        Receiver firmware (if applicable):
+        Official source page / firmware download:
+        Package filename and target version/revision:
+        SHA-256 (optional):
+
+  - type: textarea
+    id: vendor-software
+    attributes:
+      label: Official configurator / software
+      description: "Link the vendor web driver or software download page. Include app version and whether it recognizes the board on the selected connection. Write Unknown if unavailable."
+      placeholder: |
+        Official web driver URL:
+        Desktop app name, version and download page:
+        Works over wired / receiver / Bluetooth:
+    validations:
+      required: true
+
+  - type: textarea
+    id: layout
+    attributes:
+      label: Layout and photos
+      description: "Give key count and ANSI / ISO / JIS if known. Attach a top-down photo and, if possible, the model label with the serial number hidden. Mention knob, extra keys and side LEDs. A product-page layout link is also useful."
+      placeholder: "Key count / layout, photo or product link, extra controls:"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Test environment
+      description: "OS version and browser/version. Include OpenHero68 web/service versions only if already used. The Windows service is currently Windows x64 only."
+      placeholder: "Windows 11 x64; Chrome ...; OpenHero68 not tested"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: requested-features
+    attributes:
+      label: Features you want to test
+      multiple: true
+      options:
+        - "Actuation / Rapid Trigger / Hall travel"
+        - "Remapping / macros / Advanced Keys"
+        - "Onboard RGB"
+        - "Custom RGB / Rhythm Sync (Windows service)"
+        - "Analog Xbox gamepad (Windows service + ViGEmBus)"
+        - "Other (describe below)"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Technical evidence (optional)
+        Leave these fields blank if unsure. Use the official app for captures on unsupported boards;
+        do not send HERO68 packets to another model to test compatibility.
+        See the guide for useful evidence and how to label it.
+
+  - type: textarea
+    id: hid-descriptors
+    attributes:
+      label: HID interfaces and report descriptors
+      description: "Attach an existing descriptor/interface dump if available. Include transport, VID/PID, interface number, usage page/usage, report IDs and sizes. Mention the tool used."
+      placeholder: "Attach a dump or paste text here."
+
+  - type: textarea
+    id: protocol-captures
+    attributes:
+      label: Official-app protocol captures
+      description: "Attach WebHID or USB capture files with a short action timeline and before/after values. Start with version/settings reads and Hall travel. Separate each tested feature and connection. Do not capture unrelated typing."
+      placeholder: |
+        Model / firmware / connection / tool:
+        File:
+        00:00 connect and read settings
+        00:05 open travel test; press and release W slowly
+        Observed result:
+
+  - type: textarea
+    id: key-mapping
+    attributes:
+      label: Key IDs, matrix and LED order
+      description: "If known, attach key/LED maps and explain how they were measured. Include extra keys and Fn layers. Mark guesses explicitly; a larger model may use different positions or LED ordering."
+
+  - type: textarea
+    id: existing-work
+    attributes:
+      label: Existing support, observations or reverse engineering
+      description: "Link relevant projects, issues or protocol notes. If OpenHero68 was already tried, give version, connection and exact observed behavior. A working vendor travel test or another app is useful evidence, but does not establish OpenHero68 compatibility."
+
+  - type: dropdown
+    id: testing
+    attributes:
+      label: Access to real hardware
+      description: "This helps plan validation; owning the board is not required to request it."
+      options:
+        - "I own this exact model and can help test a development build"
+        - "I own this exact model but cannot test development builds"
+        - "I can access this model through another person"
+        - "I do not have this model; this is a request only"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: "I searched existing issues for this model and revision."
+          required: true
+        - label: "I understand that model detection or shared USB IDs do not mean all features are verified on hardware."
+          required: true

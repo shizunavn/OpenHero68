@@ -2,6 +2,7 @@
 
 ## Features and usage
 
+- [Request support for a keyboard](SUBMIT_A_BOARD.md)
 - [Custom RGB and the background service](CUSTOM_RGB.md)
 - [Rhythm Sync](RHYTHM_SYNC.md)
 - [Gamepad and shared Hall](GAMEPAD.md)

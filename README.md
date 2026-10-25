@@ -201,6 +201,12 @@ The project is under active development. On 2026-10-25, the maintainer confirmed
 
 ## Contributing
 
+Want another keyboard model or hardware revision supported? Use the
+[keyboard support form](https://github.com/shizunavn/OpenHero68/issues/new?template=add-a-board.yml)
+and [submission guide](docs/SUBMIT_A_BOARD.md). Include the exact model, installed
+firmware, USB IDs for each connection and layout. Protocol captures are optional;
+you can submit basic details first and volunteer for hardware testing later.
+
 Issues and pull requests are welcome. Before opening a pull request, run:
 
 ```sh
