@@ -202,9 +202,7 @@ docs/                Reverse-engineering notes, feature docs, release notes
 - [All docs, including reverse-engineering notes](docs/README.md)
 - [Changelog](CHANGELOG.md) · [Service release notes](docs/releases/)
 
-## Status and known limitations
-
-The project is under active development. On 2026-10-25, the maintainer confirmed that real-hardware testing was complete, the web app was deployed, and the Windows installer EXE was tested and working. See [recorded validation results](docs/GAMEPAD_VALIDATION.md) for the current confirmation and historical test records.
+## Known limitations
 
 - **Gamepad v1** supports one HERO68 and one Xbox controller on Windows x64. Firmware blocking saves exact original remaps before writing zero and recovers them after service restart. Advanced Keys on assigned keys must be removed first. Windows hook fallback affects matching keys on other keyboards, may not block Raw Input, and displays an anti-cheat warning when selected. No suppression method guarantees anti-cheat approval. DirectInput, mouse-to-stick and kernel keyboard filters are outside v1.
 - **Rhythm side-light modes** work in the demo only. Live side output stays disabled until the HERO68 LED count, order and protocol are verified; side LEDs keep their on-board effect while key playback runs.
