@@ -1,0 +1,154 @@
+name: "Report a bug"
+description: "Report a problem with the web app, Windows service, installer or supported keyboard features."
+title: "[Bug] Short description"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem! Include enough detail for someone else to reproduce it.
+        Write **Unknown** for versions you cannot find and **Not used** for components you do not use.
+        For a new keyboard model, use the [keyboard support form](https://github.com/shizunavn/OpenHero68/issues/new?template=add-a-board.yml).
+        Logs and screenshots are optional; hide serial numbers, account details and personal paths before uploading.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - "Connection / device detection"
+        - "Profiles / saving settings"
+        - "Actuation / Rapid Trigger / Hall travel"
+        - "Remapping / macros / Advanced Keys"
+        - "Onboard RGB"
+        - "Custom RGB / Rhythm Sync"
+        - "Analog gamepad / keyboard suppression"
+        - "Windows service / control panel"
+        - "Installer / updater / startup"
+        - "Web interface / translation / demo"
+        - "Other / unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: "Describe the problem and any error message. For a regression, include the last working version if known."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "Start from opening the app. Include the page, profile, relevant settings and actions. If intermittent, describe when it happens."
+      placeholder: |
+        1. Open ...
+        2. Connect ...
+        3. Change ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: "What should happen instead?"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - "Every time"
+        - "Sometimes"
+        - "Only once so far"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: keyboard
+    attributes:
+      label: Keyboard model and hardware revision
+      description: "Full model name, including suffixes. Add revision if known. For UI/demo/installer bugs without a keyboard, write Not connected."
+      placeholder: "AULA HERO68 HE; revision unknown"
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Installed keyboard firmware
+      description: "Exact version shown by the official app, including leading zeros. Add receiver firmware if relevant. Write Unknown or Not connected if needed; no firmware update is required."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Keyboard connection
+      options:
+        - "Wired USB"
+        - "2.4 GHz USB receiver"
+        - "Bluetooth"
+        - "No keyboard / demo"
+        - "Unknown"
+    validations:
+      required: true
+
+  - type: input
+    id: web-version
+    attributes:
+      label: Web app version and URL
+      description: "Version displayed in the app and the URL used. For a local build, include the commit if known. Write Not used if this only affects the installer/service."
+      placeholder: "Version ...; https://open-hero68.pages.dev/"
+    validations:
+      required: true
+
+  - type: input
+    id: service-version
+    attributes:
+      label: Windows service / installer version
+      description: "Version from the service control panel or installer filename. If installation failed, give the setup version. Write Not used or Unknown if appropriate."
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and browser
+      description: "Include OS version/architecture and browser version. The service currently supports Windows x64; web-only bugs can be reported from other systems."
+      placeholder: "Windows 11 x64; Chrome ... / Edge ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant setup and recovery (optional)
+      description: "Examples: USB hub, vendor app open, active profile, Tachyon Mode, running RGB/gamepad, ViGEmBus version and game name. Describe any disconnect, stuck input, restart or recovery behavior already observed. No need to reset or flash the board."
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, screenshots or recording (optional)
+      description: |
+        Attach files or paste the exact error. Tray menu > Open log folder opens service logs at %LOCALAPPDATA%\OpenHero68\rgb-service.
+        Browser console errors and a short recording can also help. Include the time of the failure and review attachments for personal information.
+      placeholder: |
+        Failure time and timezone:
+        Error message:
+        Attachments / relevant log excerpt:
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: "I searched existing issues for this problem."
+          required: true

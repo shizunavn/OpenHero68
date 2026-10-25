@@ -3,6 +3,9 @@
 An open-source, browser-based configurator for the **AULA HERO68** Hall-effect keyboard, plus an optional **Windows tray service** that keeps custom RGB, Rhythm Sync and analog Xbox gamepad output running after the browser is closed.
 
 [**Website**](https://openhero68-site.pages.dev/) · [**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68/releases/latest) · [Release notes](https://github.com/shizunavn/OpenHero68/releases/latest)
+
+**Found a problem? [Report a bug](https://github.com/shizunavn/OpenHero68/issues/new?template=bug-report.yml)** — web app, keyboard features, Windows service or installer.
+
 > [!IMPORTANT]
 > **Own a HERO84 or another Hall-effect keyboard? Help bring support to your model.**
 >
@@ -223,7 +226,10 @@ npm run build
 npm test
 ```
 
-When reporting a bug, please include your browser, Windows version, service version and the logs from `%LOCALAPPDATA%\OpenHero68\rgb-service`.
+Found a problem? Use the [bug report form](https://github.com/shizunavn/OpenHero68/issues/new?template=bug-report.yml)
+with reproduction steps, expected/actual behavior, keyboard firmware and app/service versions.
+Screenshots and logs are optional. Open the service logs through **Tray menu > Open log folder**
+or `%LOCALAPPDATA%\OpenHero68\rgb-service`; review attachments for personal information before uploading.
 
 ## License
 
