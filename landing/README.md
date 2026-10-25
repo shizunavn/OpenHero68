@@ -45,4 +45,5 @@ are separate choices; the current rollout uses Direct Upload.
 
 The landing page never connects to the keyboard or localhost service. Moving
 only this page to a different hostname does not require service origin changes.
-The download link always points at the latest stable Windows installer on GitHub.
+The download buttons open the latest stable GitHub release page so users can
+read the release notes and choose an installer from its assets.

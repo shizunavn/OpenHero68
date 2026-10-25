@@ -21,7 +21,7 @@ const css = await readFile(path.join(output,'styles.css'),'utf8');
 assert.ok(!/navigator\.hid|127\.0\.0\.1|fetch\(/.test(app),'Landing must not open hardware or make API calls');
 assert.ok(css.includes('prefers-reduced-motion'),'Reduced motion support');
 for (const match of html.matchAll(/data-i18n="([^"]+)"/g)) for(const language of ['en','vi']) assert.ok(content[language][match[1]],`Missing ${language} copy for ${match[1]}`);
-const expectedTargets = ['https://open-hero68.pages.dev/','https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-Setup-Windows-x64.exe','https://github.com/shizunavn/OpenHero68'];
+const expectedTargets = ['https://open-hero68.pages.dev/','https://github.com/shizunavn/OpenHero68/releases/latest','https://github.com/shizunavn/OpenHero68'];
 for(const target of expectedTargets)assert.ok(html.includes(`href="${target}"`),`Missing CTA ${target}`);
 const canonical = html.match(/rel="canonical" href="([^"]+)"/)[1];
 assert.ok((await readFile(path.join(output,'robots.txt'),'utf8')).includes(canonical+'sitemap.xml'));
