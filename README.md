@@ -227,9 +227,9 @@ npm test
 ```
 
 Found a problem? Use the [bug report form](https://github.com/shizunavn/OpenHero68/issues/new?template=bug-report.yml)
-with reproduction steps, expected/actual behavior, keyboard firmware and app/service versions.
-Screenshots and logs are optional. Open the service logs through **Tray menu > Open log folder**
-or `%LOCALAPPDATA%\OpenHero68\rgb-service`; review attachments for personal information before uploading.
+and tell us what happened in your own words. **Only the problem description is required.**
+English and Vietnamese reports are welcome; screenshots, steps and technical details are optional.
+You do not need to find logs or version numbers to report a bug. We can ask follow-up questions if needed.
 
 ## License
 
