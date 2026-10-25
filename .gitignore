@@ -1,6 +1,8 @@
 node_modules/
 .refactor/
 dist/
+landing-dist/
+openhero68-landing-pages.zip.sha256
 service/dist/
 service/releases/
 .refactor/rgb-ui-fixture/

@@ -4,6 +4,10 @@
   "version": "0.9.57",
   "type": "module",
   "scripts": {
+    "build:landing": "node tools/build-landing.mjs",
+    "package:landing": "node tools/build-landing.mjs --package",
+    "check:landing": "node tools/check-landing.mjs",
+    "preview:landing": "node tools/preview-landing.mjs",
     "build:service": "tsc --project service/tsconfig.json && node service/build.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:rgb": "node --test tests/rgb.test.mjs",

@@ -2,7 +2,7 @@
 
 An open-source, browser-based configurator for the **AULA HERO68** Hall-effect keyboard, plus an optional **Windows tray service** that keeps custom RGB, Rhythm Sync and analog Xbox gamepad output running after the browser is closed.
 
-[**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-Setup-Windows-x64.exe) · [Release notes](https://github.com/shizunavn/OpenHero68/releases/latest)
+[**Website**](https://openhero68-site.pages.dev/) · [**Open the web app**](https://open-hero68.pages.dev/) · [**Download the Windows service**](https://github.com/shizunavn/OpenHero68/releases/latest/download/OpenHero68-Setup-Windows-x64.exe) · [Release notes](https://github.com/shizunavn/OpenHero68/releases/latest)
 ![Openhero68 Main Page](docs/images/Open-hero68.png)
 ![OpenHero68 RGB Settings page](docs/images/RGB-Setting-Page.png)
 
@@ -100,6 +100,10 @@ Portable users must run setup once to migrate. Settings stay in the same LocalAp
 The installer keeps shortcut and Auto-start choices during automatic updates. Gamepad starts disabled after every app restart. RGB/Rhythm retain their saved configuration. Driver installation is optional and may ask for administrator permission; any Windows restart required by the driver is left to the user.
 
 ## Development
+
+The separate public landing page lives in `landing/`. Build it with
+`npm run build:landing`, check with `npm run check:landing`, and package it with
+`npm run package:landing`. See [landing page development and deployment](landing/README.md).
 
 Production builds and tests require development dependencies. Use `npm ci` (or
 `npm ci --include=dev` if your environment defaults to omitting them) before
