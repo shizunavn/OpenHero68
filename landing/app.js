@@ -43,6 +43,13 @@ navigation.querySelectorAll('a').forEach(link => link.addEventListener('click', 
 document.addEventListener('keydown', event => {if (event.key === 'Escape') {if (menuButton.getAttribute('aria-expanded') === 'true') menuButton.focus();closeMenu();}});
 matchMedia('(min-width: 561px)').addEventListener('change', closeMenu);
 
+// Play only one demo at a time.
+document.querySelectorAll('.video-demo video').forEach(video => {
+  video.addEventListener('play', () => {
+    document.querySelectorAll('.video-demo video').forEach(other => {if (other !== video) other.pause();});
+  });
+});
+
 const dialog = document.querySelector('.lightbox');
 let imageTrigger;
 if (typeof dialog.showModal === 'function') {

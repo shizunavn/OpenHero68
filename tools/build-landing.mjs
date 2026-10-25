@@ -21,6 +21,7 @@ const html = template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
   return escape(value);
 });
 await mkdir(path.join(output, 'assets/fonts'), {recursive:true});
+await mkdir(path.join(output, 'assets/media'), {recursive:true});
 for (const name of ['styles.css', 'app.js', 'content.mjs']) await copyFile(path.join(root, 'landing', name), path.join(output, name));
 for (const [source, destination] of [
   ['docs/images/Open-hero68.png', 'assets/configurator.png'],
@@ -29,6 +30,12 @@ for (const [source, destination] of [
   ['src/assets/fonts/cd31765d.woff2', 'assets/fonts/cd31765d.woff2'],
   ['src/assets/fonts/d47ab3c3.woff2', 'assets/fonts/d47ab3c3.woff2']
 ]) await copyFile(path.join(root, source), path.join(output, destination));
+for (const name of ['rgb-demo.mp4', 'rgb-poster.jpg', 'gamepad-demo.mp4', 'gamepad-poster.jpg']) {
+  const source = path.join(root, 'landing/media', name);
+  const bytes = await readFile(source);
+  assert.ok(bytes.length < 25 * 1024 * 1024, `${name} must fit the Cloudflare Pages per-file size limit`);
+  await copyFile(source, path.join(output, 'assets/media', name));
+}
 await writeFile(path.join(output, 'index.html'), html);
 await writeFile(path.join(output, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${siteUrl}/sitemap.xml\n`);
 await writeFile(path.join(output, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${siteUrl}/</loc></url></urlset>\n`);
@@ -55,7 +62,7 @@ if (process.argv.includes('--package')) {
   const localEntries = [], centralEntries = [];
   let offset = 0;
   const files = await distributionFiles();
-  const expected = ['_headers','app.js','assets/configurator.png','assets/fonts/cd31765d.woff2','assets/fonts/d47ab3c3.woff2','assets/logo.png','assets/rhythm.png','content.mjs','index.html','robots.txt','sitemap.xml','styles.css'];
+  const expected = ['_headers','app.js','assets/configurator.png','assets/fonts/cd31765d.woff2','assets/fonts/d47ab3c3.woff2','assets/logo.png','assets/rhythm.png','assets/media/rgb-demo.mp4','assets/media/rgb-poster.jpg','assets/media/gamepad-demo.mp4','assets/media/gamepad-poster.jpg','content.mjs','index.html','robots.txt','sitemap.xml','styles.css'];
   assert.deepEqual(files, expected.sort(), 'Unexpected files in landing-dist; inspect before packaging');
   for (const file of files) {
     const bytes = await readFile(path.join(output, file));

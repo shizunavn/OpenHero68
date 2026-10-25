@@ -11,13 +11,19 @@ const html = await readFile(path.join(output,'index.html'),'utf8');
 assert.ok(!html.includes('{{'), 'All template values must be rendered');
 assert.equal((html.match(/<h1>/g)||[]).length,1, 'One primary heading');
 const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]));
-for (const match of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
+for (const match of html.matchAll(/(?:href|src|poster)="([^"]+)"/g)) {
   const target = match[1];
   if (target.startsWith('#')) {if(target.length>1)assert.ok(ids.has(target.slice(1)),`Broken anchor ${target}`);}
   else if (!target.startsWith('https://')) assert.ok((await stat(path.join(output,target))).isFile(),`Missing asset ${target}`);
 }
 const app = await readFile(path.join(output,'app.js'),'utf8');
 const css = await readFile(path.join(output,'styles.css'),'utf8');
+const videos = [...html.matchAll(/<video\b([^>]+)>/g)];
+assert.equal(videos.length, 2, 'Both real keyboard demos must be included');
+for (const [,attributes] of videos) {
+  assert.ok(attributes.includes('controls') && attributes.includes('playsinline') && attributes.includes('muted'), 'Demos need accessible native controls, inline playback and muted defaults');
+  assert.ok(attributes.includes('preload="none"') && !attributes.includes('autoplay'), 'Demos must not download or play automatically');
+}
 assert.ok(!/navigator\.hid|127\.0\.0\.1|fetch\(/.test(app),'Landing must not open hardware or make API calls');
 assert.ok(css.includes('prefers-reduced-motion'),'Reduced motion support');
 for (const match of html.matchAll(/data-i18n="([^"]+)"/g)) for(const language of ['en','vi']) assert.ok(content[language][match[1]],`Missing ${language} copy for ${match[1]}`);
@@ -33,4 +39,4 @@ vm.createContext(context); vm.runInContext(storageFunction,context);
 assert.equal(context.storedLanguage({getItem(){throw Error('Storage denied');}}),'en');
 assert.equal(context.storedLanguage({getItem(){return 'vi';}}),'vi');
 assert.equal(context.storedLanguage({getItem(){return 'invalid';}}),'en');
-console.log('Landing checks passed: translations, assets, anchors, CTAs, metadata, reduced motion and unavailable storage.');
+console.log('Landing checks passed: translations, assets, anchors, CTAs, metadata, video controls/loading, reduced motion and unavailable storage.');

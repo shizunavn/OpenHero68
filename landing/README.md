@@ -47,3 +47,15 @@ The landing page never connects to the keyboard or localhost service. Moving
 only this page to a different hostname does not require service origin changes.
 The download buttons open the latest stable GitHub release page so users can
 read the release notes and choose an installer from its assets.
+
+## Real keyboard demos
+
+`media/` contains the maintainer's RGB and Gamepad recordings, encoded as
+1280×720 H.264 at 30 fps with AAC audio and fast-start MP4 metadata. Full clip
+durations are preserved (approximately 34 and 51 seconds). Source phone files
+and their location metadata are not published. Posters are frames from the
+same recordings. Builds copy the already encoded assets; CI does not need FFmpeg.
+
+Videos have native controls, start muted, and use `preload="none"`. They play
+only after interaction; starting one pauses the other. The existing screenshot
+preview remains available separately.

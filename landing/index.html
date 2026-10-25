@@ -52,6 +52,7 @@
         <a class="source-link" href="https://github.com/shizunavn/OpenHero68"><svg class="icon"><use href="#github"/></svg><span data-i18n="source">{{source}}</span></a>
       </div>
       <p class="hero-note" data-i18n="heroNote">{{heroNote}}</p>
+      <a class="watch-demos" href="#demos"><span aria-hidden="true">▷</span><span data-i18n="watchDemos">{{watchDemos}}</span><span aria-hidden="true">↓</span></a>
       <figure class="app-window">
         <div class="window-top"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span>OpenHero68 <span class="window-path">/ configurator</span></span><span class="window-mark">H<span>68</span></span></div>
         <a class="screenshot-link" href="assets/configurator.png" data-lightbox data-i18n-aria="enlarge" aria-label="{{enlarge}}"><img src="assets/configurator.png" alt="OpenHero68 configurator showing the HERO68 keyboard, Quick Settings and configuration sidebar" data-i18n-alt="appAlt" width="1919" height="910" fetchpriority="high"><span class="expand-hint" aria-hidden="true"><svg class="icon"><use href="#expand"/></svg></span></a>
@@ -59,6 +60,19 @@
       </figure>
     </section>
     <div class="feature-strip"><div class="shell strip-inner"><span data-i18n="strip1">{{strip1}}</span><i></i><span data-i18n="strip2">{{strip2}}</span><i></i><span data-i18n="strip3">{{strip3}}</span><i></i><span data-i18n="strip4">{{strip4}}</span><i></i><span data-i18n="strip5">{{strip5}}</span></div></div>
+    <section class="shell section demos-section" id="demos" aria-labelledby="demos-title">
+      <div class="section-heading"><p class="eyebrow" data-i18n="demosTag">{{demosTag}}</p><h2 id="demos-title" data-i18n="demosTitle">{{demosTitle}}</h2><p class="muted" data-i18n="demosBody">{{demosBody}}</p></div>
+      <div class="demo-grid">
+        <figure class="video-demo" id="rgb-demo">
+          <video controls playsinline muted preload="none" poster="assets/media/rgb-poster.jpg" width="1280" height="720" data-i18n-aria="rgbDemoTitle" aria-label="{{rgbDemoTitle}}" aria-describedby="rgb-demo-caption"><source src="assets/media/rgb-demo.mp4" type="video/mp4"><a href="assets/media/rgb-demo.mp4" data-i18n="videoFallback">{{videoFallback}}</a></video>
+          <figcaption id="rgb-demo-caption"><div class="demo-title"><h3 data-i18n="rgbDemoTitle">{{rgbDemoTitle}}</h3><time datetime="PT34S">0:34</time></div><p data-i18n="rgbDemoCaption">{{rgbDemoCaption}}</p></figcaption>
+        </figure>
+        <figure class="video-demo" id="gamepad-demo">
+          <video controls playsinline muted preload="none" poster="assets/media/gamepad-poster.jpg" width="1280" height="720" data-i18n-aria="gamepadDemoTitle" aria-label="{{gamepadDemoTitle}}" aria-describedby="gamepad-demo-caption"><source src="assets/media/gamepad-demo.mp4" type="video/mp4"><a href="assets/media/gamepad-demo.mp4" data-i18n="videoFallback">{{videoFallback}}</a></video>
+          <figcaption id="gamepad-demo-caption"><div class="demo-title"><h3 data-i18n="gamepadDemoTitle">{{gamepadDemoTitle}}</h3><time datetime="PT51S">0:51</time></div><p data-i18n="gamepadDemoCaption">{{gamepadDemoCaption}}</p></figcaption>
+        </figure>
+      </div>
+    </section>
     <section class="shell section features-section" id="features">
       <div class="section-heading"><p class="eyebrow" data-i18n="featureEyebrow">{{featureEyebrow}}</p><h2 data-i18n="featureHeading">{{featureHeading}}</h2><p class="muted" data-i18n="featureBody">{{featureBody}}</p></div>
       <article class="rgb-feature">
