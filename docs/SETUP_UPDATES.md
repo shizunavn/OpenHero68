@@ -80,7 +80,13 @@ and launches a fake HTTP service using its own AppId, port 17868, mutex, shortcu
 and state folder. It tests Unicode paths, full updates, restart, rollback,
 shortcut selection and uninstall without opening HID or installing any driver.
 
-Before the first public tag, manually validate Windows 10/11 with a real HERO68:
-safe gamepad/HID shutdown, saved RGB/Rhythm resume, driver UAC cancellation and
-driver reboot-needed reporting. Hosted CI does not prove these hardware cases.
-Cloudflare Pages deployment remains separate.
+On 2026-10-25, the maintainer confirmed that real-hardware testing was complete,
+the Windows installer EXE was tested and working, and the web app was already
+deployed for service 0.5.3.2 / UI 0.9.57. See
+[the current validation confirmation](GAMEPAD_VALIDATION.md#current-release-confirmation---2026-10-25).
+
+For future installer changes, manual validation should cover safe gamepad/HID
+shutdown, saved RGB/Rhythm resume, driver UAC cancellation and driver
+reboot-needed reporting on the supported Windows versions. Hosted CI does not
+prove these hardware cases. Cloudflare Pages deployment is a separate operation
+from publishing the GitHub release.

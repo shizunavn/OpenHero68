@@ -91,7 +91,9 @@ Gamepad starts disabled whenever the service starts. Once enabled, it keeps runn
 
 ### Updating
 
-Click **Check for updates** in the tray, **Update app** in the control panel, or **Update the app** in Settings > Background Service. One click checks the stable GitHub release, downloads and verifies the signed setup, closes the app safely, installs the full payload and restarts **the app only**. Windows is never restarted automatically. A failed health check restores the previous app and saved data.
+Click **Check for updates** in the tray, **Update app** in the control panel, or **Update the app** in Settings > Background Service. One click checks the stable GitHub release, downloads the setup and verifies it against its Ed25519-signed update manifest, closes the app safely, installs the full payload and restarts **the app only**. Windows is never restarted automatically. A failed health check restores the previous app and saved data.
+
+The installer does not currently have Windows Authenticode publisher signing, so Windows may show a SmartScreen prompt. Update manifest signing verifies the downloaded package separately.
 
 Portable users must run setup once to migrate. Settings stay in the same LocalAppData folder; the old portable directory is not deleted. Installed builds use their bundled core and do not activate legacy downloaded cores.
 
@@ -186,9 +188,9 @@ docs/                Reverse-engineering notes, feature docs, release notes
 
 ## Status and known limitations
 
-The project is under active development.
+The project is under active development. On 2026-10-25, the maintainer confirmed that real-hardware testing was complete, the web app was deployed, and the Windows installer EXE was tested and working. See [recorded validation results](docs/GAMEPAD_VALIDATION.md) for the current confirmation and historical test records.
 
-- **Gamepad v1** supports one HERO68 and one Xbox controller on Windows x64. Firmware blocking saves exact original remaps before writing zero and recovers them after service restart. Advanced Keys on assigned keys must be removed first. Windows hook fallback affects matching keys on other keyboards, may not block Raw Input, and displays an anti-cheat warning when selected. No suppression method guarantees anti-cheat approval. DirectInput, mouse-to-stick and kernel keyboard filters are outside v1. Physical unplug/replug and sleep/wake remain unverified; extended testing was canceled at the user's direction.
+- **Gamepad v1** supports one HERO68 and one Xbox controller on Windows x64. Firmware blocking saves exact original remaps before writing zero and recovers them after service restart. Advanced Keys on assigned keys must be removed first. Windows hook fallback affects matching keys on other keyboards, may not block Raw Input, and displays an anti-cheat warning when selected. No suppression method guarantees anti-cheat approval. DirectInput, mouse-to-stick and kernel keyboard filters are outside v1.
 - **Rhythm side-light modes** work in the demo only. Live side output stays disabled until the HERO68 LED count, order and protocol are verified; side LEDs keep their on-board effect while key playback runs.
 - **Tachyon Mode** (8000 Hz polling) turns key and side lighting off to minimize latency. Custom Effects, Rhythm Sync and automatic Hall polling are paused while it is on, and your previous lighting is restored when you turn it off.
 - The tray service supports **Windows x64 only**. The web app needs a WebHID browser (Chrome or Edge).

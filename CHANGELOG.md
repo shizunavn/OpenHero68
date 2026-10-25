@@ -35,6 +35,13 @@ their original validation scope; they are not claims of new hardware testing.
 
 ## Windows service update history
 
+The ZIP/core instructions in this section apply only to releases before 0.5.0.
+From 0.5.0 onward, use the Windows setup EXE and full application updates as
+described in [the current update instructions](README.md#updating). Portable
+users run setup once to migrate. Legacy core/ZIP publishing tools are retained
+for historical releases; current releases use `tools/publish-service-setup.mjs`
+through the Windows setup workflow.
+
 - **Check for updates** in the tray downloads and applies compatible signed core updates automatically.
 - When the native launcher also changes (for example for Rhythm Sync), the tray downloads a checksum-verified ZIP instead. Quit the old app, extract all files over the service folder, then start the new launcher. A core-only update is not enough in that case.
 - Rhythm Sync needs service core 0.3.0, launcher 0.3.0 and API 5 or newer.

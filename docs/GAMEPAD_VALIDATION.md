@@ -1,5 +1,16 @@
 # Recorded Gamepad / shared Hall validation
 
+## Current release confirmation - 2026-10-25
+
+For service 0.5.3.2 / UI 0.9.57, the maintainer confirmed that real-hardware
+testing was complete, the web app had already been deployed, and the Windows
+installer EXE had been tested and was working well. The earlier pending
+hardware checks are no longer listed as outstanding release work.
+
+Historical measurements and incomplete stress runs below retain their original
+scope. The maintainer's current confirmation supersedes the historical pending
+release checks; it does not add new benchmark measurements.
+
 ## 0.4.5 follow-up — 2026-10-04
 
 - 533 JavaScript regression tests passed in 58.6 seconds, including a 5.2-second
@@ -127,11 +138,11 @@ at the user's direction. No 2-hour result is claimed. The isolated service was
 shut down and the previously running Rhythm service was restored and confirmed
 connected and enabled.
 
-## Remaining manual checks
+## Historical remaining manual checks - v0.4.0
 
 Physical USB cable unplug/replug and real Windows sleep/wake were not exercised.
-Their neutral/rearm paths are implemented and pause/watchdog logic is tested,
-but these device-level checks remain unverified. Keyboard suppression remains
+Their neutral/rearm paths were implemented and pause/watchdog logic was tested,
+but these device-level checks were unverified at that time. Keyboard suppression remained
 disabled. These validated packages target GitHub release v0.4.0. Public website
 deployment is separate from publishing the GitHub release.
 
